@@ -263,7 +263,7 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 | next | 16.3.8 (App Router, Turbopack, `output: "standalone"`) |
 | react | 19.2.8 |
 | tailwindcss | v4 (via `@tailwindcss/postcss`; tokens in `src/app/globals.css` — keep in sync with §3.1) |
-| shadcn CLI | 4.21.1 — init with base `radix`, preset `nova`; primitives come from the unified `radix-ui` package, `cn` from the `cn` package |
+| shadcn CLI | 4.21.1 — init with base `radix`, preset `nova`; primitives come from the unified `radix-ui` package, `cn` from the `cn` package. The `shadcn` npm package lives in **devDependencies** (build-time only: CLI + the `shadcn/tailwind.css` theme import); its transitive braces/fast-glob advisory (Dependabot #1) never reaches the production image |
 | lucide-react | 1.52 (no brand icons — see §1) |
 | next-themes | 0.4.6 |
 | sonner | 2.0.8 |
