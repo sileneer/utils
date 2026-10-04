@@ -58,6 +58,38 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # deploy: added in M3 — WIF keyless auth (google-github-actions/auth) +
-  # google-github-actions/ssh-compute via IAP tunnel running /opt/utils/deploy.sh.
-  # Design: docs/PLANNING.md §4.2, §6.
+  # Keyless deploy: WIF-authenticated as utils-deploy@…, ephemeral SSH key written
+  # to instance metadata (removed afterwards), SSH through the IAP tunnel running
+  # /opt/utils/deploy.sh (flock → compose pull → up → healthcheck → rollback).
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to GCP (Workload Identity Federation, no keys)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/970395615458/locations/global/workloadIdentityPools/github/providers/github
+          service_account: utils-deploy@gen-lang-client-0642815057.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Add ephemeral SSH key to instance metadata
+        run: |
+          ssh-keygen -t ed25519 -N "" -C "gha-${GITHUB_SHA::7}" -f /tmp/deploy_key
+          echo "utils-deploy:$(cat /tmp/deploy_key.pub)" > /tmp/ssh_keys
+          gcloud compute instances add-metadata instance-20260904-233454 \
+            --zone us-east1-c \
+            --metadata-from-file ssh-keys=/tmp/ssh_keys --quiet
+      - name: Deploy (flock → pull → up → healthcheck)
+        run: |
+          gcloud compute ssh utils-deploy@instance-20260904-233454 \
+            --zone us-east1-c \
+            --tunnel-through-iap \
+            --ssh-key-file=/tmp/deploy_key \
+            --command="/opt/utils/deploy.sh" \
+            --strict-host-key-checking=no --quiet
+      - name: Remove ephemeral SSH key
+        if: always()
+        run: gcloud compute instances remove-metadata instance-20260904-233454 \
+            --zone us-east1-c --keys=ssh-keys --quiet
