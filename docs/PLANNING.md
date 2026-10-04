@@ -216,7 +216,7 @@ GitHub Secrets 清单：`DEPLOY_SSH_KEY`、`DEPLOY_HOST`、`DEPLOY_USER`、`HEAL
 | **M1** ✅ 2026-10-04 | Next.js 16 脚手架 + shadcn + 设计 token + 应用外壳 + Dockerfile（standalone）+ compose | 本地 build/lint 通过；生产服务器 + `/api/health` 冒烟测试通过（本地无 Docker，镜像构建在 M3 CI 首跑验证） |
 | **M2** ✅ 2026-10-04 | 服务器上线 + Cloudflare Tunnel + DNS + 防火墙收紧 | **https://utils.lzhdev.com 端到端可访问**（/api/health ok、页面 200、~360ms）；CI test→build→GHCR 同日上线（首个镜像已可匿名拉取） |
 | **M3** ✅ 2026-10-04 | CI/CD 全自动部署 | push main → test → build(GHCR) → **WIF 无密钥 deploy**（临时 SSH key + IAP 隧道 → deploy.sh：flock/pull/up/健康检查门禁+自动回滚/保留 3 个镜像）；healthchecks.io 死信开关上线；**回滚演练通过**（drill 开关触发失败→回滚→恢复全程验证） |
-| **M4** | 产品功能 | 家人鉴权 + **Agent chat（核心：浏览器 ↔ 服务器端 Claude Code）** + AI 代理端点 + skills 加载 + 首批工具 |
+| **M4** | 产品功能（范围待定：2026-10-05 所有者确认 M4 除下述核心外还包含其他内容，**完整要求待所有者提供后再定稿**） | 家人鉴权 + **Agent chat（核心：浏览器 ↔ 服务器端 Claude Code）** + AI 代理端点 + skills 加载 + 首批工具 |
 | **M5** | 开源打磨 | CONTRIBUTING、issue/PR 模板、截图、README 完善 |
 
 ---
