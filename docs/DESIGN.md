@@ -14,7 +14,7 @@
 |-------|--------|--------|
 | Styling | **Tailwind CSS v4** (CSS-first config, `@theme` in globals.css) | ✅ Decided |
 | Component library | **shadcn/ui** (components copied into `src/components/ui`, built on Radix primitives) | ✅ Decided |
-| Icons | **lucide-react** | ✅ Decided |
+| Icons | **lucide-react** (v1 has no brand icons — brand marks are inline SVG in `src/components/icons/`) | ✅ Decided |
 | Dark mode | **next-themes** (class strategy) | ✅ Decided |
 | Fonts | **Inter** (body/UI) · **Outfit** (display/brand) · **JetBrains Mono** (code/tool output) — via `next/font` | ✅ Decided |
 | Toasts | **sonner** | ✅ Decided |
@@ -133,8 +133,10 @@ Rules:
 - **Never hand-roll a component that `ui/` already provides** (button, dialog, dropdown, select, tabs, tooltip, …). Extend instead: wrap the shadcn component in a project component (`src/components/…`) or use its props/variants.
 - shadcn components are ours to edit (copy-in model), but edits to `ui/` files must be minimal, generic, and justified — tool-specific logic belongs in wrappers above them.
 - **Introduction flow (standing rule from the owner, 2026-10-04):** anything new to the UI layer — a component library, an icon set, a UI pattern family, or a shadcn component not yet in the registry below — is **written into this document first** (with a one-line rationale), then installed. The DESIGN.md change precedes the code usage and ships in the same commit. Within-stack additions update the registry below; out-of-stack additions go through the §1 decision table (and the rejected-alternatives list).
-- **Adopted `ui/` component registry** — the source of truth for which base components exist/are approved. The initial set below is pre-approved for installation at M1; every later addition is appended here *before* it is installed:
-  button · card · input · textarea · label · form · select · checkbox · switch · slider · dialog · alert-dialog · dropdown-menu · popover · sheet · tabs · tooltip · collapsible · badge · separator · skeleton · alert · table · sonner (toaster)
+- **Adopted `ui/` component registry** — the source of truth for which base components exist/are approved. The set below was installed at M1 (2026-10-04); every later addition is appended here *before* it is installed:
+  button · card · input · textarea · label · select · checkbox · switch · slider · dialog · alert-dialog · dropdown-menu · popover · sheet · tabs · tooltip · collapsible · badge · separator · skeleton · alert · table · sonner (toaster)
+
+  **`form` is NOT in the shadcn 4.x radix registry** (the CLI silently skips it). The react-hook-form + zod wiring wrapper will be hand-written in `src/components/` — its shape gets decided here first when the first real form lands (M4), per the introduction flow above.
 
 ### 4.2 Usage rules
 
@@ -218,7 +220,7 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 
 - WCAG 2.1 AA: text contrast ≥ 4.5:1 (tokens above are chosen for this — don't override).
 - Full keyboard operability (Radix gives this for free; custom widgets must preserve it). Visible `focus-visible` ring everywhere (shadcn default `ring` token); **never** `outline-none` without a replacement.
-- Hit targets ≥ 40×40px (`size-10`) for interactive elements on touch layouts.
+- Hit targets ≥ 40×40px (`size-10`) for interactive elements on touch layouts. Note: shadcn 4.x buttons are compact by default (`h-8`, icon `size-8`) — on touch layouts use `size="lg"`/`size="icon-lg"` or explicit `size-10` classes to meet this rule.
 - Status never conveyed by color alone — pair with icon/text.
 - Semantic landmarks (`header/main/footer/nav`), one `h1` per page, logical heading order.
 
@@ -254,20 +256,22 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 
 ---
 
-## 12. Version pins (as of 2026-10, verify latest at M1)
+## 12. Version pins (installed at M1, 2026-10-04)
 
-| Package | Pin |
-|---------|-----|
-| tailwindcss | v4.x |
-| shadcn/ui (CLI + components) | latest at scaffold time |
-| lucide-react | latest |
-| next-themes | latest |
-| sonner | latest |
-| react-hook-form / zod / @hookform/resolvers | latest |
-| tw-animate-css | latest (replaces tailwindcss-animate in v4) |
-| motion | latest (marketing pages only) |
+| Package | Version / note |
+|---------|----------------|
+| next | 16.3.8 (App Router, Turbopack, `output: "standalone"`) |
+| react | 19.2.8 |
+| tailwindcss | v4 (via `@tailwindcss/postcss`; tokens in `src/app/globals.css` — keep in sync with §3.1) |
+| shadcn CLI | 4.21.1 — init with base `radix`, preset `nova`; primitives come from the unified `radix-ui` package, `cn` from the `cn` package |
+| lucide-react | 1.52 (no brand icons — see §1) |
+| next-themes | 0.4.6 |
+| sonner | 2.0.8 |
+| tw-animate-css | 1.4 |
+| react-hook-form / zod / @hookform/resolvers | to install with the first real form (M4) |
+| motion | not installed yet (marketing pages only) |
 
-Tooling: Prettier + `prettier-plugin-tailwindcss` (class order is enforced, not taste) · ESLint `next/core-web-vitals`.
+Tooling: Prettier + `prettier-plugin-tailwindcss` (class order is enforced, not taste) · ESLint `next/core-web-vitals` (flat config, `eslint.config.mjs`).
 
 ---
 

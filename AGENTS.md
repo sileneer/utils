@@ -6,6 +6,8 @@ Guidance for AI coding agents working in this repository.
 
 **utils** is the utilities webapp for [lzhdev.com](https://lzhdev.com) — a collection of personal and family tools, also maintained as an open-source product. Planned live URL: **https://utils.lzhdev.com**.
 
+**Core purpose (owner, 2026-10-04):** Docker exists so we can run AI agents like **Claude Code on our own server**; this webapp is the **UI shell wrapped around those agents** — users chat with server-side agents from the browser. The other tools are secondary to this goal.
+
 The full plan, decision log, and research citations live in [docs/PLANNING.md](docs/PLANNING.md) (written in Chinese). Read it before making architectural changes.
 
 ## Document maintenance (standing rule from the owner)
@@ -20,7 +22,9 @@ Rule of thumb: if a future session would benefit from knowing it, it belongs in 
 
 ## Current status
 
-Planning phase (M0 complete). Next milestone: **M1** — Next.js scaffold + Dockerfile (`output: 'standalone'`) + docker compose. See docs/PLANNING.md §7 for the milestone table.
+**M1 complete (2026-10-04)**: Next.js 16.3.8 scaffold (App Router, src dir, Turbopack), shadcn init (radix base, nova preset), DESIGN.md brand tokens applied in `src/app/globals.css`, app shell (header + theme toggle + footer + skip link), home tool grid, about page, 404/error pages, `/api/health`. Dockerfile (multi-stage standalone) + `deploy/docker-compose.yml` + `.env.example`. **Docker is not installed locally** — the first image build gets verified in CI (M3).
+
+Next milestone: **M2** (server reverse proxy + utils.lzhdev.com DNS/TLS) and **M3** (CI/CD). See docs/PLANNING.md §7.
 
 ## Tech stack (decided — do not re-litigate without updating PLANNING.md first)
 
@@ -40,26 +44,33 @@ Planning phase (M0 complete). Next milestone: **M1** — Next.js scaffold + Dock
 - Every UI change is verified in **light + dark themes** and at **360px width** before it is considered done.
 - Add base components with `npx shadcn@latest add <component>`; never hand-roll what `src/components/ui/` already covers; extend via wrappers.
 
-## Commands (to be finalized in M1)
+## Commands
 
 ```bash
-npm install          # install dependencies
-npm run dev          # dev server
-npm run build        # production build
-npm run lint         # lint
+npm install                          # install dependencies
+npm run dev                          # dev server at http://localhost:3000
+npm run build                        # production build (standalone output in .next/standalone)
+npm run start                        # serve the production build
+npm run lint                         # eslint
+npx shadcn@latest add <component>    # add pre-approved ui components (DESIGN.md §4.1)
 ```
 
-Container check (from M1): `docker compose -f deploy/docker-compose.yml up --build`
+Container check (needs Docker — not available locally yet): `docker compose -f deploy/docker-compose.yml up --build`
 
 ## Repository layout
 
 ```
-AGENTS.md            # this file
+AGENTS.md            # this file (CLAUDE.md points here)
 README.md            # public-facing intro (English)
 LICENSE              # MIT
-docs/PLANNING.md     # full planning doc (Chinese)
-deploy/              # Dockerfile, compose, deploy.sh (from M1)
-src/                 # app code (from M1)
+docs/PLANNING.md     # full planning + decision log (Chinese)
+docs/DESIGN.md       # binding UI design system
+Dockerfile           # multi-stage standalone build (repo root — build context is the repo)
+deploy/              # docker-compose.yml (+ deploy.sh, receiver from M3)
+src/app/             # routes: pages, /api/health
+src/components/ui/   # shadcn components (adopted registry: DESIGN.md §4.1)
+src/components/      # project components (layout/, icons/, tool-card, theme-*)
+src/lib/             # shared logic (utils, tools registry)
 .github/workflows/   # CI/CD (from M3)
 ```
 

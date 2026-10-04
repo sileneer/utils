@@ -1,6 +1,6 @@
 # lzhdev.com/utils — 项目规划文档
 
-> 版本 v0.2 · 2026-10-04 · 维护者：Zihao Liu ([lzhdev.com](https://lzhdev.com))
+> 版本 v0.3 · 2026-10-04 · 维护者：Zihao Liu ([lzhdev.com](https://lzhdev.com))
 > 状态：规划阶段（M0）。本文档是项目的决策记录与规划总纲，随里程碑推进更新。
 
 ---
@@ -23,6 +23,8 @@
 | 纯前端小工具 | 计算器、格式化、转换器等，无需后端 |
 
 线上地址（规划）：**https://utils.lzhdev.com**
+
+**核心目的（2026-10-04 明确）**：引入 Docker 与自建服务器的根本原因，是要在后台服务器上运行 **Claude Code 这类 AI agent**；utils webapp 本质是套在 agent 外面的 **UI 壳**——用户在浏览器里直接与服务器上的 agent 对话。其余工具（AI 代理、纯前端小工具）围绕这一核心展开。对 M4 架构的含义：① agent 会话管理（Claude Code Agent SDK / 进程级管理，运行在应用容器内或独立 sidecar 容器）；② SSE/流式输出；③ 会话持久化（SQLite on volume）；④ 家人鉴权前置到 agent 会话之上。
 
 ---
 
@@ -184,10 +186,10 @@ GitHub Secrets 清单：`DEPLOY_SSH_KEY`、`DEPLOY_HOST`、`DEPLOY_USER`、`HEAL
 | 里程碑 | 内容 | 验收标准 |
 |--------|------|----------|
 | **M0** ✅ | 规划文档、仓库初始化 | 本文档存在；GitHub public 仓库建立 |
-| **M1** | Next.js 脚手架 + Dockerfile（standalone）+ compose | 本地 `npm run dev` 与 `docker compose up` 均可访问 |
+| **M1** ✅ 2026-10-04 | Next.js 16 脚手架 + shadcn + 设计 token + 应用外壳 + Dockerfile（standalone）+ compose | 本地 build/lint 通过；生产服务器 + `/api/health` 冒烟测试通过（本地无 Docker，镜像构建在 M3 CI 首跑验证） |
 | **M2** | 服务器反代 + DNS/TLS | https://utils.lzhdev.com 可访问 |
 | **M3** | CI/CD 流水线 | push main 全自动上线；回滚预案演练一次 |
-| **M4** | 产品功能 | 家人鉴权、首批工具、AI 代理端点、skills 加载 |
+| **M4** | 产品功能 | 家人鉴权 + **Agent chat（核心：浏览器 ↔ 服务器端 Claude Code）** + AI 代理端点 + skills 加载 + 首批工具 |
 | **M5** | 开源打磨 | CONTRIBUTING、issue/PR 模板、截图、README 完善 |
 
 ---

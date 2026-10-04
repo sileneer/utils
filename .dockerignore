@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.zcode
+.zcodeignore
+data
+docs
+.env
+.env.*
+npm-debug.log*
+Dockerfile
+.dockerignore

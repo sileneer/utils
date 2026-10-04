@@ -1,0 +1,28 @@
+# Local/production compose for the utils app.
+# Production runs on the server at /opt/utils with an image pulled from GHCR:
+#   docker compose -f deploy/docker-compose.yml pull && up -d
+# Locally, the `build:` block lets you run the same stack from the repo root:
+#   docker compose -f deploy/docker-compose.yml up --build
+
+services:
+  utils:
+    image: ghcr.io/sileneer/utils:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      # Reverse proxy (Caddy/nginx) on the server forwards utils.lzhdev.com here.
+      - "127.0.0.1:3100:3000"
+    env_file:
+      - path: .env # /opt/utils/.env on the server (chmod 600) — never committed
+        required: false
+    volumes:
+      - ../data:/app/data # persistent state (future SQLite etc.)
+    restart: unless-stopped
+    healthcheck:
+      test:
+        ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
