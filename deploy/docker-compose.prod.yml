@@ -1,0 +1,23 @@
+# Production compose — runs on the server at /opt/utils (no build context there).
+# Deploy flow: scp this file to /opt/utils/docker-compose.yml, then
+#   cd /opt/utils && docker compose pull && docker compose up -d
+# Local dev uses deploy/docker-compose.yml (with build:) instead.
+
+services:
+  utils:
+    image: ghcr.io/sileneer/utils:latest
+    ports:
+      # Reverse proxy / cloudflared on the VM forwards utils.lzhdev.com here.
+      - "127.0.0.1:3100:3000"
+    env_file:
+      - path: .env # /opt/utils/.env (chmod 600) — never committed
+        required: false
+    volumes:
+      - ./data:/app/data # persistent state (future SQLite etc.)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

@@ -22,9 +22,12 @@ Rule of thumb: if a future session would benefit from knowing it, it belongs in 
 
 ## Current status
 
-**M1 complete (2026-10-04)**: Next.js 16.3.8 scaffold (App Router, src dir, Turbopack), shadcn init (radix base, nova preset), DESIGN.md brand tokens applied in `src/app/globals.css`, app shell (header + theme toggle + footer + skip link), home tool grid, about page, 404/error pages, `/api/health`. Dockerfile (multi-stage standalone) + `deploy/docker-compose.yml` + `.env.example`. **Docker is not installed locally** — the first image build gets verified in CI (M3).
+**M2 complete (2026-10-04) — the site is LIVE at https://utils.lzhdev.com.**
 
-Next milestone: **M2** (server reverse proxy + utils.lzhdev.com DNS/TLS) and **M3** (CI/CD). See docs/PLANNING.md §7.
+- CI/CD: `.github/workflows/deploy.yml` runs on every push to `main` — test (lint+build) gates buildx → `ghcr.io/sileneer/utils:<sha>` + `:latest` (public image, anonymous pull OK).
+- Serving: Cloudflare Tunnel `b77c920a-2ce7-4556-96ff-1676c0453a37` (cloudflared systemd service on the VM) → `http://localhost:3100` container. Zero inbound ports; firewall allows SSH **only** from IAP range 35.235.240.0/20.
+- Server: GCP `instance-20260904-233454` (e2-micro, Debian 13) — Docker 29 + compose v5, 2G swap, app at `/opt/utils` (prod compose, `.env` chmod 600, `./data` volume).
+- Remaining M3 work: the **deploy job** (WIF keyless auth + IAP SSH running `/opt/utils/deploy.sh`) so pushes to main auto-deploy; until then the server is updated with `cd /opt/utils && sudo docker compose pull && sudo docker compose up -d`.
 
 ## Tech stack (decided — do not re-litigate without updating PLANNING.md first)
 
