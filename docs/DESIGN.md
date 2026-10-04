@@ -132,6 +132,9 @@ Rules:
 - All base components live in `src/components/ui/` (shadcn-owned). Add new ones with `npx shadcn@latest add <component>` — never vendor components from the web.
 - **Never hand-roll a component that `ui/` already provides** (button, dialog, dropdown, select, tabs, tooltip, …). Extend instead: wrap the shadcn component in a project component (`src/components/…`) or use its props/variants.
 - shadcn components are ours to edit (copy-in model), but edits to `ui/` files must be minimal, generic, and justified — tool-specific logic belongs in wrappers above them.
+- **Introduction flow (standing rule from the owner, 2026-10-04):** anything new to the UI layer — a component library, an icon set, a UI pattern family, or a shadcn component not yet in the registry below — is **written into this document first** (with a one-line rationale), then installed. The DESIGN.md change precedes the code usage and ships in the same commit. Within-stack additions update the registry below; out-of-stack additions go through the §1 decision table (and the rejected-alternatives list).
+- **Adopted `ui/` component registry** — the source of truth for which base components exist/are approved. The initial set below is pre-approved for installation at M1; every later addition is appended here *before* it is installed:
+  button · card · input · textarea · label · form · select · checkbox · switch · slider · dialog · alert-dialog · dropdown-menu · popover · sheet · tabs · tooltip · collapsible · badge · separator · skeleton · alert · table · sonner (toaster)
 
 ### 4.2 Usage rules
 
@@ -236,11 +239,12 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 - Check both themes and mobile width before considering UI work done.
 - Extend shadcn components through wrappers in `src/components/`.
 - Add new tools by following the `ToolShell` template (§5.3).
-- Keep this document updated when a decision genuinely changes (with rationale).
+- Record any new UI component/library in this file **before** installing it (§4.1 introduction flow) and keep the registry current.
+- Keep this document — and AGENTS.md — updated when a decision genuinely changes (with rationale).
 
 **DON'T**
 
-- ❌ Introduce any additional styling system or component library (MUI, Mantine, styled-components, …).
+- ❌ Introduce any additional styling system or component library (MUI, Mantine, styled-components, …) — or any new UI component/library not yet recorded in this document (§4.1 flow).
 - ❌ Use raw color literals (`#7c3aed`, `text-teal-600`) or magic spacing/z-index values in components.
 - ❌ Hand-roll dropdowns/dialogs/toasts/tabs/tables that `ui/` already covers.
 - ❌ Add a second icon library or emoji-as-icon.

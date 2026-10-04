@@ -8,6 +8,16 @@ Guidance for AI coding agents working in this repository.
 
 The full plan, decision log, and research citations live in [docs/PLANNING.md](docs/PLANNING.md) (written in Chinese). Read it before making architectural changes.
 
+## Document maintenance (standing rule from the owner)
+
+All docs in this repository are **living, self-maintained documents** — standing instruction from the owner (2026-10-04):
+
+- **AGENTS.md**: whenever durable facts emerge from conversations or work — decisions, conventions, gotchas, environment specifics — record them here proactively. Do not wait to be asked.
+- **docs/DESIGN.md**: any new UI component or component library must be **written into DESIGN.md first**, then introduced in code (see the introduction flow in DESIGN.md §4.1).
+- **docs/PLANNING.md**: architecture and deployment decisions go into its decision log.
+
+Rule of thumb: if a future session would benefit from knowing it, it belongs in one of these files — not only in the conversation. Doc updates ship in the same commit as the work that produced them.
+
 ## Current status
 
 Planning phase (M0 complete). Next milestone: **M1** — Next.js scaffold + Dockerfile (`output: 'standalone'`) + docker compose. See docs/PLANNING.md §7 for the milestone table.
