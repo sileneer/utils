@@ -91,5 +91,4 @@ jobs:
             --strict-host-key-checking=no --quiet
       - name: Remove ephemeral SSH key
         if: always()
-        run: gcloud compute instances remove-metadata instance-20260904-233454 \
-            --zone us-east1-c --keys=ssh-keys --quiet
+        run: gcloud compute instances remove-metadata instance-20260904-233454 --zone us-east1-c --keys=ssh-keys --quiet
