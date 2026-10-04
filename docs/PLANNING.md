@@ -1,6 +1,6 @@
 # lzhdev.com/utils — 项目规划文档
 
-> 版本 v0.3 · 2026-10-04 · 维护者：Zihao Liu ([lzhdev.com](https://lzhdev.com))
+> 版本 v0.4 · 2026-10-04 · 维护者：Zihao Liu ([lzhdev.com](https://lzhdev.com))
 > 状态：规划阶段（M0）。本文档是项目的决策记录与规划总纲，随里程碑推进更新。
 
 ---
@@ -59,6 +59,32 @@
 - 附带收益：Next.js **不需要 basePath**，避开子路径部署的整类坑（资源 404、stale chunk、cookie path 等，调研见 §9）
 - 可选加固：**Cloudflare Tunnel**（cloudflared）——服务器不开任何入站端口，SSH 部署亦可走隧道；适合家庭/小 VPS 场景
 - 可在 Cloudflare Pages 项目加 `_redirects`：`/utils https://utils.lzhdev.com 301`，保留原 URL 记忆点（GH Pages 源同步加）
+
+### 3.1 M2 实施拓扑（2026-10-04 定稿，三项决策已确认）
+
+**服务器**：GCP `instance-20260904-233454`（e2-micro · 1GB RAM · Debian 13.7 · us-east1-c · 外网 IP 35.229.94.124 · GCP 永久免费层）。当前无 Docker，需安装 + 加 swap 兜底。
+
+**入站流量（决策 1）：Cloudflare Tunnel + IAP SSH —— 服务器不开任何入站端口**
+
+```
+浏览器 → utils.lzhdev.com（CF 边缘 TLS）
+       → Cloudflare Tunnel（cloudflared 出站连接 CF 边缘）
+       → VM localhost:3100（utils 容器）
+SSH 管理/部署：gcloud compute ssh --tunnel-through-iap（IAP 网段 35.235.240.0/20）
+```
+
+配套变更：防火墙 22 端口从 0.0.0.0/0 收紧到 35.235.240.0/20（IAP 专用网段）；443 规则不用（无入站 TLS 需求）。
+
+**CI/CD 认证（决策 2）：Workload Identity Federation 无密钥**
+
+- WIF pool/provider 绑定 `sileneer/utils` 仓库 + main 分支条件；专用 Service Account（如 `utils-deploy@…`）
+- 最小角色：`roles/iap.tunnelResourceAccessor` + `roles/compute.osAdminLogin`（ExternalAccount 变体，部署脚本需要 sudo 跑 docker）+ `roles/iam.serviceAccountUser`
+- Actions 侧：`google-github-actions/auth@v2`（OIDC，零长期密钥）+ `google-github-actions/ssh-compute` 或 `gcloud compute ssh --tunnel-through-iap`
+- 显式否决：SA JSON 密钥 / SSH 私钥存 GitHub Secrets（长期泄露面）
+
+**引导顺序（M2/M3 交织）**：服务器要拉镜像 → 镜像必须先存在于 GHCR → 所以先落地 CI 的 build+push 阶段（M3 前半），再装 Docker + compose pull 起服务，最后接 Cloudflare Tunnel 与 DNS。
+
+**用户侧待提供**：Cloudflare API Token（`Cloudflare Tunnel: Edit` + `lzhdev.com Zone DNS: Edit`），或由用户在 Zero Trust 控制台创建 tunnel 并提供 connector token；其余（WIF、VM 系统级操作）由 agent 通过本机 gcloud/SSH 完成。
 
 ---
 
