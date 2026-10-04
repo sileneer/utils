@@ -84,7 +84,7 @@ SSH 管理/部署：gcloud compute ssh --tunnel-through-iap（IAP 网段 35.235.
 
 **引导顺序（M2/M3 交织）**：服务器要拉镜像 → 镜像必须先存在于 GHCR → 所以先落地 CI 的 build+push 阶段（M3 前半），再装 Docker + compose pull 起服务，最后接 Cloudflare Tunnel 与 DNS。
 
-**用户侧待提供**：Cloudflare API Token（`Cloudflare Tunnel: Edit` + `lzhdev.com Zone DNS: Edit`），或由用户在 Zero Trust 控制台创建 tunnel 并提供 connector token；其余（WIF、VM 系统级操作）由 agent 通过本机 gcloud/SSH 完成。
+**用户侧待提供**：~~Cloudflare API Token~~ ✅ 已完成（2026-10-04，agent 经浏览器在 dashboard 创建 `utils-deploy` token：Account→Cloudflare Tunnel:Edit + Zone lzhdev.com→DNS:Edit，验证 active）。Token 与 account/zone ID 存于项目根 `.env.cloudflare`（被 `.gitignore` 的 `.env.*` 规则覆盖，绝不入库）。其余（WIF、VM 系统级操作）由 agent 通过本机 gcloud/SSH 完成。
 
 ---
 
