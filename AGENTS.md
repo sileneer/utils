@@ -15,10 +15,20 @@ Planning phase (M0 complete). Next milestone: **M1** — Next.js scaffold + Dock
 ## Tech stack (decided — do not re-litigate without updating PLANNING.md first)
 
 - **Framework**: Next.js (App Router) + TypeScript, `output: 'standalone'`
+- **UI**: Tailwind CSS v4 + shadcn/ui + lucide-react + next-themes — see **[docs/DESIGN.md](docs/DESIGN.md) (BINDING)**
 - **Packaging**: multi-stage Dockerfile → image pushed to GHCR (`ghcr.io/<owner>/utils:<git-sha>`)
 - **CI/CD**: GitHub Actions — test → build → GHCR → SSH deploy to the server (`deploy.sh`: compose pull + up + healthcheck)
 - **Hosting**: own VPS behind Cloudflare; `utils.lzhdev.com` (CF proxied DNS → reverse proxy → container)
 - **Secrets**: server `.env` (never in git) + GitHub Secrets only
+
+## Design system (binding)
+
+**All UI work must follow [docs/DESIGN.md](docs/DESIGN.md)** — the binding design-system spec: design tokens (oklch), typography, component rules, layout patterns, accessibility, and the agent anti-churn checklist. Non-negotiables:
+
+- Semantic token classes only (`bg-background`, `text-muted-foreground`, …) — no raw color literals or second styling system.
+- Inter (body) + Outfit (display) + JetBrains Mono (code) via `next/font`; lucide-react icons only.
+- Every UI change is verified in **light + dark themes** and at **360px width** before it is considered done.
+- Add base components with `npx shadcn@latest add <component>`; never hand-roll what `src/components/ui/` already covers; extend via wrappers.
 
 ## Commands (to be finalized in M1)
 

@@ -1,6 +1,6 @@
 # lzhdev.com/utils — 项目规划文档
 
-> 版本 v0.1 · 2026-10-04 · 维护者：Zihao Liu ([lzhdev.com](https://lzhdev.com))
+> 版本 v0.2 · 2026-10-04 · 维护者：Zihao Liu ([lzhdev.com](https://lzhdev.com))
 > 状态：规划阶段（M0）。本文档是项目的决策记录与规划总纲，随里程碑推进更新。
 
 ---
@@ -145,6 +145,8 @@ containrrr/watchtower 原版已停止维护且存在 Docker 29+ 兼容问题；�
   - *SvelteKit*：DX 口碑好、产物小，但生态较小、子路径支持有边缘问题、贡献者池小
 
 版本基线：Node 22+（本地 24）；Next.js 以 M1 时 `create-next-app@latest` 的稳定版为准。
+
+**UI 技术栈（2026-10-04 敲定）**：Tailwind CSS v4 + shadcn/ui + lucide-react + next-themes + sonner + react-hook-form/zod。完整设计规范（设计 token、组件规则、布局模式、无障碍、防反复调整条款）见 [DESIGN.md](DESIGN.md)，状态为 **BINDING**，所有 UI 开发必须遵循。
 
 ### 目录结构（M1 落地）
 
