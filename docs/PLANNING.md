@@ -1,6 +1,6 @@
 # lzhdev.com/utils — 项目规划文档
 
-> 版本 v0.5 · 2026-10-04 · 维护者：Zihao Liu ([lzhdev.com](https://lzhdev.com))
+> 版本 v0.6 · 2026-10-04 · 维护者：Zihao Liu ([lzhdev.com](https://lzhdev.com))
 > 状态：规划阶段（M0）。本文档是项目的决策记录与规划总纲，随里程碑推进更新。
 
 ---
@@ -214,7 +214,7 @@ GitHub Secrets 清单：`DEPLOY_SSH_KEY`、`DEPLOY_HOST`、`DEPLOY_USER`、`HEAL
 | **M0** ✅ | 规划文档、仓库初始化 | 本文档存在；GitHub public 仓库建立 |
 | **M1** ✅ 2026-10-04 | Next.js 16 脚手架 + shadcn + 设计 token + 应用外壳 + Dockerfile（standalone）+ compose | 本地 build/lint 通过；生产服务器 + `/api/health` 冒烟测试通过（本地无 Docker，镜像构建在 M3 CI 首跑验证） |
 | **M2** ✅ 2026-10-04 | 服务器上线 + Cloudflare Tunnel + DNS + 防火墙收紧 | **https://utils.lzhdev.com 端到端可访问**（/api/health ok、页面 200、~360ms）；CI test→build→GHCR 同日上线（首个镜像已可匿名拉取） |
-| **M3** | CI/CD 流水线 | push main 全自动上线；回滚预案演练一次 |
+| **M3** ✅ 2026-10-04 | CI/CD 全自动部署 | push main → test → build(GHCR) → **WIF 无密钥 deploy**（临时 SSH key + IAP 隧道 → deploy.sh：flock/pull/up/健康检查门禁+自动回滚/保留 3 个镜像）；回滚逻辑已内置（演练留作后续项）；可选 healthchecks.io 监控未接 |
 | **M4** | 产品功能 | 家人鉴权 + **Agent chat（核心：浏览器 ↔ 服务器端 Claude Code）** + AI 代理端点 + skills 加载 + 首批工具 |
 | **M5** | 开源打磨 | CONTRIBUTING、issue/PR 模板、截图、README 完善 |
 

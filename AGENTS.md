@@ -22,12 +22,17 @@ Rule of thumb: if a future session would benefit from knowing it, it belongs in 
 
 ## Current status
 
-**M2 complete (2026-10-04) — the site is LIVE at https://utils.lzhdev.com.**
+**M3 complete (2026-10-04) — full CI/CD is live: every push to `main` auto-deploys to https://utils.lzhdev.com.**
 
-- CI/CD: `.github/workflows/deploy.yml` runs on every push to `main` — test (lint+build) gates buildx → `ghcr.io/sileneer/utils:<sha>` + `:latest` (public image, anonymous pull OK).
-- Serving: Cloudflare Tunnel `b77c920a-2ce7-4556-96ff-1676c0453a37` (cloudflared systemd service on the VM) → `http://localhost:3100` container. Zero inbound ports; firewall allows SSH **only** from IAP range 35.235.240.0/20.
-- Server: GCP `instance-20260904-233454` (e2-micro, Debian 13) — Docker 29 + compose v5, 2G swap, app at `/opt/utils` (prod compose, `.env` chmod 600, `./data` volume).
-- Remaining M3 work: the **deploy job** (WIF keyless auth + IAP SSH running `/opt/utils/deploy.sh`) so pushes to main auto-deploy; until then the server is updated with `cd /opt/utils && sudo docker compose pull && sudo docker compose up -d`.
+Pipeline (`.github/workflows/deploy.yml`, concurrency-grouped `deploy-prod`):
+
+1. **test** — lint + build (gates everything)
+2. **build-push** — buildx multi-stage build → `ghcr.io/sileneer/utils:<sha>` + `:latest` (public, anonymous pull)
+3. **deploy** — keyless: `google-github-actions/auth@v2` with Workload Identity Federation (provider restricted to `sileneer/utils` @ `refs/heads/main`) → authenticates as `utils-deploy@gen-lang-client-0642815057.iam.gserviceaccount.com` → writes an **ephemeral** ed25519 key to instance-level metadata → SSH through the IAP tunnel as user `utils-deploy` → runs `/opt/utils/deploy.sh` (flock → `compose pull` → `up -d` → healthcheck gate with auto-rollback → prune, keep 3 images) → removes the ephemeral key. **No long-lived secrets exist anywhere in the pipeline.**
+
+Live serving: Cloudflare Tunnel `b77c920a-2ce7-4556-96ff-1676c0453a37` (cloudflared systemd service) → `http://localhost:3100`. Zero public ports; SSH only via IAP (35.235.240.0/20).
+
+Server ops (interactive): `gcloud compute ssh instance-20260904-233454 --zone us-east1-c --tunnel-through-iap` — app at `/opt/utils`, deploy user `utils-deploy` (docker group), logs: `sudo journalctl -u cloudflared` / `sudo docker compose -f /opt/utils/docker-compose.yml logs -f`.
 
 ## Tech stack (decided — do not re-litigate without updating PLANNING.md first)
 
