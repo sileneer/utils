@@ -35,6 +35,11 @@ RUN groupadd -g 1001 nodejs && useradd -m -u 1001 -g nodejs -d /home/nextjs next
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# The agent SDK resolves its platform CLI binary from a sibling optional
+# package at runtime — Next's standalone tracing doesn't carry it over.
+COPY --from=builder --chown=nextjs:nodejs \
+    /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64 \
+    /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data /home/nextjs
 USER nextjs
 EXPOSE 3000
