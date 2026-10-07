@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowUp,
   BookOpen,
@@ -32,6 +32,20 @@ type Msg = { role: "user" | "assistant"; content: string };
 const SESSION_KEY = "htlb_chat_session_id";
 const MODEL_KEY = "htlb_chat_model";
 
+function subscribeModel(callback: () => void) {
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+function getModelSnapshot(): string {
+  const saved = localStorage.getItem(MODEL_KEY);
+  return saved && AGENT_MODELS.some((m) => m.id === saved)
+    ? saved
+    : DEFAULT_AGENT_MODEL;
+}
+function getModelServerSnapshot(): string {
+  return DEFAULT_AGENT_MODEL;
+}
+
 export function ChatPanel({ className, onClose }: { className?: string; onClose?: () => void }) {
   const t = useTranslations("chat");
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -43,14 +57,19 @@ export function ChatPanel({ className, onClose }: { className?: string; onClose?
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [model, setModel] = useState<string>(DEFAULT_AGENT_MODEL);
+  // localStorage-backed preference: snapshot via useSyncExternalStore, same-tab
+  // writes bump a counter because storage events don't fire in the writer tab.
+  const [, setModelBump] = useState(0);
+  const model = useSyncExternalStore(
+    subscribeModel,
+    getModelSnapshot,
+    getModelServerSnapshot
+  );
   const sessionRef = useRef<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     sessionRef.current = localStorage.getItem(SESSION_KEY);
-    const saved = localStorage.getItem(MODEL_KEY);
-    if (saved && AGENT_MODELS.some((m) => m.id === saved)) setModel(saved);
     fetch("/api/agent/session")
       .then((r) => r.json())
       .then((d) => setAuthed(Boolean(d.authed)))
@@ -58,8 +77,8 @@ export function ChatPanel({ className, onClose }: { className?: string; onClose?
   }, []);
 
   function pickModel(id: string) {
-    setModel(id);
     localStorage.setItem(MODEL_KEY, id);
+    setModelBump((v) => v + 1);
   }
 
   useEffect(() => {
