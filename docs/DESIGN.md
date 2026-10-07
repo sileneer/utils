@@ -14,7 +14,7 @@
 |-------|--------|--------|
 | Styling | **Tailwind CSS v4** (CSS-first config, `@theme` in globals.css) | ✅ Decided |
 | Component library | **shadcn/ui** (components copied into `src/components/ui`, built on Radix primitives) | ✅ Decided |
-| Icons | **lucide-react** (v1 has no brand icons — brand marks are inline SVG in `src/components/icons/`) | ✅ Decided |
+| Icons | **Lucide** (data + components); **morphicons** (`morphicons/react`) renders state-transition icons with spring morph animations — see §7 | ✅ Decided |
 | Dark mode | **next-themes** (class strategy) | ✅ Decided |
 | Fonts | **Inter** (body/UI) · **Outfit** (display/brand) · **JetBrains Mono** (code/tool output) — via `next/font` | ✅ Decided |
 | Toasts | **sonner** | ✅ Decided |
@@ -203,8 +203,11 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 
 ## 7. Icons
 
-- **lucide-react only.** No other icon packs, no emoji as UI icons (emoji allowed inside user-facing *content* strings, e.g. tool descriptions).
-- Sizes: `size-4` inline, `size-5` buttons/nav, `size-8`+ for feature tiles; stroke width default (2).
+- **Data source: Lucide, two renderers.** Static icons are plain `lucide-react` components. **State-transitioning icons** — a control whose icon changes between two states (theme toggle Sun↔Moon; future play/pause, open/close) — render through **`MorphIcon` from `morphicons/react`**, fed with node data from the vanilla `lucide` package (`import { Sun } from "lucide"`). Adopted 2026-10-07 (owner decision).
+- Morphicons is an **animation layer** (spring-morphs between two shapes, 6.5 KB core), **not an icon set** — it never replaces the Lucide data source. Use `MorphIcon` **only** for genuine two-state transitions; rendering every static icon through it is churn. Reduced-motion is handled by the library itself (honors `prefers-reduced-motion`, per §6).
+- Sizing: static icons `size-4` inline, `size-5` buttons/nav, `size-8`+ feature tiles; `MorphIcon` uses the `size={16}` prop (stroke width default 2, lucide-compatible).
+- lucide-react v1 has no brand icons — brand marks are inline SVG in `src/components/icons/`.
+- **lucide-react only** for static icons — no other icon packs, no emoji as UI icons (emoji allowed inside user-facing *content* strings).
 - Icon-only interactive elements require `aria-label` + `Tooltip`.
 
 ---
@@ -269,6 +272,8 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 | tailwindcss | v4 (via `@tailwindcss/postcss`; tokens in `src/app/globals.css` — keep in sync with §3.1) |
 | shadcn CLI | 4.21.1 — init with base `radix`, preset `nova`; primitives come from the unified `radix-ui` package, `cn` from the `cn` package. The `shadcn` npm package lives in **devDependencies** (build-time only: CLI + the `shadcn/tailwind.css` theme import); its transitive braces/fast-glob advisory (Dependabot #1) never reaches the production image |
 | lucide-react | 1.52 (no brand icons — see §1) |
+| lucide (vanilla, node data) | 1.52 — data source for MorphIcon |
+| morphicons | 1.7.1 — spring morph animations for state-transition icons (§7) |
 | next-themes | 0.4.6 |
 | sonner | 2.0.8 |
 | tw-animate-css | 1.4 |
