@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "title": "utils — lzhdev.com",
+    "titleTemplate": "%s · utils",
+    "description": "自托管的网页工具集——个人工具、家庭应用与 AI 助手对话。"
+  },
+  "common": {
+    "skipToContent": "跳到正文",
+    "soon": "即将上线",
+    "openSource": "开源（MIT）"
+  },
+  "nav": {
+    "tools": "工具",
+    "about": "关于",
+    "github": "GitHub 仓库"
+  },
+  "language": {
+    "label": "切换语言",
+    "en": "English",
+    "zh": "简体中文"
+  },
+  "theme": {
+    "label": "切换主题",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
+  },
+  "home": {
+    "title": "日常好用的在线工具",
+    "subtitle": "来自 <link>lzhdev.com</link> 家族的自托管工具——快速、注重隐私、完全开源。首批工具与 AI 助手对话功能正在路上。"
+  },
+  "tools": {
+    "agent-chat": {
+      "name": "AI 助手对话",
+      "description": "与运行在服务器上的 AI 编程助手（Claude Code）直接对话。"
+    },
+    "text-diff": {
+      "name": "文本对比",
+      "description": "对比两段文本，高亮展示差异。"
+    },
+    "qr-studio": {
+      "name": "二维码工作室",
+      "description": "在浏览器中生成并美化二维码。"
+    },
+    "json-formatter": {
+      "name": "JSON 格式化",
+      "description": "格式化、校验并检查 JSON——全程本地处理。"
+    },
+    "unit-converter": {
+      "name": "单位换算",
+      "description": "长度、重量、温度等单位一键换算。"
+    }
+  },
+  "about": {
+    "title": "关于 utils",
+    "p1": "utils 是由 <owner>Zihao Liu</owner> 构建并维护的自托管网页工具集。它有三个目标：自用的日常工具、给家人用的简单应用，以及一个任何人都能用来自托管工具箱的开源起点。",
+    "p2": "下一个重要里程碑是 AI 助手对话：在浏览器中直接与运行在我们自己服务器 Docker 里的 AI 编程助手（如 Claude Code）对话——对话不依赖任何第三方托管前端。",
+    "repoLabel": "GitHub 仓库",
+    "repoNote": "——MIT 许可，欢迎提交 PR。",
+    "siteLabel": "lzhdev.com",
+    "siteNote": "——主站。"
+  },
+  "notFound": {
+    "code": "404",
+    "message": "该页面不存在（也许还没上线）。",
+    "back": "返回工具列表"
+  },
+  "error": {
+    "title": "出错了",
+    "message": "发生了意外错误，请重试——如果反复出现，请到 GitHub 提交 issue。",
+    "retry": "重试"
+  }
+}

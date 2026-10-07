@@ -1,33 +1,36 @@
 import type { Metadata } from "next";
+import { useTranslations } from "next-intl";
+import { getTranslations } from "next-intl/server";
 
-export const metadata: Metadata = { title: "About" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("about");
+  return { title: t("title") };
+}
 
 export default function AboutPage() {
+  const t = useTranslations("about");
+
   return (
     <div className="max-w-2xl space-y-6">
       <h1 className="font-display text-3xl font-semibold tracking-tight">
-        About utils
+        {t("title")}
       </h1>
       <p className="text-sm leading-relaxed text-muted-foreground md:text-base">
-        utils is a collection of self-hosted web utilities built and maintained
-        by{" "}
-        <a
-          className="text-foreground underline-offset-4 hover:underline"
-          href="https://lzhdev.com"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Zihao Liu
-        </a>
-        . It exists for three reasons: everyday tools for personal use, simple
-        apps for family, and an open-source starting point for anyone who wants
-        to self-host their own toolbox.
+        {t.rich("p1", {
+          owner: (chunks) => (
+            <a
+              className="text-foreground underline-offset-4 hover:underline"
+              href="https://lzhdev.com"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {chunks}
+            </a>
+          ),
+        })}
       </p>
       <p className="text-sm leading-relaxed text-muted-foreground md:text-base">
-        The next big milestone is the agent chat: a browser UI for talking to AI
-        coding agents (like Claude Code) running on our own server, inside
-        Docker — your conversations never depend on a third-party hosted
-        frontend.
+        {t("p2")}
       </p>
       <ul className="space-y-2 text-sm">
         <li>
@@ -37,9 +40,9 @@ export default function AboutPage() {
             target="_blank"
             rel="noreferrer"
           >
-            GitHub repository
+            {t("repoLabel")}
           </a>{" "}
-          <span className="text-muted-foreground">— MIT licensed, PRs welcome.</span>
+          <span className="text-muted-foreground">{t("repoNote")}</span>
         </li>
         <li>
           <a
@@ -48,9 +51,9 @@ export default function AboutPage() {
             target="_blank"
             rel="noreferrer"
           >
-            lzhdev.com
+            {t("siteLabel")}
           </a>{" "}
-          <span className="text-muted-foreground">— the parent site.</span>
+          <span className="text-muted-foreground">{t("siteNote")}</span>
         </li>
       </ul>
     </div>

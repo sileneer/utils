@@ -22,6 +22,7 @@
 | Motion | CSS transitions / `tw-animate-css` by default; `motion` (Framer Motion) only for home/marketing pages | ✅ Decided |
 | Tables / charts | TanStack Table / Recharts **via shadcn wrappers**, only when a tool needs them | ✅ Decided |
 | Client state | React built-ins; URL search params for shareable tool settings; Zustand only with written justification in a PR | ✅ Decided |
+| i18n | **next-intl**, cookie-based locale (no URL prefixes): `en` + `zh`, default = visitor's `Accept-Language`, manual switch persists via `NEXT_LOCALE` cookie | ✅ Decided |
 
 **Rejected alternatives** (do not reintroduce without a written ADR in this file):
 
@@ -156,7 +157,7 @@ Rules:
 Header (sticky, bg-background/80 backdrop-blur, border-b):
   [logo: "utils" in Outfit + teal dot] [nav: Tools · About] …… [GitHub icon] [ThemeToggle]
 Main: <main id="main-content" class="mx-auto max-w-6xl …">
-Footer: © Zihao Liu · GitHub · built with Next.js — muted, single row
+Footer: lzhdev.com · GitHub ("Open source (MIT)") — muted, single row. **No copyright line** (owner decision 2026-10-05 — do not re-add "© …").
 ```
 
 - `ThemeToggle` (next-themes): light / dark / system cycle or dropdown; suppress hydration warning.
@@ -228,8 +229,11 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 
 ## 10. Copy & i18n
 
-- UI language: **English** (open-source product first). Sentence case everywhere; buttons = verb-first, ≤ 3 words; tool descriptions = one line, no marketing fluff.
-- i18n: structure for future localization (user-visible strings concentrated in components, no string concatenation); adopt `next-intl` with zh-CN when family-facing features demand it (decision deferred to M4 — do not add i18n infrastructure before then).
+- Locales: **English (fallback/default) + 简体中文**, implemented with **next-intl** in cookie mode (adopted 2026-10-05, owner request). No URL prefixes — the locale resolves per request: `NEXT_LOCALE` cookie → visitor's `Accept-Language` (system language) → `en`.
+- The header language switcher writes `NEXT_LOCALE` (path=/, 1 year) and reloads. `html[lang]` follows the active locale (`en` / `zh-CN`).
+- **All user-visible strings live in `messages/en.json` and `messages/zh.json`** — never hardcoded in components (tool names/descriptions included, keyed by slug).
+- Copy style: English = sentence case, verb-first buttons ≤ 3 words, no marketing fluff; Chinese = 简体中文, natural phrasing, no 翻译腔. CJK renders via system font fallback (PingFang / Microsoft YaHei / Noto Sans SC) — a dedicated CJK webfont is future polish, not a requirement.
+- **Every UI change ships both locales in the same commit.** Adding a tool = adding both `tools.<slug>` entries.
 
 ---
 

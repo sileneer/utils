@@ -2,20 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { GithubIcon } from "@/components/icons/github-icon";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Tools" },
-  { href: "/about", label: "About" },
+  { href: "/", key: "tools" },
+  { href: "/about", key: "about" },
 ] as const;
 
 export function SiteHeader() {
   const pathname = usePathname();
+  const t = useTranslations("nav");
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
@@ -42,7 +45,7 @@ export function SiteHeader() {
                     active && "text-foreground"
                   )}
                 >
-                  {item.label}
+                  {t(item.key)}
                 </Link>
               );
             })}
@@ -56,7 +59,7 @@ export function SiteHeader() {
                   href="https://github.com/sileneer/utils"
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="GitHub repository"
+                  aria-label={t("github")}
                 >
                   <GithubIcon />
                 </a>
@@ -64,6 +67,7 @@ export function SiteHeader() {
             </TooltipTrigger>
             <TooltipContent>GitHub</TooltipContent>
           </Tooltip>
+          <LanguageSwitcher />
           <ThemeToggle />
         </div>
       </div>

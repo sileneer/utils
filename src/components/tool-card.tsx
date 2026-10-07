@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Tool } from "@/lib/tools";
 
 export function ToolCard({ tool }: { tool: Tool }) {
+  const tTools = useTranslations("tools");
+  const tCommon = useTranslations("common");
   const Icon = tool.icon;
 
   const body = (
@@ -15,14 +18,16 @@ export function ToolCard({ tool }: { tool: Tool }) {
           <Icon className="size-4.5" />
         </div>
         {tool.status === "planned" ? (
-          <Badge variant="secondary">Soon</Badge>
+          <Badge variant="secondary">{tCommon("soon")}</Badge>
         ) : (
           <ArrowUpRight className="size-4 text-muted-foreground" />
         )}
       </div>
       <div className="space-y-1">
-        <p className="font-medium">{tool.name}</p>
-        <p className="text-sm text-muted-foreground">{tool.description}</p>
+        <p className="font-medium">{tTools(`${tool.slug}.name`)}</p>
+        <p className="text-sm text-muted-foreground">
+          {tTools(`${tool.slug}.description`)}
+        </p>
       </div>
     </>
   );

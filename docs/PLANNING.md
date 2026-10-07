@@ -177,6 +177,8 @@ containrrr/watchtower 原版已停止维护且存在 Docker 29+ 兼容问题；�
 
 **UI 技术栈（2026-10-04 敲定）**：Tailwind CSS v4 + shadcn/ui + lucide-react + next-themes + sonner + react-hook-form/zod。完整设计规范（设计 token、组件规则、布局模式、无障碍、防反复调整条款）见 [DESIGN.md](DESIGN.md)，状态为 **BINDING**，所有 UI 开发必须遵循。
 
+**i18n（2026-10-05 落地）**：utils 站点双语——英文（默认回退）+ 简体中文，next-intl cookie 模式（无 URL 前缀）；默认跟随访客系统语言（Accept-Language），页头语言切换器写 `NEXT_LOCALE` cookie 覆盖。所有可见文案集中在 `messages/{en,zh}.json`。仅 utils 站点配置，不涉及主站。页脚版权行按所有者要求移除。
+
 ### 目录结构（M1 落地）
 
 ```

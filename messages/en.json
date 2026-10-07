@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "title": "utils — lzhdev.com",
+    "titleTemplate": "%s · utils",
+    "description": "Self-hosted web utilities — personal tools, family-friendly apps, and AI agent chat."
+  },
+  "common": {
+    "skipToContent": "Skip to content",
+    "soon": "Soon",
+    "openSource": "Open source (MIT)"
+  },
+  "nav": {
+    "tools": "Tools",
+    "about": "About",
+    "github": "GitHub repository"
+  },
+  "language": {
+    "label": "Switch language",
+    "en": "English",
+    "zh": "简体中文"
+  },
+  "theme": {
+    "label": "Toggle theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "home": {
+    "title": "Utilities for everyday work",
+    "subtitle": "Self-hosted tools from the <link>lzhdev.com</link> family — fast, private, and open source. The first tools and the AI agent chat are on their way."
+  },
+  "tools": {
+    "agent-chat": {
+      "name": "AI Agent Chat",
+      "description": "Chat with AI coding agents (Claude Code) running on the server."
+    },
+    "text-diff": {
+      "name": "Text Diff",
+      "description": "Compare two texts and highlight the differences."
+    },
+    "qr-studio": {
+      "name": "QR Studio",
+      "description": "Generate and style QR codes, right in your browser."
+    },
+    "json-formatter": {
+      "name": "JSON Formatter",
+      "description": "Format, validate and inspect JSON — processed locally."
+    },
+    "unit-converter": {
+      "name": "Unit Converter",
+      "description": "Convert lengths, weights, temperatures and more."
+    }
+  },
+  "about": {
+    "title": "About utils",
+    "p1": "utils is a collection of self-hosted web utilities built and maintained by <owner>Zihao Liu</owner>. It exists for three reasons: everyday tools for personal use, simple apps for family, and an open-source starting point for anyone who wants to self-host their own toolbox.",
+    "p2": "The next big milestone is the agent chat: a browser UI for talking to AI coding agents (like Claude Code) running on our own server, inside Docker — your conversations never depend on a third-party hosted frontend.",
+    "repoLabel": "GitHub repository",
+    "repoNote": "— MIT licensed, PRs welcome.",
+    "siteLabel": "lzhdev.com",
+    "siteNote": "— the parent site."
+  },
+  "notFound": {
+    "code": "404",
+    "message": "This page does not exist (yet).",
+    "back": "Back to tools"
+  },
+  "error": {
+    "title": "Something went wrong",
+    "message": "An unexpected error occurred. Try again — if it keeps happening, please open an issue on GitHub.",
+    "retry": "Try again"
+  }
+}

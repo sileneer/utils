@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 
@@ -11,6 +12,8 @@ export default function ErrorPage({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("error");
+
   useEffect(() => {
     console.error(error);
   }, [error]);
@@ -18,13 +21,10 @@ export default function ErrorPage({
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
       <h2 className="font-display text-2xl font-semibold tracking-tight">
-        Something went wrong
+        {t("title")}
       </h2>
-      <p className="max-w-md text-sm text-muted-foreground">
-        An unexpected error occurred. Try again — if it keeps happening, please
-        open an issue on GitHub.
-      </p>
-      <Button onClick={reset}>Try again</Button>
+      <p className="max-w-md text-sm text-muted-foreground">{t("message")}</p>
+      <Button onClick={reset}>{t("retry")}</Button>
     </div>
   );
 }
