@@ -190,6 +190,14 @@ Every tool route (`/tools/<slug>`) renders the same shell, in this order:
 
 Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars on desktop become `Sheet` on mobile. No horizontal scroll at 360px, ever.
 
+### 5.6 Chat (agent) pattern — M4
+
+- Surfaces: right-hand sidebar on the `/htlb` reading page (overlay panel on mobile) + future standalone page; one shared client component.
+- Layout: message list (user bubbles right on `bg-primary/10`, assistant left on `bg-card`), streaming text, tool/citation details in `font-mono`; composer pinned to the bottom; "new chat" control in the header; a one-line disclaimer that answers cite the book and are not medical/legal advice.
+- **Access**: AI features sit behind a passcode gate — `POST /api/agent/auth` compares against `CHAT_PASSCODE` (server `.env`), then sets a signed HttpOnly cookie (30 days). All `/api/agent/*` routes verify it. A proper login system replaces this later (owner decision 2026-10-07).
+- Streaming: SSE from `/api/agent/chat`; user messages persist server-side (session files on the data volume); concurrent queries are rejected with a "busy" message (single 1GB VM).
+- Embedded third-party content (the HowToLiveBetter book HTML) stays single-language — i18n applies to our chrome only.
+
 ---
 
 ## 6. Motion
@@ -272,6 +280,8 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 | tailwindcss | v4 (via `@tailwindcss/postcss`; tokens in `src/app/globals.css` — keep in sync with §3.1) |
 | shadcn CLI | 4.21.1 — init with base `radix`, preset `nova`; primitives come from the unified `radix-ui` package, `cn` from the `cn` package. The `shadcn` npm package lives in **devDependencies** (build-time only: CLI + the `shadcn/tailwind.css` theme import); its transitive braces/fast-glob advisory (Dependabot #1) never reaches the production image |
 | lucide-react | 1.52 (no brand icons — see §1) |
+| morphicons | 1.7.1 — spring morph animations for state-transition icons (§7) |
+| @anthropic-ai/claude-agent-sdk | 0.3.x — server-side Claude Code (chat agent); `serverExternalPackages` in next.config |
 | lucide (vanilla, node data) | 1.52 — data source for MorphIcon |
 | morphicons | 1.7.1 — spring morph animations for state-transition icons (§7) |
 | next-themes | 0.4.6 |

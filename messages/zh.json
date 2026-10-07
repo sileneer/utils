@@ -30,6 +30,10 @@
     "subtitle": "来自 <link>lzhdev.com</link> 家族的自托管工具——快速、注重隐私、完全开源。首批工具与 AI 助手对话功能正在路上。"
   },
   "tools": {
+    "htlb": {
+      "name": "高性价比人生指南",
+      "description": "阅读人生指南书，配一个照书回答的 AI 助手。"
+    },
     "agent-chat": {
       "name": "AI 助手对话",
       "description": "与运行在服务器上的 AI 编程助手（Claude Code）直接对话。"
@@ -64,6 +68,29 @@
     "code": "404",
     "message": "该页面不存在（也许还没上线）。",
     "back": "返回工具列表"
+  },
+  "htlb": {
+    "title": "HowToLiveBetter · 高性价比人生指南",
+    "back": "返回 utils",
+    "chat": "AI 问答",
+    "chatToggle": "打开/收起 AI 助手",
+    "close": "关闭"
+  },
+  "chat": {
+    "title": "照书问答",
+    "close": "关闭",
+    "newChat": "新对话",
+    "passcodePrompt": "输入家人口令以使用 AI 助手",
+    "passcodeLabel": "口令",
+    "wrongPasscode": "口令不对，再试试",
+    "unlock": "解锁",
+    "greeting": "随便问书里的内容——它会先查相关条目，再注明第几节第几条。",
+    "placeholder": "例如：替朋友担保签不签？",
+    "send": "发送",
+    "thinking": "正在查书……",
+    "busy": "助手正在回答别人的问题，稍后再试。",
+    "error": "助手回答失败，请重试。",
+    "disclaimer": "回答基于本书内容并注明第几节第几条——不构成医疗或法律建议。"
   },
   "error": {
     "title": "出错了",

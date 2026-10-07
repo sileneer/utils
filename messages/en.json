@@ -30,6 +30,10 @@
     "subtitle": "Self-hosted tools from the <link>lzhdev.com</link> family — fast, private, and open source. The first tools and the AI agent chat are on their way."
   },
   "tools": {
+    "htlb": {
+      "name": "HowToLiveBetter",
+      "description": "Read the life-guide book with an AI that answers from it."
+    },
     "agent-chat": {
       "name": "AI Agent Chat",
       "description": "Chat with AI coding agents (Claude Code) running on the server."
@@ -64,6 +68,29 @@
     "code": "404",
     "message": "This page does not exist (yet).",
     "back": "Back to tools"
+  },
+  "htlb": {
+    "title": "HowToLiveBetter · 高性价比人生指南",
+    "back": "Back to utils",
+    "chat": "AI Q&A",
+    "chatToggle": "Toggle AI assistant",
+    "close": "Close"
+  },
+  "chat": {
+    "title": "Ask the book",
+    "close": "Close",
+    "newChat": "New chat",
+    "passcodePrompt": "Enter the family passcode to use the AI assistant",
+    "passcodeLabel": "Passcode",
+    "wrongPasscode": "Wrong passcode, try again",
+    "unlock": "Unlock",
+    "greeting": "Ask anything about the book — it looks up the relevant entries first and cites the section and item.",
+    "placeholder": "e.g. Should I co-sign a loan for a friend?",
+    "send": "Send",
+    "thinking": "Looking up the book…",
+    "busy": "The assistant is answering someone else — try again in a moment.",
+    "error": "The assistant failed to answer. Please try again.",
+    "disclaimer": "Answers are based on the book and cite section/item numbers — not medical or legal advice."
   },
   "error": {
     "title": "Something went wrong",

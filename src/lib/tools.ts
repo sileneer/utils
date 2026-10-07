@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Binary,
   FileDiff,
   MessageSquareText,
@@ -25,6 +26,12 @@ export type Tool = {
  * (DESIGN.md §10).
  */
 export const tools: Tool[] = [
+  {
+    slug: "htlb",
+    category: "Agent",
+    status: "live",
+    icon: BookOpen,
+  },
   {
     slug: "agent-chat",
     category: "Agent",
