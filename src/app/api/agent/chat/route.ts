@@ -62,6 +62,7 @@ export async function POST(request: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       let assistantText = "";
+      let wallClock: NodeJS.Timeout | undefined;
       try {
         const workspace = await ensureWorkspace();
         const existing = await loadSession(sessionId);
@@ -71,10 +72,7 @@ export async function POST(request: Request) {
 
         const abortController = new AbortController();
         request.signal.addEventListener("abort", () => abortController.abort());
-        const wallClock = setTimeout(
-          () => abortController.abort(),
-          QUERY_TIMEOUT_MS
-        );
+        wallClock = setTimeout(() => abortController.abort(), QUERY_TIMEOUT_MS);
 
         const queryOptions = {
           cwd: workspace,
