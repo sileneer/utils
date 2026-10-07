@@ -1,16 +1,36 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, BookOpen, Loader2, MessageSquarePlus, X } from "lucide-react";
+import {
+  ArrowUp,
+  BookOpen,
+  Check,
+  ChevronDown,
+  Loader2,
+  MessageSquarePlus,
+  X,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AGENT_MODELS,
+  DEFAULT_AGENT_MODEL,
+  agentModelName,
+} from "@/lib/agent/models";
 import { cn } from "@/lib/utils";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
 const SESSION_KEY = "htlb_chat_session_id";
+const MODEL_KEY = "htlb_chat_model";
 
 export function ChatPanel({ className, onClose }: { className?: string; onClose?: () => void }) {
   const t = useTranslations("chat");
@@ -23,16 +43,24 @@ export function ChatPanel({ className, onClose }: { className?: string; onClose?
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [model, setModel] = useState<string>(DEFAULT_AGENT_MODEL);
   const sessionRef = useRef<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     sessionRef.current = localStorage.getItem(SESSION_KEY);
+    const saved = localStorage.getItem(MODEL_KEY);
+    if (saved && AGENT_MODELS.some((m) => m.id === saved)) setModel(saved);
     fetch("/api/agent/session")
       .then((r) => r.json())
       .then((d) => setAuthed(Boolean(d.authed)))
       .catch(() => setAuthed(false));
   }, []);
+
+  function pickModel(id: string) {
+    setModel(id);
+    localStorage.setItem(MODEL_KEY, id);
+  }
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -80,7 +108,7 @@ export function ChatPanel({ className, onClose }: { className?: string; onClose?
       const res = await fetch("/api/agent/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text, sessionId }),
+        body: JSON.stringify({ message: text, sessionId, model }),
       });
       if (res.status === 429) {
         setError(t("busy"));
@@ -137,12 +165,39 @@ export function ChatPanel({ className, onClose }: { className?: string; onClose?
 
   return (
     <aside className={cn("flex flex-col bg-card", className)}>
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-3">
-        <p className="flex items-center gap-2 text-sm font-medium">
-          <BookOpen className="size-4 text-primary" />
-          {t("title")}
+      <div className="flex h-12 shrink-0 items-center justify-between gap-1 border-b px-3">
+        <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
+          <BookOpen className="size-4 shrink-0 text-primary" />
+          <span className="truncate">{t("title")}</span>
         </p>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="max-w-[130px] px-2 text-xs text-muted-foreground"
+                aria-label={t("model")}
+                title={agentModelName(model)}
+              >
+                <span className="truncate">{agentModelName(model)}</span>
+                <ChevronDown className="size-3 shrink-0" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56">
+              {AGENT_MODELS.map((m) => (
+                <DropdownMenuItem key={m.id} onClick={() => pickModel(m.id)}>
+                  <span className="flex-1">
+                    {m.name}
+                    <span className="block text-[11px] text-muted-foreground">
+                      {m.hint.zh}
+                    </span>
+                  </span>
+                  {model === m.id && <Check className="size-3.5" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="ghost" size="icon-sm" aria-label={t("newChat")} onClick={newChat}>
             <MessageSquarePlus />
           </Button>

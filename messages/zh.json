@@ -78,6 +78,7 @@
   },
   "chat": {
     "title": "照书问答",
+    "model": "模型",
     "close": "关闭",
     "newChat": "新对话",
     "passcodePrompt": "输入家人口令以使用 AI 助手",

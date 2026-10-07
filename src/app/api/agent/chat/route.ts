@@ -5,6 +5,10 @@ import { NextResponse } from "next/server";
 
 import { isAuthed } from "@/lib/agent/auth";
 import { ensureWorkspace } from "@/lib/agent/workspace";
+import {
+  DEFAULT_AGENT_MODEL,
+  isAllowedAgentModel,
+} from "@/lib/agent/models";
 import { loadSession, saveSession, type ChatMessage } from "@/lib/agent/sessions";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "busy" }, { status: 429 });
   }
 
-  let body: { message?: unknown; sessionId?: unknown };
+  let body: { message?: unknown; sessionId?: unknown; model?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -35,6 +39,9 @@ export async function POST(request: Request) {
     typeof body.sessionId === "string" && body.sessionId
       ? body.sessionId
       : randomUUID();
+  const model = isAllowedAgentModel(body.model)
+    ? body.model
+    : DEFAULT_AGENT_MODEL;
   if (!message || message.length > 4000) {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -55,7 +62,7 @@ export async function POST(request: Request) {
 
         const queryOptions = {
           cwd: workspace,
-          model: process.env.ANTHROPIC_MODEL,
+          model,
           // Custom (non-preset) system prompt: replaces the default one so the
           // upstream repo's maintainer-oriented CLAUDE.md is never loaded.
           systemPrompt:
@@ -93,12 +100,22 @@ export async function POST(request: Request) {
               .filter((b) => b.type === "text")
               .map((b) => (b as { text: string }).text)
               .join("");
-            if (text && text.length > assistantText.length) assistantText = text;
-          } else if (msg.type === "result") {
-            if (msg.subtype === "success" && msg.result && !assistantText) {
-              assistantText = msg.result;
+            // Some SenseNova models (GLM/DeepSeek) arrive without partial
+            // stream events — forward whatever the partials missed as a tail.
+            if (text && text.length > assistantText.length) {
+              const tail = text.slice(assistantText.length);
+              assistantText = text;
+              sse(controller, { type: "delta", text: tail });
             }
-            if (msg.subtype !== "success") {
+          } else if (msg.type === "result") {
+            if (msg.subtype === "success") {
+              const text = typeof msg.result === "string" ? msg.result : "";
+              if (text.length > assistantText.length) {
+                const tail = text.slice(assistantText.length);
+                assistantText = text;
+                sse(controller, { type: "delta", text: tail });
+              }
+            } else {
               sse(controller, { type: "error", message: msg.subtype });
             }
           }

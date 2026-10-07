@@ -196,6 +196,7 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 - Layout: message list (user bubbles right on `bg-primary/10`, assistant left on `bg-card`), streaming text, tool/citation details in `font-mono`; composer pinned to the bottom; "new chat" control in the header; a one-line disclaimer that answers cite the book and are not medical/legal advice.
 - **Access**: AI features sit behind a passcode gate — `POST /api/agent/auth` compares against `CHAT_PASSCODE` (server `.env`), then sets a signed HttpOnly cookie (30 days). All `/api/agent/*` routes verify it. A proper login system replaces this later (owner decision 2026-10-07).
 - Streaming: SSE from `/api/agent/chat`; user messages persist server-side (session files on the data volume); concurrent queries are rejected with a "busy" message (single 1GB VM).
+- Model picker: header dropdown listing the SenseNova chat models (server-side allowlist in `src/lib/agent/models.ts`, image-generation models excluded); default **DeepSeek V4.1 Flash** (`deepseek-flash`); choice persists via localStorage and travels per request — the server never trusts unlisted ids.
 - Embedded third-party content (the HowToLiveBetter book HTML) stays single-language — i18n applies to our chrome only.
 
 ---
