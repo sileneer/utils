@@ -16,6 +16,18 @@ export const dynamic = "force-dynamic";
 // Single concurrency: one 1GB VM runs one agent query at a time.
 let busy = false;
 
+// Wall-clock bound for one query — the SDK retries rate-limits internally
+// and can otherwise appear hung to the reader.
+const QUERY_TIMEOUT_MS = Number(process.env.AGENT_QUERY_TIMEOUT_MS ?? 180_000);
+
+function errorCode(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err);
+  if (/tpm\/rpm|rate.?limit|TooManyRequests|RateLimitExceeded/i.test(text))
+    return "rate_limited";
+  if (/aborted|abort|timeout/i.test(text)) return "timeout";
+  return "agent_failed";
+}
+
 function sse(controller: ReadableStreamDefaultController, payload: unknown) {
   controller.enqueue(`data: ${JSON.stringify(payload)}\n\n`);
 }
@@ -59,6 +71,10 @@ export async function POST(request: Request) {
 
         const abortController = new AbortController();
         request.signal.addEventListener("abort", () => abortController.abort());
+        const wallClock = setTimeout(
+          () => abortController.abort(),
+          QUERY_TIMEOUT_MS
+        );
 
         const queryOptions = {
           cwd: workspace,
@@ -116,7 +132,7 @@ export async function POST(request: Request) {
                 sse(controller, { type: "delta", text: tail });
               }
             } else {
-              sse(controller, { type: "error", message: msg.subtype });
+              sse(controller, { type: "error", code: "agent_failed" });
             }
           }
         }
@@ -136,9 +152,10 @@ export async function POST(request: Request) {
         console.error("agent chat failed:", err);
         sse(controller, {
           type: "error",
-          message: err instanceof Error ? err.message : "agent_failed",
+          code: errorCode(err),
         });
       } finally {
+        clearTimeout(wallClock);
         busy = false;
         controller.close();
       }

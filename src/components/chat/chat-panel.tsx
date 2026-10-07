@@ -134,6 +134,11 @@ export function ChatPanel({ className, onClose }: { className?: string; onClose?
         setStreaming(false);
         return;
       }
+      if (res.status === 401) {
+        setAuthed(false);
+        setStreaming(false);
+        return;
+      }
       if (!res.ok || !res.body) {
         setError(t("error"));
         setStreaming(false);
@@ -166,7 +171,13 @@ export function ChatPanel({ className, onClose }: { className?: string; onClose?
             setMessages((m) => [...m, { role: "assistant", content: acc }]);
             setStreamText("");
           } else if (payload.type === "error") {
-            setError(t("error"));
+            setError(
+              payload.code === "rate_limited"
+                ? t("rateLimited")
+                : payload.code === "timeout"
+                  ? t("timeout")
+                  : t("error")
+            );
           }
         }
       }

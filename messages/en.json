@@ -90,6 +90,8 @@
     "send": "Send",
     "thinking": "Looking up the book…",
     "busy": "The assistant is answering someone else — try again in a moment.",
+    "rateLimited": "The model is rate-limited right now — wait a minute or switch models below.",
+    "timeout": "The answer took too long — try again, or pick a faster model.",
     "error": "The assistant failed to answer. Please try again.",
     "disclaimer": "Answers are based on the book and cite section/item numbers — not medical or legal advice."
   },
