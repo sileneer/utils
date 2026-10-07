@@ -218,7 +218,7 @@ GitHub Secrets 清单：`DEPLOY_SSH_KEY`、`DEPLOY_HOST`、`DEPLOY_USER`、`HEAL
 | **M1** ✅ 2026-10-04 | Next.js 16 脚手架 + shadcn + 设计 token + 应用外壳 + Dockerfile（standalone）+ compose | 本地 build/lint 通过；生产服务器 + `/api/health` 冒烟测试通过（本地无 Docker，镜像构建在 M3 CI 首跑验证） |
 | **M2** ✅ 2026-10-04 | 服务器上线 + Cloudflare Tunnel + DNS + 防火墙收紧 | **https://utils.lzhdev.com 端到端可访问**（/api/health ok、页面 200、~360ms）；CI test→build→GHCR 同日上线（首个镜像已可匿名拉取） |
 | **M3** ✅ 2026-10-04 | CI/CD 全自动部署 | push main → test → build(GHCR) → **WIF 无密钥 deploy**（临时 SSH key + IAP 隧道 → deploy.sh：flock/pull/up/健康检查门禁+自动回滚/保留 3 个镜像）；healthchecks.io 死信开关上线；**回滚演练通过**（drill 开关触发失败→回滚→恢复全程验证） |
-| **M4** | 产品功能（范围 2026-10-07 所有者确认）：① /htlb 阅读页部署 HowToLiveBetter 单文件书（CC BY 4.0，release 代理+按天缓存）+ AI 侧边栏；② 服务器端 Claude Code（claude-agent-sdk，工作区=书仓库本地克隆，技能 life-decision-guide 本地模式）；③ 模型 API=SenseNova Anthropic 兼容端点（token.sensenova.cn/v1/messages，BASE_URL 不带 /v1）；④ 口令门禁（CHAT_PASSCODE → 签名 HttpOnly cookie，未来升级为正式登录）。决策：e2-micro 先顶着（swap 兜底，单并发锁）；URL=/htlb。 | 见 §7 验收标准（实施后更新） |
+| **M4** ✅ 2026-10-07 | 产品功能：① /htlb 阅读页（HowToLiveBetter 单文件书 release 代理+按天缓存+首页工具卡）；② AI 侧边栏（口令门禁 → SSE 流式 → 会话持久化 data/agent/sessions + SDK session resume）；③ 服务器端 Claude Code（claude-agent-sdk，读者工作区=书正文+正本技能，上游维护者 CLAUDE.md 刻意排除）；④ SenseNova Anthropic 兼容端点 | **线上端到端验证通过**：问"替朋友担保签不签"→ 照书回答引用第 8 节第 18/45 条+证据等级；门禁 401/200 正确；书代理 1.3s 缓存命中。实施坑（已修）：SDK 原生 CLI 是按 libc 门的 optional 依赖（alpine 会静默跳过→全链路 slim）；Next standalone 不搬运动态解析的兄弟包（显式 COPY）；多层 shell 变量展开静默失败（.env 用定值） |
 | **M5** | 开源打磨 | CONTRIBUTING、issue/PR 模板、截图、README 完善 |
 
 ---
