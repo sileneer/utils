@@ -63,6 +63,16 @@ export async function POST(request: Request) {
     async start(controller) {
       let assistantText = "";
       let wallClock: NodeJS.Timeout | undefined;
+      // Cloudflare kills proxied connections idle for ~100s — model latency
+      // between "start" and the first delta exceeds that, so emit SSE
+      // comment-frame keepalives while the query runs.
+      const keepalive = setInterval(() => {
+        try {
+          controller.enqueue(": keepalive\n\n");
+        } catch {
+          clearInterval(keepalive);
+        }
+      }, 30_000);
       try {
         const workspace = await ensureWorkspace();
         const existing = await loadSession(sessionId);
@@ -153,6 +163,7 @@ export async function POST(request: Request) {
           code: errorCode(err),
         });
       } finally {
+        clearInterval(keepalive);
         clearTimeout(wallClock);
         busy = false;
         controller.close();
