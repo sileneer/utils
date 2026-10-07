@@ -62,6 +62,7 @@ export async function POST(request: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       let assistantText = "";
+      let rateLimited = false;
       let wallClock: NodeJS.Timeout | undefined;
       // Cloudflare kills proxied connections idle for ~100s — model latency
       // between "start" and the first delta exceeds that, so emit SSE
@@ -124,6 +125,10 @@ export async function POST(request: Request) {
               .filter((b) => b.type === "text")
               .map((b) => (b as { text: string }).text)
               .join("");
+            if (/API Error|tpm\/rpm|rate.?limit/i.test(text)) {
+              rateLimited = true;
+              continue;
+            }
             // Some SenseNova models (GLM/DeepSeek) arrive without partial
             // stream events — forward whatever the partials missed as a tail.
             if (text && text.length > assistantText.length) {
@@ -134,6 +139,10 @@ export async function POST(request: Request) {
           } else if (msg.type === "result") {
             if (msg.subtype === "success") {
               const text = typeof msg.result === "string" ? msg.result : "";
+              if (/API Error|tpm\/rpm|rate.?limit/i.test(text)) {
+                rateLimited = true;
+                continue;
+              }
               if (text.length > assistantText.length) {
                 const tail = text.slice(assistantText.length);
                 assistantText = text;
@@ -145,17 +154,21 @@ export async function POST(request: Request) {
           }
         }
 
-        session.messages.push({ role: "user", content: message, at: Date.now() });
-        if (assistantText) {
-          session.messages.push({
-            role: "assistant",
-            content: assistantText,
-            at: Date.now(),
-          });
+        if (rateLimited) {
+          // Surface a friendly code instead of persisting the failed exchange.
+          sse(controller, { type: "error", code: "rate_limited" });
+        } else {
+          session.messages.push({ role: "user", content: message, at: Date.now() });
+          if (assistantText) {
+            session.messages.push({
+              role: "assistant",
+              content: assistantText,
+              at: Date.now(),
+            });
+          }
+          await saveSession(session);
+          sse(controller, { type: "done" });
         }
-        await saveSession(session);
-
-        sse(controller, { type: "done" });
       } catch (err) {
         console.error("agent chat failed:", err);
         sse(controller, {
