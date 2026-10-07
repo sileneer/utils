@@ -32,7 +32,7 @@ export function ThemeToggle() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label={t("label")}>
-          <MorphIcon icon={isDark ? SunNode : MoonNode} size={16} />
+          <MorphIcon icon={isDark ? MoonNode : SunNode} size={16} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
