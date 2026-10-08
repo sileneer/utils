@@ -24,6 +24,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm test
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: 1
@@ -49,14 +50,34 @@ jobs:
           tags: |
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
-      - uses: docker/build-push-action@v6
+      - name: Build final image for acceptance
+        uses: docker/build-push-action@v6
+        id: image
         with:
           context: .
-          push: true
+          load: true
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check final image before publication
+        env:
+          IMAGE_ID: ${{ steps.image.outputs.imageid }}
+        run: node tests/image-smoke.cjs "$IMAGE_ID"
+      - name: Publish only accepted image tags
+        env:
+          IMAGE_ID: ${{ steps.image.outputs.imageid }}
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            test "$(docker image inspect --format '{{.Id}}' "$tag")" = "$IMAGE_ID"
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"
 
   # Keyless deploy: WIF-authenticated as utils-deploy@…, ephemeral SSH key written
   # to instance metadata (removed afterwards), SSH through the IAP tunnel running

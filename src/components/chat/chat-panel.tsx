@@ -1,19 +1,21 @@
 "use client";
-
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ArrowDown,
   ArrowUp,
   BookOpen,
   Check,
   ChevronDown,
   Loader2,
+  LogOut,
   MessageSquarePlus,
+  Square,
   X,
 } from "lucide-react";
-import { useTranslations } from "next-intl";
-
+import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import Link from "next/link";
+import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,307 +23,466 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  AGENT_MODELS,
-  DEFAULT_AGENT_MODEL,
-  agentModelName,
-} from "@/lib/agent/models";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { AGENT_MODELS, agentModelName } from "@/lib/agent/models";
 import { cn } from "@/lib/utils";
+import { Answer } from "./answer";
+import type { ChatController } from "./use-chat";
+import { shouldSubmitKey } from "@/lib/chat/composer";
 
-type Msg = { role: "user" | "assistant"; content: string };
-
-const SESSION_KEY = "htlb_chat_session_id";
-const MODEL_KEY = "htlb_chat_model";
-
-function subscribeModel(callback: () => void) {
-  window.addEventListener("storage", callback);
-  return () => window.removeEventListener("storage", callback);
-}
-function getModelSnapshot(): string {
-  const saved = localStorage.getItem(MODEL_KEY);
-  return saved && AGENT_MODELS.some((m) => m.id === saved)
-    ? saved
-    : DEFAULT_AGENT_MODEL;
-}
-function getModelServerSnapshot(): string {
-  return DEFAULT_AGENT_MODEL;
-}
-
-export function ChatPanel({ className, onClose }: { className?: string; onClose?: () => void }) {
-  const t = useTranslations("chat");
-  const [authed, setAuthed] = useState<boolean | null>(null);
-  const [passcode, setPasscode] = useState("");
-  const [passcodeError, setPasscodeError] = useState(false);
-  const [unlocking, setUnlocking] = useState(false);
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [streamText, setStreamText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  // localStorage-backed preference: snapshot via useSyncExternalStore, same-tab
-  // writes bump a counter because storage events don't fire in the writer tab.
-  const [, setModelBump] = useState(0);
-  const model = useSyncExternalStore(
-    subscribeModel,
-    getModelSnapshot,
-    getModelServerSnapshot
-  );
-  const sessionRef = useRef<string | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    sessionRef.current = localStorage.getItem(SESSION_KEY);
-    fetch("/api/agent/session")
-      .then((r) => r.json())
-      .then((d) => setAuthed(Boolean(d.authed)))
-      .catch(() => setAuthed(false));
-  }, []);
-
-  function pickModel(id: string) {
-    localStorage.setItem(MODEL_KEY, id);
-    setModelBump((v) => v + 1);
-  }
-
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, streamText]);
-
-  async function unlock() {
-    setUnlocking(true);
-    setPasscodeError(false);
-    try {
-      const res = await fetch("/api/agent/auth", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ passcode }),
-      });
-      if (res.ok) {
-        setAuthed(true);
-      } else {
-        setPasscodeError(true);
-      }
-    } catch {
-      setPasscodeError(true);
-    } finally {
-      setUnlocking(false);
-    }
-  }
-
-  function newChat() {
-    sessionRef.current = null;
-    localStorage.removeItem(SESSION_KEY);
-    setMessages([]);
-    setStreamText("");
-    setError(null);
-  }
-
-  async function send() {
-    const text = input.trim();
-    if (!text || streaming) return;
-    setInput("");
-    setError(null);
-    setStreaming(true);
-    setMessages((m) => [...m, { role: "user", content: text }]);
-
-    let sessionId = sessionRef.current ?? undefined;
-    try {
-      const res = await fetch("/api/agent/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text, sessionId, model }),
-      });
-      if (res.status === 429) {
-        setError(t("busy"));
-        setStreaming(false);
-        return;
-      }
-      if (res.status === 401) {
-        setAuthed(false);
-        setStreaming(false);
-        return;
-      }
-      if (!res.ok || !res.body) {
-        setError(t("error"));
-        setStreaming(false);
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let acc = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let sep: number;
-        while ((sep = buffer.indexOf("\n\n")) >= 0) {
-          const frame = buffer.slice(0, sep);
-          buffer = buffer.slice(sep + 2);
-          const line = frame.split("\n").find((l) => l.startsWith("data: "));
-          if (!line) continue;
-          const payload = JSON.parse(line.slice(6));
-          if (payload.type === "start") {
-            sessionId = payload.sessionId;
-            sessionRef.current = payload.sessionId;
-            localStorage.setItem(SESSION_KEY, payload.sessionId);
-          } else if (payload.type === "delta") {
-            acc += payload.text;
-            setStreamText(acc);
-          } else if (payload.type === "done") {
-            setMessages((m) => [...m, { role: "assistant", content: acc }]);
-            setStreamText("");
-          } else if (payload.type === "error") {
-            setError(
-              payload.code === "rate_limited"
-                ? t("rateLimited")
-                : payload.code === "timeout"
-                  ? t("timeout")
-                  : t("error")
-            );
-          }
-        }
-      }
-      if (acc) {
-        // done event may have been missed on abrupt close — flush what we have
-        setMessages((m) => [...m, { role: "assistant", content: acc }]);
-        setStreamText("");
-      }
-    } catch {
-      setError(t("error"));
-    } finally {
-      setStreaming(false);
-    }
-  }
-
+function IconButton({
+  label,
+  children,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <aside className={cn("flex flex-col bg-card", className)}>
-      <div className="flex h-12 shrink-0 items-center justify-between gap-1 border-b px-3">
-        <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-10 shrink-0"
+          aria-label={label}
+          onClick={onClick}
+          disabled={disabled}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+export function ChatPanel({
+  chat,
+  bookRevision,
+  anchors,
+  onCitation,
+  onClose,
+  className,
+}: {
+  chat: ChatController;
+  bookRevision?: string;
+  anchors: Set<string>;
+  onCitation: (anchor: string) => void;
+  onClose: () => void;
+  className?: string;
+}) {
+  const t = useTranslations("chat");
+  const account = useTranslations("account");
+  const locale = useLocale();
+  const [following, setFollowing] = useState(true);
+  const [elapsed, setElapsed] = useState(0);
+  const list = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
+  const followRef = useRef(true);
+  useEffect(() => {
+    if (!chat.streaming) return;
+    const interval = setInterval(
+      () => setElapsed(Math.floor((Date.now() - chat.startedAt) / 1000)),
+      1000,
+    );
+    return () => clearInterval(interval);
+  }, [chat.streaming, chat.startedAt]);
+  useEffect(() => {
+    if (input.current) {
+      input.current.style.height = "auto";
+      input.current.style.height = `${Math.min(input.current.scrollHeight, 160)}px`;
+    }
+  }, [chat.draft]);
+  useEffect(() => {
+    const element = list.current;
+    if (!element) return;
+    element.scrollTop = chat.scrollTop.current;
+    followRef.current =
+      element.scrollHeight - element.clientHeight - element.scrollTop < 80;
+  }, [chat.scrollTop, chat.loading]);
+  useEffect(() => {
+    if (followRef.current && list.current)
+      list.current.scrollTop = list.current.scrollHeight;
+  }, [chat.messages]);
+  const mismatch = Boolean(
+    chat.revision && bookRevision && chat.revision !== bookRevision,
+  );
+  const canSend = Boolean(
+    bookRevision &&
+    !mismatch &&
+    chat.draft.trim() &&
+    !chat.streaming &&
+    !chat.loading,
+  );
+  function errorText(code?: string) {
+    if (code === "quota_exceeded") return account("quota");
+    if (code === "ai_disabled") return account("aiDisabled");
+    const key =
+      (
+        {
+          busy: "busy",
+          rate_limited: "rateLimited",
+          timeout: "timeout",
+          stopped: "stopped",
+          disconnected: "disconnected",
+          book_unavailable: "bookUnavailable",
+          history_failed: "historyFailed",
+          unauthorized: "sessionExpired",
+        } as Record<string, string>
+      )[code ?? ""] ?? "error";
+    return t(key);
+  }
+  function send() {
+    if (canSend) {
+      followRef.current = true;
+      setFollowing(true);
+      void chat.send(bookRevision!);
+    }
+  }
+  return (
+    <aside
+      className={cn("flex min-h-0 flex-col bg-card", className)}
+      aria-label={t("title")}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
+        <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
           <BookOpen className="size-4 shrink-0 text-primary" />
           <span className="truncate">{t("title")}</span>
-        </p>
-        <div className="flex shrink-0 items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="max-w-[130px] px-2 text-xs text-muted-foreground"
-                aria-label={t("model")}
-                title={agentModelName(model)}
-              >
-                <span className="truncate">{agentModelName(model)}</span>
-                <ChevronDown className="size-3 shrink-0" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-56">
-              {AGENT_MODELS.map((m) => (
-                <DropdownMenuItem key={m.id} onClick={() => pickModel(m.id)}>
-                  <span className="flex-1">
-                    {m.name}
-                    <span className="block text-[11px] text-muted-foreground">
-                      {m.hint.zh}
-                    </span>
-                  </span>
-                  {model === m.id && <Check className="size-3.5" />}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button variant="ghost" size="icon-sm" aria-label={t("newChat")} onClick={newChat}>
-            <MessageSquarePlus />
-          </Button>
-          {onClose && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("close")}
-              className="md:hidden"
-              onClick={onClose}
+        </h2>
+        <div className="flex">
+          {chat.user && (
+            <IconButton
+              label={account("logout")}
+              onClick={() => void chat.logout()}
             >
-              <X />
-            </Button>
+              <LogOut />
+            </IconButton>
           )}
+          <IconButton label={t("newChat")} onClick={chat.newChat}>
+            <MessageSquarePlus />
+          </IconButton>
+          <IconButton label={t("close")} onClick={onClose}>
+            <X />
+          </IconButton>
         </div>
       </div>
-
-      {authed === null ? (
-        <div className="flex flex-1 items-center justify-center text-muted-foreground">
-          <Loader2 className="size-5 animate-spin" />
-        </div>
-      ) : !authed ? (
-        <form
-          className="flex flex-1 flex-col justify-center gap-3 px-6"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void unlock();
-          }}
+      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1 text-xs">
+        <span className="text-muted-foreground">{t("model")}</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-10 min-w-0 flex-1 justify-between text-xs"
+              disabled={chat.streaming}
+              aria-label={t("model")}
+            >
+              <span className="truncate">{agentModelName(chat.model)}</span>
+              <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="max-w-[calc(100vw-2rem)] min-w-64"
+          >
+            {AGENT_MODELS.map((m) => (
+              <DropdownMenuItem
+                key={m.id}
+                className="min-h-10"
+                onClick={() => chat.setModel(m.id)}
+              >
+                <span className="flex-1">
+                  {m.name}
+                  <span className="block text-xs text-muted-foreground">
+                    {m.hint[locale === "zh" ? "zh" : "en"]}
+                  </span>
+                </span>
+                {chat.model === m.id && <Check />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {chat.user && (
+        <p
+          className="truncate border-b px-3 py-2 text-xs text-muted-foreground"
+          title={chat.user.email}
         >
-          <p className="text-sm text-muted-foreground">{t("passcodePrompt")}</p>
-          <Input
-            type="password"
-            value={passcode}
-            onChange={(e) => setPasscode(e.target.value)}
-            placeholder={t("passcodeLabel")}
-            autoFocus
-          />
-          {passcodeError && <p className="text-xs text-destructive">{t("wrongPasscode")}</p>}
-          <Button type="submit" disabled={unlocking || !passcode}>
-            {unlocking ? <Loader2 className="size-4 animate-spin" /> : t("unlock")}
+          {chat.user.name} · {chat.user.email}
+        </p>
+      )}
+      {chat.loading ? (
+        <div
+          className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"
+          role="status"
+        >
+          <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+          {t("loading")}
+        </div>
+      ) : chat.error ? (
+        <div className="flex flex-1 flex-col justify-center gap-3 p-6">
+          <p role="alert" className="text-sm text-destructive">
+            {errorText(chat.error)}
+          </p>
+          <Button onClick={() => void chat.restore()}>{t("retry")}</Button>
+        </div>
+      ) : !chat.authed ? (
+        <div className="flex min-h-0 flex-1 flex-col justify-center gap-3 overflow-y-auto p-6">
+          <p className="font-medium">{t("emptyTitle")}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {t("greeting")}
+          </p>
+          {chat.messages.length > 0 && (
+            <p role="status" className="text-xs text-destructive">
+              {t("sessionExpired")}
+            </p>
+          )}
+          <p className="text-sm text-muted-foreground">
+            {account("loginPrompt")}
+          </p>
+          <Button asChild className="h-10">
+            <Link href="/login">{account("login")}</Link>
           </Button>
-        </form>
+          <Button asChild variant="outline" className="h-10">
+            <Link href="/register">{account("register")}</Link>
+          </Button>
+        </div>
       ) : (
         <>
-          <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-4">
-            {messages.length === 0 && !streaming && (
-              <p className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
-                {t("greeting")}
-              </p>
-            )}
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                className={cn(
-                  "max-w-[90%] rounded-xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap",
-                  m.role === "user"
-                    ? "ml-auto bg-primary/10 text-foreground"
-                    : "mr-auto bg-muted/60 text-foreground"
-                )}
+          {mismatch && (
+            <div className="shrink-0 border-b bg-muted p-3 text-xs">
+              <p>{t("versionChanged")}</p>
+              <Button
+                variant="outline"
+                className="mt-2 h-10"
+                onClick={chat.newChat}
               >
-                {m.content}
-              </div>
-            ))}
-            {streaming && (
-              <div className="mr-auto max-w-[90%] rounded-xl bg-muted/60 px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap">
-                {streamText || (
-                  <span className="inline-flex items-center gap-2 text-muted-foreground">
-                    <Loader2 className="size-3.5 animate-spin" />
-                    {t("thinking")}
-                  </span>
-                )}
-              </div>
-            )}
-            {error && <p className="text-xs text-destructive">{error}</p>}
-          </div>
-          <form
-            className="flex shrink-0 items-center gap-2 border-t p-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void send();
+                {t("newChat")}
+              </Button>
+            </div>
+          )}
+          <div
+            ref={list}
+            className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4"
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              chat.saveScroll(el.scrollTop);
+              const near =
+                el.scrollHeight - el.clientHeight - el.scrollTop < 80;
+              followRef.current = near;
+              setFollowing(near);
             }}
           >
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={t("placeholder")}
-              disabled={streaming}
-              maxLength={4000}
-            />
-            <Button type="submit" size="icon" disabled={streaming || !input.trim()} aria-label={t("send")}>
-              {streaming ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp />}
+            {chat.messages.length === 0 && (
+              <div className="space-y-4">
+                <div className="rounded-xl border bg-muted/40 p-4">
+                  <BookOpen className="mb-3 size-6 text-primary" />
+                  <p className="font-medium">{t("emptyTitle")}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    {t("greeting")}
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t("tryQuestion")}
+                </p>
+                {["exampleDecision", "exampleEvidence", "exampleExcerpt"].map(
+                  (key) => (
+                    <Button
+                      key={key}
+                      variant="outline"
+                      disabled={key === "exampleExcerpt" && !chat.context}
+                      className="h-auto min-h-10 w-full justify-start whitespace-normal py-3 text-left text-sm"
+                      onClick={() =>
+                        chat.setDraft(
+                          t(key === "exampleExcerpt" ? "excerptQuestion" : key),
+                        )
+                      }
+                    >
+                      {t(key)}
+                    </Button>
+                  ),
+                )}
+              </div>
+            )}
+            {chat.messages.map((message, index) => (
+              <div
+                key={message.id}
+                className={cn(
+                  "min-w-0 rounded-xl p-3",
+                  message.role === "user"
+                    ? "ml-6 bg-primary/10"
+                    : "mr-0 bg-muted/50",
+                )}
+              >
+                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                  {t(message.role === "user" ? "you" : "assistant")}
+                </p>
+                {message.context && (
+                  <blockquote className="mb-2 max-h-28 overflow-y-auto border-l-2 border-primary pl-2 text-xs text-muted-foreground">
+                    {message.context.text}
+                  </blockquote>
+                )}
+                {message.role === "user" ? (
+                  <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                    {message.content}
+                  </p>
+                ) : (
+                  <Answer
+                    text={message.content}
+                    revision={
+                      message.revision === bookRevision
+                        ? message.revision
+                        : undefined
+                    }
+                    anchors={anchors}
+                    onCitation={onCitation}
+                  />
+                )}
+                {message.role === "assistant" &&
+                  (message.status === "failed" ||
+                    message.status === "stopped") && (
+                    <div className="mt-2 border-t pt-2">
+                      <p role="status" className="text-xs text-destructive">
+                        {errorText(message.error ?? message.status)}
+                      </p>
+                      {index === chat.messages.length - 1 && (
+                        <Button
+                          variant="outline"
+                          className="mt-2 h-10 text-xs"
+                          disabled={chat.streaming || !bookRevision || mismatch}
+                          onClick={() =>
+                            void chat.send(
+                              bookRevision!,
+                              chat.messages.find(
+                                (m) =>
+                                  m.turnId === message.turnId &&
+                                  m.role === "user",
+                              ),
+                            )
+                          }
+                        >
+                          {t("retry")}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+              </div>
+            ))}
+          </div>
+          {!following && chat.messages.length > 0 && (
+            <Button
+              variant="outline"
+              className="mx-auto mb-2 h-10 shrink-0 text-xs"
+              onClick={() => {
+                followRef.current = true;
+                setFollowing(true);
+                list.current?.scrollTo({ top: list.current.scrollHeight });
+              }}
+            >
+              <ArrowDown />
+              {t("latest")}
             </Button>
+          )}
+          {chat.streaming && (
+            <p
+              role="status"
+              aria-live="polite"
+              className="flex shrink-0 items-center gap-2 px-4 pb-2 text-xs text-muted-foreground"
+            >
+              <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+              {t(chat.stage)} · {t("elapsed", { seconds: elapsed })}
+            </p>
+          )}
+          <form
+            className="shrink-0 space-y-2 border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            onSubmit={(e) => {
+              e.preventDefault();
+              send();
+            }}
+          >
+            {chat.context && (
+              <div className="flex items-start gap-2 rounded-lg bg-muted p-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium">
+                    {t("excerptLabel")} ·{" "}
+                    {t("citation", {
+                      section: chat.context.section ?? 0,
+                      item: chat.context.item ?? 0,
+                    })}
+                  </p>
+                  <p className="mt-1 max-h-20 overflow-y-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                    {chat.context.text}
+                  </p>
+                </div>
+                <IconButton
+                  label={t("removeExcerpt")}
+                  onClick={() => chat.setContext(undefined)}
+                >
+                  <X />
+                </IconButton>
+              </div>
+            )}
+            <div className="flex items-end gap-2">
+              <Textarea
+                ref={input}
+                value={chat.draft}
+                onChange={(e) => chat.setDraft(e.target.value)}
+                className="max-h-40 min-h-10 resize-none text-base md:text-sm"
+                aria-label={t("messageLabel")}
+                placeholder={t("placeholder")}
+                maxLength={4000}
+                onKeyDown={(e) => {
+                  if (
+                    shouldSubmitKey(
+                      {
+                        key: e.key,
+                        shiftKey: e.shiftKey,
+                        isComposing: e.nativeEvent.isComposing,
+                        keyCode: e.nativeEvent.keyCode,
+                      },
+                      matchMedia("(pointer: fine)").matches,
+                    )
+                  ) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+              />
+              {chat.streaming ? (
+                <IconButton label={t("stop")} onClick={chat.stop}>
+                  <Square />
+                </IconButton>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="submit"
+                      size="icon"
+                      className="size-10 shrink-0"
+                      disabled={!canSend}
+                      aria-label={t("send")}
+                    >
+                      <ArrowUp />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("send")}</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {chat.draft.length}/4000 · {t("inputHint")}
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {t("disclaimer")}
+            </p>
           </form>
-          <p className="shrink-0 px-3 pb-2 text-[11px] text-muted-foreground">{t("disclaimer")}</p>
         </>
       )}
     </aside>

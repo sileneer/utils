@@ -1,103 +1,92 @@
 # AGENTS.md
 
-Guidance for AI coding agents working in this repository.
+Rules for AI coding agents working in this repository. This file is deliberately
+short and holds **only rules** — facts live in one place each, here is the map.
 
-## Project overview
+## Project
 
-**utils** is the utilities webapp for [lzhdev.com](https://lzhdev.com) — a collection of personal and family tools, also maintained as an open-source product. Planned live URL: **https://utils.lzhdev.com**.
+**utils** is the utilities webapp for [lzhdev.com](https://lzhdev.com): personal
+and family tools, maintained as an open-source product anyone can self-deploy.
+**Live: https://utils.lzhdev.com** · repo `sileneer/utils` (public, MIT).
 
-**Core purpose (owner, 2026-10-04):** Docker exists so we can run AI agents like **Claude Code on our own server**; this webapp is the **UI shell wrapped around those agents** — users chat with server-side agents from the browser. The other tools are secondary to this goal.
+**Core purpose (owner, 2026-10-04):** Docker exists so we can run AI agents like
+**Claude Code on our own server**; this webapp is the **UI shell wrapped around
+those agents** — users chat with server-side agents from the browser. The other
+tools are secondary to this goal.
 
-The full plan, decision log, and research citations live in [docs/PLANNING.md](docs/PLANNING.md) (written in Chinese). Read it before making architectural changes.
+**Status:** M1–M4 shipped (M4 = agent chat + `/htlb` reading page, 2026-10-07).
+**Start every session at [docs/HANDOVER.md](docs/HANDOVER.md)** — it says where the
+work actually stands, what is uncommitted, what is next, and which decisions are
+waiting on the owner. Long-term roadmap and milestone acceptance criteria:
+[docs/PLANNING.md](docs/PLANNING.md) §7.
 
-## Document maintenance (standing rule from the owner)
+## Where things get written (standing rule from the owner)
 
-All docs in this repository are **living, self-maintained documents** — standing instruction from the owner (2026-10-04):
+All docs here are living, self-maintained. Route new knowledge to **one** home —
+do not copy a fact into a second file, link to its home instead. A stale
+duplicate is worse than a missing one: this file used to claim the deploy
+pipeline uses GitHub Secrets, months after it went keyless.
 
-- **AGENTS.md**: whenever durable facts emerge from conversations or work — decisions, conventions, gotchas, environment specifics — record them here proactively. Do not wait to be asked.
-- **docs/DESIGN.md**: any new UI component or component library must be **written into DESIGN.md first**, then introduced in code (see the introduction flow in DESIGN.md §4.1).
-- **docs/PLANNING.md**: architecture and deployment decisions go into its decision log.
+| What you learned | Its home |
+|---|---|
+| A rule or workflow an agent must follow while working here | **this file** |
+| How the running app is assembled — routes, agent/SSE contract, workspace, data layout, env variables | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| How it ships and how to operate/debug production — pipeline, identities, server access, rollback, drills | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
+| Anything that cost a debugging round — symptom → cause → fix | [docs/GOTCHAS.md](docs/GOTCHAS.md) |
+| **Any** new UI component, token, or library — written here **before** it is installed or shipped | [docs/DESIGN.md](docs/DESIGN.md) (BINDING; §4.1 introduction flow, §11 anti-churn checklist) |
+| Why a decision was made, what was rejected, roadmap, risks | [docs/PLANNING.md](docs/PLANNING.md) (decision log, Chinese) |
+| **Where we are right now** — uncommitted work, next actions, blocked-on-owner items | [docs/HANDOVER.md](docs/HANDOVER.md) (rewrite it each handover; never let it accumulate) |
 
-Rule of thumb: if a future session would benefit from knowing it, it belongs in one of these files — not only in the conversation. Doc updates ship in the same commit as the work that produced them.
+Doc updates ship **in the same commit** as the work that produced them. Read the
+relevant doc before touching the area it covers; update it if you change what it
+describes.
 
-## Current status
+## Stack (decided — do not re-litigate without updating PLANNING.md first)
 
-**M3 complete (2026-10-04) — full CI/CD is live: every push to `main` auto-deploys to https://utils.lzhdev.com.**
-
-Pipeline (`.github/workflows/deploy.yml`, concurrency-grouped `deploy-prod`):
-
-1. **test** — lint + build (gates everything)
-2. **build-push** — buildx multi-stage build → `ghcr.io/sileneer/utils:<sha>` + `:latest` (public, anonymous pull)
-3. **deploy** — keyless: `google-github-actions/auth@v2` with Workload Identity Federation (provider restricted to `sileneer/utils` @ `refs/heads/main`) → authenticates as `utils-deploy@gen-lang-client-0642815057.iam.gserviceaccount.com` → writes an **ephemeral** ed25519 key to instance-level metadata → SSH through the IAP tunnel as user `utils-deploy` → runs `/opt/utils/deploy.sh` (flock → `compose pull` → `up -d` → healthcheck gate with auto-rollback → prune, keep 3 images) → removes the ephemeral key. **No long-lived secrets exist anywhere in the pipeline.**
-
-Monitoring: deploy.sh pings healthchecks.io (check `utils-deploy`, 7-day period + 1-day grace, email alert to 15061477522@163.com) — success ping resets the dead-man timer, healthcheck-gate failure pings `/fail` for an immediate alert. `HEALTHCHECK_URL` lives in the server `.env` and locally in `.env.monitoring` (both gitignored). `/api/health` supports a drill switch: `DRILL_FAIL_HEALTH=1` in the container env returns 503 so the rollback path can be exercised (used for the 2026-10-04 drill; remove the env var to restore).
-
-Live serving: Cloudflare Tunnel `b77c920a-2ce7-4556-96ff-1676c0453a37` (cloudflared systemd service) → `http://localhost:3100`. Zero public ports; SSH only via IAP (35.235.240.0/20).
-
-Server ops (interactive): `gcloud compute ssh instance-20260904-233454 --zone us-east1-c --tunnel-through-iap` — app at `/opt/utils`, deploy user `utils-deploy` (docker group), logs: `sudo journalctl -u cloudflared` / `sudo docker compose -f /opt/utils/docker-compose.yml logs -f`.
-
-## Tech stack (decided — do not re-litigate without updating PLANNING.md first)
-
-- **Framework**: Next.js (App Router) + TypeScript, `output: 'standalone'`
-- **UI**: Tailwind CSS v4 + shadcn/ui + lucide-react + next-themes — see **[docs/DESIGN.md](docs/DESIGN.md) (BINDING)**
-- **Packaging**: multi-stage Dockerfile → image pushed to GHCR (`ghcr.io/<owner>/utils:<git-sha>`)
-- **CI/CD**: GitHub Actions — test → build → GHCR → SSH deploy to the server (`deploy.sh`: compose pull + up + healthcheck)
-- **Hosting**: own VPS behind Cloudflare; `utils.lzhdev.com` (CF proxied DNS → reverse proxy → container)
-- **Secrets**: server `.env` (never in git) + GitHub Secrets only
-
-## Design system (binding)
-
-**All UI work must follow [docs/DESIGN.md](docs/DESIGN.md)** — the binding design-system spec: design tokens (oklch), typography, component rules, layout patterns, accessibility, and the agent anti-churn checklist. Non-negotiables:
-
-- Semantic token classes only (`bg-background`, `text-muted-foreground`, …) — no raw color literals or second styling system.
-- Inter (body) + Outfit (display) + JetBrains Mono (code) via `next/font`; lucide-react icons only.
-- Every UI change is verified in **light + dark themes** and at **360px width** before it is considered done.
-- Add base components with `npx shadcn@latest add <component>`; never hand-roll what `src/components/ui/` already covers; extend via wrappers.
+Next.js (App Router) + TypeScript, `output: 'standalone'` · Tailwind CSS v4 +
+shadcn/ui + next-themes, **DESIGN.md binding** · `@anthropic-ai/claude-agent-sdk`
+against SenseNova's Anthropic-compatible endpoint · single multi-stage Dockerfile
+→ GHCR → GitHub Actions push-to-main deploy to a 1 GB GCP VM behind a Cloudflare
+Tunnel · SQLite account/chat state plus book files on a Docker volume · secrets only in the
+server `.env`. Details: ARCHITECTURE §1–3, DEPLOYMENT §1–3.
 
 ## Commands
 
 ```bash
-npm install                          # install dependencies
-npm run dev                          # dev server at http://localhost:3000
-npm run build                        # production build (standalone output in .next/standalone)
-npm run start                        # serve the production build
-npm run lint                         # eslint
-npx shadcn@latest add <component>    # add pre-approved ui components (DESIGN.md §4.1)
+npm install
+npm run dev            # http://localhost:3000
+npm run lint           # eslint — part of the CI gate
+npm run build          # production build; ALSO type-checks (a green "Compiled successfully" is not enough)
+npx shadcn@latest add <component>   # approved registry only (DESIGN.md §4.1)
 ```
 
-Container check (needs Docker — not available locally yet): `docker compose -f deploy/docker-compose.yml up --build`
+No Docker on the dev machine as of 2026-10-07 — images are built by CI only; the
+container check (`docker compose -f deploy/docker-compose.yml up --build`) runs
+wherever Docker exists. Agent chat locally needs `.env` copied from
+`.env.example`; `/htlb` reading works with no env at all.
 
-## Repository layout
+## Definition of done
 
-```
-AGENTS.md            # this file (CLAUDE.md points here)
-README.md            # public-facing intro (English)
-LICENSE              # MIT
-docs/PLANNING.md     # full planning + decision log (Chinese)
-docs/DESIGN.md       # binding UI design system
-Dockerfile           # multi-stage standalone build (repo root — build context is the repo)
-deploy/              # docker-compose.yml (+ deploy.sh, receiver from M3)
-src/app/             # routes: pages, /api/health
-src/components/ui/   # shadcn components (adopted registry: DESIGN.md §4.1)
-src/components/      # project components (layout/, icons/, tool-card, theme-*)
-src/lib/             # shared logic (utils, tools registry)
-.github/workflows/   # CI/CD (from M3)
-```
+1. `npm run lint` **and** `npm run build` exit 0 locally.
+2. The Actions run for your push is **green** — deploys happen automatically on merge to `main`; verify the live site afterwards (DEPLOYMENT §8), don't assume.
+3. UI changes checked in **light + dark** themes and at **360 px** width.
+4. New UI component/library already recorded in DESIGN.md (§4.1) before use.
+5. Docs updated in the same commit, in the right home per the table above.
+6. No secret, key, token, or passcode value in any committed file.
+7. If your work changed the picture — something committed or left uncommitted, a
+   next step finished, a new blocker — `docs/HANDOVER.md` §2/§4/§7 reflects it
+   before you end the session. An accurate handover is worth more than a tidy one.
 
 ## Conventions
 
-- Code, comments, README, and AGENTS.md in **English**; internal docs under `docs/` may be in Chinese.
-- Commit messages follow **Conventional Commits** (`feat:`, `fix:`, `chore:`, `docs:`, ...).
-- Keep commits/changes small and focused; do not mix formatting-only changes with functional changes.
-- Prefer minimal dependency additions; justify any new dependency in the PR/commit message.
+- Code, comments, README, AGENTS.md, and the new `docs/*` references in **English**; `docs/PLANNING.md` stays Chinese.
+- **Conventional Commits** (`feat:`, `fix:`, `chore:`, `docs:`, …), scoped where useful (`fix(m4): …`).
+- Keep commits small and focused; never mix formatting-only changes with functional ones.
+- Prefer minimal dependency additions; justify any new dependency in the commit message.
 
 ## Security rules (hard constraints)
 
-1. **NEVER commit secrets** — `.env`, API keys, tokens, SSH keys, connection strings. The only env file allowed in git is `.env.example`.
-2. AI provider keys live **only** in the server `.env` (chmod 600) or GitHub Secrets — never in client-side code, never in the Dockerfile, never logged.
-3. Do not weaken or bypass auth middleware, health checks, or deploy pipeline guards.
-4. Any user-facing tool that proxies an external paid API must go through a server-side route handler that injects the key — never call paid APIs directly from the browser.
-
-## Deployment overview
-
-`push main` → GitHub Actions (test → build → push `ghcr.io/<owner>/utils:<sha>`) → SSH deploy (`deploy.sh`: flock → compose pull → up -d → healthcheck gate → prune). Rollback = point compose back to the previous image tag. Full design and rationale: docs/PLANNING.md §4 and §6.
+1. **NEVER commit secrets** — `.env`, API keys, tokens, SSH keys, connection strings. `.env.example` is the only env file allowed in git, with values commented out. **This repo is public and its history is permanent.**
+2. Provider, authentication, mail and Turnstile secret keys live **only** in `/opt/utils/.env` (chmod 600) — never in client code, never in the image, never logged, never echoed into a doc or commit message. Local QA uses explicit mock services and disposable credentials. The retired `CHAT_PASSCODE` must never authorize public accounts.
+3. Every paid upstream call goes through a server-side route handler that injects the key. Nothing in the browser may call an AI provider directly.
+4. Do not weaken or bypass the auth gate, `/api/health`, the deploy healthcheck gate, or the pipeline's guards. The pipeline is deliberately **keyless** (WIF + ephemeral SSH key): do not "simplify" it by adding a long-lived secret.

@@ -1,9 +1,13 @@
+"use client";
 import { useTranslations } from "next-intl";
+import { usePathname } from "next/navigation";
 
 import { GithubIcon } from "@/components/icons/github-icon";
 
 export function SiteFooter() {
   const t = useTranslations("common");
+  const pathname = usePathname();
+  if (pathname === "/htlb") return null;
 
   return (
     <footer className="border-t border-border/60">

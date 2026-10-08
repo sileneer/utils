@@ -8,27 +8,27 @@ export const AGENT_MODELS = [
   {
     id: "deepseek-flash",
     name: "DeepSeek V4.1 Flash",
-    hint: { en: "balanced default", zh: "均衡默认" },
+    hint: { en: "default for book Q&A", zh: "默认读书问答" },
   },
   {
     id: "deepseek-v4-flash",
     name: "DeepSeek V4 Flash",
-    hint: { en: "fast & economical", zh: "快而省" },
+    hint: { en: "alternative for book Q&A", zh: "读书问答备选" },
   },
   {
     id: "sensenova-6.8-flash-lite",
     name: "SenseNova 6.8 Flash Lite",
-    hint: { en: "agentic multimodal", zh: "智能体多模态" },
+    hint: { en: "alternative for book Q&A", zh: "读书问答备选" },
   },
   {
     id: "glm-5.2",
     name: "GLM-5.2",
-    hint: { en: "1M context, long coding", zh: "1M 上下文" },
+    hint: { en: "alternative for book Q&A", zh: "读书问答备选" },
   },
   {
     id: "kimi-k3",
     name: "Kimi K3",
-    hint: { en: "1M context, strong reasoning", zh: "1M 上下文强推理" },
+    hint: { en: "alternative for book Q&A", zh: "读书问答备选" },
   },
 ] as const;
 

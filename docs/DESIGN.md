@@ -192,14 +192,55 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 
 ### 5.6 Chat (agent) pattern — M4
 
+**Approved optimization, 2026-10-07 (PLANNING §10):**
+- One shared conversation controller owns desktop/mobile messages, drafts and requests.
+  Desktop sidebar begins at `lg`; narrower screens use the adopted Radix Sheet.
+- Header: title + new chat/close. Model control sits on its own secondary row.
+  Reading-shell settings reuse ThemeToggle/LanguageSwitcher. Touch actions are >=40 px.
+  The full-screen reader replaces the site's ordinary header/footer; covered chrome
+  is removed from the focus order and accessibility tree.
+- Composer uses the adopted Textarea, grows up to 160 px, and stays visible with
+  the visual viewport. Desktop Enter sends (except IME composition), Shift+Enter
+  inserts a line break; touch Enter inserts a line break. Draft editing remains available
+  during generation; send becomes Stop. Failed/interrupted turns offer manual Retry.
+- Answers have explicit completion status, Markdown and copy; scrolling follows only
+  when the reader is near the bottom, with a Jump to latest action otherwise.
+- Empty/locked states explain the assistant and show starter questions. Progress
+  describes real preparation/search/generation events, never invented percentages.
+- Selected-book excerpts appear as removable context. Confirmed citation locations
+  navigate/highlight a version-matched book entry; they do not certify factual accuracy.
+- **New render dependencies registered before installation:** `react-markdown`
+  (React answer rendering without raw HTML) and `remark-gfm` (tables/lists). Use semantic
+  classes through component overrides; no raw HTML, remote images, or highlighter library.
+  No additional base UI library/components are introduced.
+
 - Surfaces: right-hand sidebar on the `/htlb` reading page (overlay panel on mobile) + future standalone page; one shared client component.
-- Layout: message list (user bubbles right on `bg-primary/10`, assistant left on `bg-card`), streaming text, tool/citation details in `font-mono`; composer pinned to the bottom; "new chat" control in the header; a one-line disclaimer that answers cite the book and are not medical/legal advice.
-- **Access**: AI features sit behind a passcode gate — `POST /api/agent/auth` compares against `CHAT_PASSCODE` (server `.env`), then sets a signed HttpOnly cookie (30 days). All `/api/agent/*` routes verify it. A proper login system replaces this later (owner decision 2026-10-07).
-- Streaming: SSE from `/api/agent/chat`; user messages persist server-side (session files on the data volume); concurrent queries are rejected with a "busy" message (single 1GB VM).
-- Model picker: header dropdown listing the SenseNova chat models (server-side allowlist in `src/lib/agent/models.ts`, image-generation models excluded); default **DeepSeek V4.1 Flash** (`deepseek-flash`); choice persists via localStorage and travels per request — the server never trusts unlisted ids.
+- Layout: user bubbles on `bg-primary/10`, assistant on `bg-muted/50`; composer pinned to the bottom. The short footer asks readers to check the original entries and conditions when deciding.
+- **Access**: verified email/password accounts, a login/register locked state,
+  visible identity and logout; actual auth/session contract is ARCHITECTURE §5.
+- Streaming: SSE from `/api/agent/chat`; owned messages persist in SQLite;
+  concurrent queries are rejected with a "busy" message (single 1GB VM).
+- Model picker: separate secondary-row dropdown with localized neutral book-Q&A hints (no unmeasured performance claims). Allowlist/default/preference persistence are described in ARCHITECTURE §3.
 - Embedded third-party content (the HowToLiveBetter book HTML) stays single-language — i18n applies to our chrome only.
 
 ---
+
+### 5.7 Public accounts — approved 2026-10-07
+
+- `/login`, `/register`, `/verify-email`, and `/reset-password` use the existing
+  Card, Input, Label, Alert and Button primitives. One pasteable OTP field,
+  explicit resend/status, password-manager autocomplete and visible validation.
+- Register `better-auth` + its React client and `better-sqlite3` before installation:
+  self-hosted credential/session/OTP lifecycle and persisted user ownership.
+  Register `react-hook-form`, `zod`, and `@hookform/resolvers` for the first real
+  form; a project wrapper uses existing Label and accessible inline errors
+  (shadcn 4 has no Form registry entry). These implement §4.2's form contract.
+- Register Cloudflare's official explicit Turnstile widget for public auth forms;
+  no additional CAPTCHA/UI wrapper library. Local QA uses official test keys.
+  A container below 300 px uses the compact widget; wider forms use flexible
+  size. Widget language/theme follows the form; reflow invalidates the old token.
+- Locked chat links to login/register. Authenticated chat shows account and logout;
+  private UI and browser state are scoped to the authenticated user.
 
 ## 6. Motion
 
@@ -286,9 +327,11 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 | lucide (vanilla, node data) | 1.52 — data source for MorphIcon |
 | morphicons | 1.7.1 — spring morph animations for state-transition icons (§7) |
 | next-themes | 0.4.6 |
+| react-markdown / remark-gfm | 10.1.0 / 4.0.1 — approved answer rendering (§5.6) |
 | sonner | 2.0.8 |
 | tw-animate-css | 1.4 |
-| react-hook-form / zod / @hookform/resolvers | to install with the first real form (M4) |
+| react-hook-form / zod / @hookform/resolvers | 7.89.0 / 4.6.5 / 5.9.1 — public account forms (§5.7), locked versions in package-lock |
+| better-auth / better-sqlite3 | 1.7.7 / 13.0.3 — self-hosted accounts and owned chat (§5.7) |
 | motion | not installed yet (marketing pages only) |
 
 Tooling: Prettier + `prettier-plugin-tailwindcss` (class order is enforced, not taste) · ESLint `next/core-web-vitals` (flat config, `eslint.config.mjs`).

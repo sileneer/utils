@@ -8,7 +8,14 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // The agent SDK spawns a bundled CLI subprocess — keep it external so its
   // files resolve from node_modules at runtime instead of being bundled.
-  serverExternalPackages: ["@anthropic-ai/claude-agent-sdk"],
+  serverExternalPackages: [
+    "@anthropic-ai/claude-agent-sdk",
+    "better-sqlite3",
+    "better-auth",
+  ],
+  outputFileTracingExcludes: {
+    "/*": ["./.env", "./.env.*", "./data/**/*", "./tests/**/*"],
+  },
 };
 
 export default withNextIntl(nextConfig);
