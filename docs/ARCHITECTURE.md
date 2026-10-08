@@ -119,8 +119,11 @@ tools are removed (`tools: []`), settings sources disabled and MCP configuration
 strict. Only the in-process `book.search` and `book.read_section` tools are
 allowed; `canUseTool` denies every other tool. Tools preload regular Markdown
 files from the validated book directory, reject symlinks and expose literal
-search / integer section / bounded offsets, no paths, shell or network. The
-prompt adapts the book-reading workflow to these tools. `maxTurns: 40`, partial
+search / integer section / bounded offsets, no paths, shell or network. Search
+returns at most six excerpts and 4,000 characters, including section/offset
+locators for targeted reads. Section reads return up to 3,000 source characters
+plus a continuation offset; pagination retains access to the full original.
+The prompt directs the model to read relevant fragments using those locators. `maxTurns: 40`, partial
 messages and the existing model remain. The child gets an explicit runtime/
 provider env allowlist, never auth/mail/Turnstile secrets. Real SDK acceptance
 of this new tool boundary remains an AI activation gate.

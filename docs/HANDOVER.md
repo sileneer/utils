@@ -4,8 +4,10 @@
 successful registration, logout/login and email password reset, and explicitly designated their registered account as
 administrator; promotion is complete. Daily server backups and an isolated
 restore drill passed. The owner now approved AI activation and up to six real
-acceptance turns. AI is temporarily off while the observed cancellation problem
-is repaired; the private SDK persistence mount is installed.**
+acceptance turns. AI is currently off after real timeout/rate-limit failures.
+The cancellation/persistence repair is deployed; a follow-up bounds book tool
+payloads. Four real requests have been sent, leaving at most two. Browser
+control cannot currently start, so final Stop/recovery acceptance is incomplete.**
 
 Runtime contracts: [ARCHITECTURE](ARCHITECTURE.md). Operations:
 [DEPLOYMENT](DEPLOYMENT.md). Debugging: [GOTCHAS](GOTCHAS.md). Design:
@@ -29,9 +31,11 @@ active account and completed successfully; first signup never gains admin.
 ## 2. Working tree
 
 Local main includes deployed accounts, password policy and private daily backups.
-Current changes add private persistent SDK storage, an owner-scoped Stop API,
-process-wide single-query cancellation, browser stop notifications and regression
-coverage. The book prompt distinguishes explicit conditions from inferences.
+The cancellation/persistence repair is committed and deployed as `3e2c6a1`;
+[its full CI/CD passed](https://github.com/sileneer/utils/actions/runs/37808664282).
+This follow-up bounds book tool payloads and adds targeted read offsets
+with pagination regressions. The prompt distinguishes explicit conditions from
+inferences and directs relevant fragment reads.
 No dependency, schema, component or secret changes are included. Host compose was
 updated through operator sudo while retaining its other settings; the pipeline
 does not synchronize compose. Every main push runs full CI/CD and must be verified.
@@ -61,12 +65,15 @@ trust remain intact. Do not recursively chown the app volume to the deploy user.
    naturally scheduled run has not yet been observed. Select owner-controlled
    off-machine storage and retention before uploading private data or pruning
    existing backups. A same-VM backup does not protect against VM loss.
-2. **Finish the authorized AI acceptance.** Publish the cancellation fix with AI
-   off, then reactivate and finish lookup/read/follow-up, refresh/container resume,
-   actual server-side Stop and recovery. Two of the maximum six requests have
-   been sent; do not reset that count on deployment. Preserve the model and quotas.
-   Disable AI again if a blocking failure remains; no further activation approval
-   is needed within the owner's current authorization.
+2. **Finish the authorized AI acceptance.** Publish the smaller tool payloads with
+   AI off, then finish only the remaining two real requests: actual server-side
+   Stop and recovery with grounded original-text lookup. Browser control must be
+   restored or the owner must perform the UI actions. Four of the maximum six
+   requests have been sent; do not reset the count on deployment. Native resume
+   reached real book tools after container replacement, but its final answer
+   timed out. Preserve the model/quotas and keep AI off if the remaining provider
+   acceptance fails. Existing activation approval remains valid; no new approval
+   is required within this scope. Provider and maintenance findings are in GOTCHAS.
 3. **Physical phone keyboard/IME.** Browser emulation does not prove keyboard
    occlusion, safe-area handling or Chinese composition on a real phone.
 
@@ -80,7 +87,7 @@ trust remain intact. Do not recursively chown the app volume to the deploy user.
 | Domain/sender and Turnstile | Real services configured; diagnostic mail and actual registration succeeded; message headers not inspected |
 | Backup scheduling | Installed and manual backup/isolated restore passed; first scheduled run still awaits observation |
 | Off-machine copying and retention | Unconfigured; owner storage/lifecycle choice still needed |
-| AI | Activation/at-most-six-turn acceptance approved; temporarily off during cancellation repair; two requests used |
+| AI | Activation/at-most-six-turn acceptance approved; AI off after timeout/rate-limit failures; four requests used |
 | Independent decisions | External VM IP, docs-only workflow filtering, Windows Docker and earlier “Tencent” meaning remain unresolved |
 
 ## 6. Local preview and evidence handling
@@ -108,13 +115,26 @@ insufficient resources. Do not alter ACLs or build on the 1 GB production VM.
   Origin enforcement, cancellation without transport abort, early Stop, persistent
   stopped status and freed concurrency. Shared query state has an explicit
   QueryState annotation, verified by the complete production type check.
-- Two real acceptance requests on the deployed default model: the first client
-  Stop displayed stopped but DB ultimately recorded timeout; the second completed
-  real `book.search`, saved usage and a citation to section 3 entry 4. Clicking
-  the citation opened the matching original entry on revision `a18ee405`. The
-  second answer added an unsupported bedtime condition, motivating explicit
-  prompt separation of book conditions and inference. Follow-up read/resume/
-  reliable server-side Stop remain to be verified on the repair.
+- The smaller-payload follow-up passed lint, all 30 tests and full production
+  build/type checks/standalone sanitization. Tests verify the search ceiling,
+  hit locations, continued access to late entries and section pagination.
+  Publication/live verification still must be checked for this follow-up.
+- Four real acceptance requests on the unchanged default model: request 1 showed
+  client Stop but DB timeout; request 2 completed `book.search`, saved usage and a
+  citation to section 3 entry 4. Its citation opened the matching original on
+  revision `a18ee405`, but it added an unsupported bedtime condition. Request 3
+  used the same private native SDK transcript across deployment/recreation and
+  executed both `search` and `read_section`; it ultimately timed out. Request 4
+  failed with rate_limited. No request 5 or 6 has been sent, and no failed answer
+  is counted as successful acceptance. After failures, native resume IDs were
+  invalidated, rebuild required, reservations finished and SDK children absent.
+- The repaired image matched revision `3e2c6a1`, healthy origin and Docker health,
+  exact positive quotas, loopback-only ingress, both persistent mounts, env mode
+  600, DB mode 600, SDK mode 700, schema/integrity and the active verified admin.
+  AI activation succeeded under guarded recreation, then was deliberately
+  disabled again after the provider failure; the final AI-off recreation was
+  healthy with the same image and quotas. The actual native SDK child probe
+  during request 3 contained none of the protected server-secret variable names.
 - The SDK home mount is installed, uid 1001/mode 700. The completed SDK transcript
   exists separately from SQLite history. The earlier child-env alert was a
   diagnostic self-match, corrected; SDK env uses the supplied replacement map.
@@ -155,7 +175,7 @@ insufficient resources. Do not alter ACLs or build on the 1 GB production VM.
 
 **Still unverified:** cross-device production session revocation after reset;
 actual DKIM/SPF/DMARC message headers and other mailbox providers; the remaining
-real SDK read/resume/Stop sequence; physical mobile keyboard; first scheduled backup run and
+grounded follow-up completion, repaired real Stop/recovery and current light/dark 360 px behavior; physical mobile keyboard; first scheduled backup run and
 owner-controlled off-machine protection. A successful isolated restore proves
 backup structure/data, not a live application restore or restored login flow.
 

@@ -2,6 +2,9 @@ import { readdir, readFile, realpath, lstat } from "node:fs/promises";
 import path from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+const SEARCH_HITS = 6;
+const SEARCH_CHARACTERS = 4_000;
+const SECTION_CHARACTERS = 3_000;
 /** No arbitrary paths, glob, regex execution, shell or network exposed to model. */
 export async function bookTools(workspace: string) {
   const directory = await realpath(path.join(workspace, "book"));
@@ -39,15 +42,17 @@ export async function bookTools(workspace: string) {
             for (let i = 0; i < 3; i++) {
               const at = haystack.indexOf(needle, from);
               if (at < 0) break;
+              const offset = Math.max(0, at - 200);
               matches.push(
-                `${book.name}\n${book.text.slice(Math.max(0, at - 400), at + 800)}`,
+                `${book.name} [read_section section=${Number(book.name.slice(0, 2))} offset=${offset}]\n${book.text.slice(offset, at + 400)}`,
               );
               from = at + needle.length;
+              if (matches.length >= SEARCH_HITS) break;
             }
-            if (matches.length >= 12) break;
+            if (matches.length >= SEARCH_HITS) break;
           }
           return text(
-            matches.join("\n\n").slice(0, 16_000) ||
+            matches.join("\n\n").slice(0, SEARCH_CHARACTERS) ||
               "No matching entries. Try a shorter phrase.",
           );
         },
@@ -65,7 +70,7 @@ export async function bookTools(workspace: string) {
           );
           return text(
             book
-              ? `${book.name}\n${book.text.slice(offset, offset + 12_000)}\n[${offset + 12_000 < book.text.length ? `Continue at offset ${offset + 12_000}` : "End"}]`
+              ? `${book.name}\n${book.text.slice(offset, offset + SECTION_CHARACTERS)}\n[${offset + SECTION_CHARACTERS < book.text.length ? `Continue at offset ${offset + SECTION_CHARACTERS}` : "End"}]`
               : "Section unavailable.",
           );
         },

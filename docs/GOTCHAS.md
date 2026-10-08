@@ -583,3 +583,30 @@ request-signal tests passed and did not reproduce that production path.
 the Stop handler described in ARCHITECTURE §3. Retain transport cancellation as
 an additional signal. Check stored `stopped` status, SDK termination and a freed
 query slot in real acceptance, rather than accepting the optimistic client label.
+
+### Server maintenance can delay recreation and Docker health
+
+**Symptom** image metadata checks and compose recreation exceeded bounded
+operator timeouts; one transition returned public 502. Origin health could pass
+while Docker health still reported starting or a five-second check timeout.
+**Finding** concurrent Google OS maintenance/package processes and high I/O
+pressure were observed on the 1 GB VM. A reported activation rollback failure
+was followed by direct inspection confirming AI off and the container healthy.
+**Action** inspect the actual flag, image, origin and Docker health after a
+failed operation. Wait for resource pressure to ease before retrying the same
+protected activation. Do not interrupt unrelated maintenance, lower health
+gates or assume the generic gcloud SSH suggestion identifies a network fault.
+
+### Large book tool results can amplify upstream rate limits
+
+**Symptom** real queries timed out or returned rate_limited. Private SDK records
+included TPM/RPM error text, tool results of roughly 16,000/12,000 characters,
+and a subsequent input count of approximately 18,000 tokens. The precise
+account/model limit and sole cause of the timeout were not established.
+**Mitigation** bound search excerpts and paginated section reads as defined in
+ARCHITECTURE §3, and return exact read offsets with search hits. This reduces
+avoidable input without removing source access or changing model/auth/quotas.
+Verify the smaller payload with the actual provider before declaring acceptance
+passed. Remaining credits and app daily quotas do not override provider rate
+limits; inspect owner-visible provider limits rather than silently increasing
+app quotas or issuing unlimited retries.
