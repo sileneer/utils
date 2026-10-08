@@ -8,7 +8,11 @@ import { GithubIcon } from "@/components/icons/github-icon";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -19,6 +23,8 @@ const NAV_ITEMS = [
 export function SiteHeader() {
   const pathname = usePathname();
   const t = useTranslations("nav");
+
+  if (pathname === "/htlb") return null;
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
@@ -34,7 +40,9 @@ export function SiteHeader() {
           <nav aria-label="Primary" className="flex items-center gap-1">
             {NAV_ITEMS.map((item) => {
               const active =
-                item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.href}
@@ -42,7 +50,7 @@ export function SiteHeader() {
                   aria-current={active ? "page" : undefined}
                   className={cn(
                     "rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground",
-                    active && "text-foreground"
+                    active && "text-foreground",
                   )}
                 >
                   {t(item.key)}

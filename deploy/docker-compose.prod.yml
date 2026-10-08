@@ -13,7 +13,7 @@ services:
       - path: .env # /opt/utils/.env (chmod 600) — never committed
         required: false
     volumes:
-      - ./data:/app/data # persistent state (future SQLite etc.)
+      - ./data:/app/data # SQLite accounts/chat state and verified book cache
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]

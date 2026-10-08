@@ -11,13 +11,13 @@ services:
       context: ..
       dockerfile: Dockerfile
     ports:
-      # Reverse proxy (Caddy/nginx) on the server forwards utils.lzhdev.com here.
+      # The server's Cloudflare Tunnel forwards utils.lzhdev.com here.
       - "127.0.0.1:3100:3000"
     env_file:
       - path: .env # /opt/utils/.env on the server (chmod 600) — never committed
         required: false
     volumes:
-      - ../data:/app/data # persistent state (future SQLite etc.)
+      - ../data:/app/data # SQLite account/chat state and verified book cache
     restart: unless-stopped
     healthcheck:
       test:

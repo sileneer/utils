@@ -1,43 +1,119 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { AGENT_DATA_DIR } from "./workspace";
-
-const SESSIONS_DIR = path.join(AGENT_DATA_DIR, "sessions");
-
-export type ChatMessage = {
-  role: "user" | "assistant";
-  content: string;
-  at: number;
-};
-
+import { db } from "../db";
+import type { ChatMessage } from "../chat/protocol";
+export type { ChatMessage } from "../chat/protocol";
 export type ChatSession = {
   id: string;
-  /** Claude Code SDK session id — set after the first query, used to resume context. */
+  ownerUserId: string;
   sdkSessionId?: string;
   messages: ChatMessage[];
+  revision?: string;
+  needsRebuild?: boolean;
 };
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export function isValidSessionId(id: string): boolean {
-  return UUID_RE.test(id);
-}
-
-export async function loadSession(id: string): Promise<ChatSession | null> {
-  if (!isValidSessionId(id)) return null;
-  try {
-    const raw = await readFile(path.join(SESSIONS_DIR, `${id}.json`), "utf8");
-    return JSON.parse(raw) as ChatSession;
-  } catch {
-    return null;
-  }
-}
-
-export async function saveSession(session: ChatSession): Promise<void> {
-  if (!isValidSessionId(session.id)) throw new Error("invalid session id");
-  await mkdir(SESSIONS_DIR, { recursive: true });
-  await writeFile(
-    path.join(SESSIONS_DIR, `${session.id}.json`),
-    JSON.stringify(session, null, 2)
+export function isValidSessionId(id: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    id,
   );
+}
+export function sessionExists(id: string) {
+  return Boolean(
+    db().prepare("SELECT 1 FROM conversations WHERE id=?").get(id),
+  );
+}
+export async function loadSession(
+  id: string,
+  owner: string,
+): Promise<ChatSession | null> {
+  if (!isValidSessionId(id)) return null;
+  const row = db()
+    .prepare("SELECT * FROM conversations WHERE id=? AND owner_user_id=?")
+    .get(id, owner) as
+    | {
+        id: string;
+        revision?: string;
+        sdk_session_id?: string;
+        needs_rebuild: number;
+      }
+    | undefined;
+  if (!row) return null;
+  const rows = db()
+    .prepare("SELECT * FROM messages WHERE conversation_id=? ORDER BY position")
+    .all(id) as {
+    id: string;
+    turn_id: string;
+    role: ChatMessage["role"];
+    content: string;
+    at: number;
+    status: ChatMessage["status"];
+    error?: string;
+    revision?: string;
+    context_json?: string;
+  }[];
+  return {
+    id,
+    ownerUserId: owner,
+    revision: row.revision ?? undefined,
+    sdkSessionId: row.sdk_session_id ?? undefined,
+    needsRebuild: Boolean(row.needs_rebuild),
+    messages: rows.map((m) => ({
+      id: m.id,
+      turnId: m.turn_id,
+      role: m.role,
+      content: m.content,
+      at: m.at,
+      status:
+        m.status === "streaming" || m.status === "pending"
+          ? "stopped"
+          : m.status,
+      error: m.error ?? undefined,
+      revision: m.revision ?? undefined,
+      ...(m.context_json ? { context: JSON.parse(m.context_json) } : {}),
+    })),
+  };
+}
+export async function saveSession(session: ChatSession) {
+  if (!isValidSessionId(session.id) || !session.ownerUserId)
+    throw new Error("invalid_session");
+  const database = db();
+  database
+    .transaction(() => {
+      const existing = database
+        .prepare("SELECT owner_user_id FROM conversations WHERE id=?")
+        .get(session.id) as { owner_user_id: string } | undefined;
+      if (existing && existing.owner_user_id !== session.ownerUserId)
+        throw new Error("session_forbidden");
+      database
+        .prepare(
+          "INSERT INTO conversations VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision, sdk_session_id=excluded.sdk_session_id, needs_rebuild=excluded.needs_rebuild, updated_at=excluded.updated_at",
+        )
+        .run(
+          session.id,
+          session.ownerUserId,
+          session.revision ?? null,
+          session.sdkSessionId ?? null,
+          session.needsRebuild ? 1 : 0,
+          Date.now(),
+        );
+      database
+        .prepare("DELETE FROM messages WHERE conversation_id=?")
+        .run(session.id);
+      const insert = database.prepare(
+        "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      );
+      session.messages.forEach((m, i) =>
+        insert.run(
+          m.id,
+          session.id,
+          i,
+          m.turnId,
+          m.role,
+          m.content,
+          m.at,
+          m.status,
+          m.error ?? null,
+          m.revision ?? null,
+          m.context ? JSON.stringify(m.context) : null,
+        ),
+      );
+    })
+    .immediate();
 }
