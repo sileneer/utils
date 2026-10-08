@@ -1,7 +1,7 @@
 # Handover
 
 **Written 2026-10-08: verified-email accounts are deployed. The owner confirmed
-successful registration and explicitly designated their registered account as
+successful registration, logout/login and email password reset, and explicitly designated their registered account as
 administrator; promotion is complete. Daily server backups and an isolated
 restore drill passed. AI remains disabled.**
 
@@ -18,7 +18,7 @@ and deployed under the explicit instruction to keep AI off. Do not ask those
 approvals again or infer AI activation from account rollout approval.
 
 The owner subsequently requested an eight-character minimum with a letter and
-digit, confirmed successful real registration, and explicitly confirmed which
+digit, confirmed successful real registration/logout/login/email reset, and explicitly confirmed which
 registered account should become administrator. The exact address is private
 operational input, not public documentation. Promotion required a verified,
 active account and completed successfully; first signup never gains admin.
@@ -53,29 +53,24 @@ trust remain intact. Do not recursively chown the app volume to the deploy user.
 
 ## 4. Next work, in order
 
-1. **Owner-operated remaining account acceptance.** Registration and mailbox
-   verification are owner-confirmed and corroborated by the production database.
-   Explicit login/logout and password-reset/session-revocation acceptance remain
-   to be observed. The owner enters passwords and codes directly on the website;
-   do not collect them in chat or create fixture users in production.
-2. **Off-machine protection and backup lifecycle.** Daily local backups are now
+1. **Off-machine protection and backup lifecycle.** Daily local backups are now
    installed and a copied backup passed isolated restore checks. The first
    naturally scheduled run has not yet been observed. Select owner-controlled
    off-machine storage and retention before uploading private data or pruning
    existing backups. A same-VM backup does not protect against VM loss.
-3. **Later AI acceptance and activation.** Keep `AI_ENABLED=0` under the latest
+2. **Later AI acceptance and activation.** Keep `AI_ENABLED=0` under the latest
    explicit instruction. Obtain separate authorization before changing it or
    making paid Agent calls. Then execute PLANNING §10.5's bounded real SDK
    lookup/follow-up/resume/stop sequence and verify tools, ownership and quotas.
    Prepared generous quotas do not enable AI. Preserve the default model.
-4. **Physical phone keyboard/IME.** Browser emulation does not prove keyboard
+3. **Physical phone keyboard/IME.** Browser emulation does not prove keyboard
    occlusion, safe-area handling or Chinese composition on a real phone.
 
 ## 5. Owner decisions and service readiness
 
 | Item | State |
 | --- | --- |
-| Public registration and email verification | Deployed; successful registration confirmed by owner and verified active account in DB |
+| Account flows | Owner confirms registration/verification, logout/login and email password reset; DB corroborates verified active account |
 | Administrator | Explicit owner designation confirmed; verified active account promoted |
 | Password policy | Owner-requested policy deployed; ARCHITECTURE defines its contract |
 | Domain/sender and Turnstile | Real services configured; diagnostic mail and actual registration succeeded; message headers not inspected |
@@ -104,7 +99,8 @@ insufficient resources. Do not alter ACLs or build on the 1 GB production VM.
 
 - This operational change passed local lint, all 28 regression tests and the full
   production build/type checks/standalone sanitizer. It changes no UI or schema.
-- Owner reports successful production registration. Read-only DB inspection found
+- Owner reports successful production registration, logout/login and email
+  password reset. Read-only DB inspection found
   the designated account verified and active, with two active sessions. Explicit
   promotion completed; the restored backup independently confirms its admin role.
   No passwords, hashes, codes or session tokens were printed or copied locally.
@@ -138,7 +134,7 @@ insufficient resources. Do not alter ACLs or build on the 1 GB production VM.
 - Earlier 34-section source hashes matched upstream. Chat visual acceptance used
   simulated answers; no paid Agent call has been made for this rollout.
 
-**Still unverified:** observed production login/logout/reset/session revocation;
+**Still unverified:** cross-device production session revocation after reset;
 actual DKIM/SPF/DMARC message headers and other mailbox providers; real paid
 SDK/Agent sequence; physical mobile keyboard; first scheduled backup run and
 owner-controlled off-machine protection. A successful isolated restore proves
