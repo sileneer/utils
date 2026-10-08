@@ -8,7 +8,11 @@ acceptance turns. AI is enabled at the approved limits after the smaller-payload
 release. All six real requests have been used: a new grounded lookup completed,
 and the final request was stopped with persisted usage and SDK termination.
 Refresh restored the completed/stopped history; light/dark 360 px checks passed.
-A new completed provider request after Stop was not exercised within this budget.**
+A new completed provider request after Stop was not exercised within this budget.
+The owner now requested per-message timings/tokens/progress. That implementation
+has passed local regression/build and explicit mock UI checks. Full CI/CD and
+production revision verification remain release gates; keep AI enabled and
+the six-request boundary.**
 
 Runtime contracts: [ARCHITECTURE](ARCHITECTURE.md). Operations:
 [DEPLOYMENT](DEPLOYMENT.md). Debugging: [GOTCHAS](GOTCHAS.md). Design:
@@ -38,10 +42,14 @@ The smaller book-payload follow-up is committed/deployed as `1ed3310`;
 [its full CI/CD passed](https://github.com/sileneer/utils/actions/runs/37827946769).
 It adds targeted read offsets and pagination regressions. The prompt distinguishes
 explicit conditions from inferences and directs relevant fragment reads. This
-handover refresh changes documentation only; tracked implementation is committed.
-No dependency, schema, component or secret changes are included. Host compose was
-updated through operator sudo while retaining its other settings; the pipeline
-does not synchronize compose. Every main push runs full CI/CD and must be verified.
+latest change adds per-message details, sanitized SSE metadata and owned-history
+statistics in the existing usage JSON. It also updates the explicit local UI
+fixture and targeted regressions; the design registration preceded code use.
+Runtime metadata and accounting scope live in ARCHITECTURE §3. No new migration,
+dependency or provider call is required. The matching implementation/docs ship
+in one focused commit; every main push still runs full CI/CD.
+The existing host compose was updated through operator sudo while retaining its
+other settings; the pipeline does not synchronize compose.
 
 The former branch `codex/verified-email-chat` and merged
 [PR #1](https://github.com/sileneer/utils/pull/1) remain available as history.
@@ -109,6 +117,15 @@ insufficient resources. Do not alter ACLs or build on the 1 GB production VM.
 ## 7. Verification state
 
 **Passed:**
+
+- Message-details change: local lint, all 33 regressions and full production
+  build/type checks/standalone sanitization passed. Tests cover separate cache
+  counts, missing/zero distinctions, safe metadata parsing, deduplicated tools,
+  history redaction, retry replacing usage and stopped timing with unavailable
+  tokens. Explicit local mock UI verified live stage/seconds/tool counts,
+  completed token breakdown, approximate Stop timing and final timing after
+  reload. Fresh light/dark 360px screenshots were visually inspected, with no
+  horizontal overflow. These are synthetic UI checks, not new provider requests.
 
 - This operational change passed local lint, all 28 regression tests and the full
   production build/type checks/standalone sanitizer. It changes no UI or schema.

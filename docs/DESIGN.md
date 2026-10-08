@@ -225,6 +225,24 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 
 ---
 
+### 5.6.1 Per-message details — owner request, 2026-10-08
+
+- Register the project MessageDetails wrapper before use: a compact footer below
+  each message, using existing Button/Collapsible primitives and semantic tokens.
+  User messages show their send time; assistant messages show status, elapsed
+  time and reported token total, with an expandable breakdown.
+- Live progress remains attached to its answer: actual preparation/search/text
+  stages, elapsed time and observed search/read counts. No fabricated progress,
+  reasoning transcript, credentials, provider logs or billing estimate is shown.
+- Details include the model used for that turn, first-text wait, input/output and
+  reported cache tokens, tool counts and pinned source revision. Old/unreported
+  values are explicitly unavailable. Local disconnected/Stop timing is labeled
+  approximate until server history supplies final timing. Token scope and cache
+  inclusion are explained; it is not a billing statement.
+- Keep summary text wrapping at 360 px, use accessible disclosure controls,
+  and avoid announcing the ticking timer to screen readers every second.
+  No additional dependency or base component is introduced.
+
 ### 5.7 Public accounts — approved 2026-10-07
 
 - `/login`, `/register`, `/verify-email`, and `/reset-password` use the existing

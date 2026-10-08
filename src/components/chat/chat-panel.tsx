@@ -30,6 +30,7 @@ import {
 import { AGENT_MODELS, agentModelName } from "@/lib/agent/models";
 import { cn } from "@/lib/utils";
 import { Answer } from "./answer";
+import { MessageDetails } from "./message-details";
 import type { ChatController } from "./use-chat";
 import { shouldSubmitKey } from "@/lib/chat/composer";
 
@@ -82,18 +83,9 @@ export function ChatPanel({
   const account = useTranslations("account");
   const locale = useLocale();
   const [following, setFollowing] = useState(true);
-  const [elapsed, setElapsed] = useState(0);
   const list = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const followRef = useRef(true);
-  useEffect(() => {
-    if (!chat.streaming) return;
-    const interval = setInterval(
-      () => setElapsed(Math.floor((Date.now() - chat.startedAt) / 1000)),
-      1000,
-    );
-    return () => clearInterval(interval);
-  }, [chat.streaming, chat.startedAt]);
   useEffect(() => {
     if (input.current) {
       input.current.style.height = "auto";
@@ -373,6 +365,11 @@ export function ChatPanel({
                       )}
                     </div>
                   )}
+                <MessageDetails
+                  message={message}
+                  stage={chat.stage}
+                  startedAt={chat.startedAt}
+                />
               </div>
             ))}
           </div>
@@ -389,16 +386,6 @@ export function ChatPanel({
               <ArrowDown />
               {t("latest")}
             </Button>
-          )}
-          {chat.streaming && (
-            <p
-              role="status"
-              aria-live="polite"
-              className="flex shrink-0 items-center gap-2 px-4 pb-2 text-xs text-muted-foreground"
-            >
-              <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
-              {t(chat.stage)} · {t("elapsed", { seconds: elapsed })}
-            </p>
           )}
           <form
             className="shrink-0 space-y-2 border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"

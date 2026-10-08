@@ -97,7 +97,8 @@ abort remains an additional signal, but proxy forwarding is not its sole gate.
 | status / answering | SDK reports answer text |
 | delta / text | Append text to the existing assistant message |
 | replace / text | Replace it with complete-block/final-result text |
-| done | Exactly one successful terminal event, after persistence |
+| details / details | Allowlisted per-message model, timings, observed tool counts and reported turn tokens |
+| done | Exactly one successful terminal event, after message/usage persistence |
 | error / code | Exactly one failed/stopped terminal event; no following done |
 
 The parser handles split UTF-8, LF/CRLF, comments and complete frames. EOF
@@ -134,7 +135,31 @@ that every statement is supported by that entry.
 **Usage.** Atomically reserve one turn against user/global UTC-day limits before
 SDK invocation. Pre-upstream failures release it; any attempted upstream query
 counts even on timeout/partial failure. SDK usage/cost is stored when provided;
-missing usage stays null. Limits apply to admin accounts too. AI fails closed
+missing provider usage remains absent. The existing usage_json additionally
+stores public per-attempt details (no schema change). Final details are saved
+before the terminal SSE event; history joins only the requested conversation's
+assistant turns and the authenticated owner's usage, selecting the latest
+attempt by creation time/rowid. A retry replaces displayed attempt statistics,
+not adds them together. History returns an explicit metadata allowlist, never
+raw usage JSON, estimated cost, native IDs or SDK/provider logs. Legacy records
+can recover reported token counts; missing old timings/model are not invented.
+
+Server elapsed time runs from reservation through query completion/abort cleanup.
+First-text time records the first visible nonempty text, not hidden reasoning.
+Observed search/read tool IDs are deduplicated across partial/full SDK events;
+only counts are exposed. Progress comes from actual SDK events. Local Stop or
+connection loss freezes approximate frontend timing; reloaded history supplies
+final server timing. Completed responses and usage are otherwise unchanged.
+
+Tokens come from result.usage for this main-loop turn, including repeated tool
+rounds/context. They exclude unreported auxiliary calls; result.modelUsage and
+cost can contain resumed-session cumulative estimates and are not presented as
+message totals/bills. Under the Anthropic-compatible usage contract, uncached
+input, cache read and cache creation are distinct counts; total tokens adds
+those plus output ([cache field definitions](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)).
+Missing values remain unavailable, including stopped/failed queries without a
+usage result. Counts of zero are preserved when actually reported.
+Limits apply to admin accounts too. AI fails closed
 unless enabled with positive integer limits. This is a turn cap, not a precise
 currency spending cap; provider limits still apply.
 

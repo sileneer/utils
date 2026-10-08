@@ -19,6 +19,7 @@ import {
   type ChatEvent,
   type ChatMessage,
 } from "@/lib/chat/protocol";
+import { tokenUsage, type MessageDetails } from "@/lib/chat/details";
 import { getBook } from "@/lib/book/source";
 import { isRevision } from "@/lib/chat/citations";
 import { abortable } from "@/lib/agent/abort";
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "service_unavailable" }, { status: 503 });
   }
   const usageId = reservation.id;
+  const startedAt = Date.now();
   let timedOut = false;
   const abort = () => abortController.abort();
   request.signal.addEventListener("abort", abort, { once: true });
@@ -135,6 +137,32 @@ export async function POST(request: Request) {
         let upstreamStarted = false;
         let usage: unknown;
         let outcome = "failed";
+        let terminalCode: string | undefined;
+        const details: MessageDetails = {
+          model,
+          startedAt,
+          searchCalls: 0,
+          readCalls: 0,
+        };
+        const seenTools = new Set<string>();
+        function observeTool(name: string, id: string) {
+          if (seenTools.has(id)) return;
+          if (
+            name !== "mcp__book__search" &&
+            name !== "mcp__book__read_section"
+          )
+            return;
+          seenTools.add(id);
+          const key =
+            name === "mcp__book__search" ? "searchCalls" : "readCalls";
+          details[key] = (details[key] ?? 0) + 1;
+          emit({ type: "details", details });
+        }
+        function observeText() {
+          if (details.firstTextMs !== undefined) return;
+          details.firstTextMs = Date.now() - startedAt;
+          emit({ type: "details", details });
+        }
         try {
           emit({ type: "status", stage: "preparing" });
           session = existing ?? {
@@ -189,6 +217,7 @@ export async function POST(request: Request) {
           };
           session.messages.push(user, assistant);
           await saveSession(session);
+          emit({ type: "details", details });
           const book = await abortable(
             getBook(revision),
             abortController.signal,
@@ -247,12 +276,15 @@ export async function POST(request: Request) {
               if (
                 event.type === "content_block_start" &&
                 event.content_block.type === "tool_use"
-              )
+              ) {
+                observeTool(event.content_block.name, event.content_block.id);
                 emit({ type: "status", stage: "searching" });
+              }
               if (
                 event.type === "content_block_delta" &&
                 event.delta.type === "text_delta"
               ) {
+                if (event.delta.text) observeText();
                 assistant.content += event.delta.text;
                 emit({ type: "status", stage: "answering" });
                 emit({ type: "delta", text: event.delta.text });
@@ -265,19 +297,27 @@ export async function POST(request: Request) {
                 .join("");
               if (/API Error|tpm\/rpm|rate.?limit/i.test(text))
                 throw new Error("rate_limited");
+              for (const block of msg.message.content) {
+                if (block.type === "tool_use")
+                  observeTool(block.name, block.id);
+              }
               if (msg.message.content.some((b) => b.type === "tool_use"))
                 emit({ type: "status", stage: "searching" });
               if (text && !assistant.content.endsWith(text)) {
+                observeText();
                 assistant.content = text;
                 emit({ type: "replace", text });
               }
             }
             if (msg.type === "result") {
               usage = { usage: msg.usage, totalCostUsd: msg.total_cost_usd };
+              // usage is per main-loop turn; modelUsage/cost can include resumed totals.
+              details.tokens = tokenUsage(msg.usage);
               if (msg.subtype !== "success") throw new Error("agent_failed");
               if (/API Error|tpm\/rpm|rate.?limit/i.test(msg.result))
                 throw new Error("rate_limited");
               if (msg.result) {
+                observeText();
                 assistant.content = msg.result;
                 emit({ type: "replace", text: msg.result });
               }
@@ -294,7 +334,7 @@ export async function POST(request: Request) {
           session.needsRebuild = false;
           await saveSession(session);
           outcome = "complete";
-          emit({ type: "done" });
+          // Send the terminal event after final usage persistence in finally.
         } catch (error) {
           const code = timedOut
             ? "timeout"
@@ -313,10 +353,14 @@ export async function POST(request: Request) {
               /* Client still receives the failure. */
             }
           }
-          emit({ type: "error", code });
+          terminalCode = code;
         } finally {
           try {
-            finishUsage(usageId, upstreamStarted ? outcome : "released", usage);
+            details.durationMs = Date.now() - startedAt;
+            finishUsage(usageId, upstreamStarted ? outcome : "released", {
+              ...(usage as object | undefined),
+              details,
+            });
           } catch {
             /* Reservation remains counted on storage failure. */
           }
@@ -324,6 +368,12 @@ export async function POST(request: Request) {
           clearTimeout(wallClock);
           request.signal.removeEventListener("abort", abort);
           releaseQuery(activeQuery);
+          emit({ type: "details", details });
+          emit(
+            terminalCode
+              ? { type: "error", code: terminalCode }
+              : { type: "done" },
+          );
           if (!closed) {
             closed = true;
             controller.close();

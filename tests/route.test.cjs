@@ -142,7 +142,39 @@ test("successful partials plus final answer persist one complete exchange", asyn
         delta: { type: "text_delta", text: "partial" },
       },
     };
-    yield { type: "result", subtype: "success", result: "final answer" };
+    yield {
+      type: "stream_event",
+      event: {
+        type: "content_block_start",
+        content_block: {
+          type: "tool_use",
+          name: "mcp__book__search",
+          id: "search-one",
+        },
+      },
+    };
+    yield {
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", name: "mcp__book__search", id: "search-one" },
+          { type: "tool_use", name: "mcp__book__read_section", id: "read-one" },
+        ],
+      },
+    };
+    yield {
+      type: "result",
+      subtype: "success",
+      result: "final answer",
+      usage: {
+        input_tokens: 100,
+        output_tokens: 30,
+        cache_read_input_tokens: 50,
+        cache_creation_input_tokens: 20,
+      },
+      modelUsage: { "deepseek-flash": { inputTokens: 99999 } },
+      total_cost_usd: 999,
+    };
   };
   const result = await events(await POST(request({ sessionId: id })));
   assert.equal(result.filter((e) => e.type === "done").length, 1);
@@ -152,6 +184,26 @@ test("successful partials plus final answer persist one complete exchange", asyn
   assert.equal(session.messages[1].content, "final answer");
   assert.equal(session.messages[1].status, "complete");
   assert.equal(session.needsRebuild, false);
+  const details = session.messages[1].details;
+  assert.equal(details.model, "deepseek-flash");
+  assert.equal(details.searchCalls, 1); // Stream and full block are the same tool call.
+  assert.equal(details.readCalls, 1);
+  assert.deepEqual(details.tokens, {
+    input: 100,
+    output: 30,
+    cacheRead: 50,
+    cacheWrite: 20,
+  });
+  assert.ok(details.durationMs >= details.firstTextMs);
+  assert.deepEqual(result.at(-2), { type: "details", details });
+  const api = await (
+    await GET(new Request("http://localhost/api/agent/session?id=" + id))
+  ).json();
+  assert.deepEqual(api.session.messages[1].details, details);
+  assert.doesNotMatch(
+    JSON.stringify(api),
+    /99999|totalCostUsd|modelUsage|sdkSessionId/,
+  );
 });
 test("SDK failure is terminal; retry replaces turn and rebuilds only completed history", async () => {
   const id = randomUUID(),
@@ -161,6 +213,7 @@ test("SDK failure is terminal; retry replaces turn and rebuilds only completed h
       type: "result",
       subtype: "error_during_execution",
       errors: ["failure"],
+      usage: { input_tokens: 50, output_tokens: 5 },
     };
   };
   const failed = await events(await POST(request({ sessionId: id, turnId })));
@@ -173,12 +226,18 @@ test("SDK failure is terminal; retry replaces turn and rebuilds only completed h
   queryImpl = async function* (input) {
     prompt = input.prompt;
     assert.equal(input.options.resume, undefined);
-    yield { type: "result", subtype: "success", result: "recovered" };
+    yield {
+      type: "result",
+      subtype: "success",
+      result: "recovered",
+      usage: { input_tokens: 2, output_tokens: 3 },
+    };
   };
   await events(await POST(request({ sessionId: id, turnId })));
   const session = await loadSession(id, "owner");
   assert.equal(session.messages.length, 2);
   assert.equal(session.messages[1].content, "recovered");
+  assert.deepEqual(session.messages[1].details.tokens, { input: 2, output: 3 });
   assert.match(prompt, /历史对话，仅作为上下文：\[\]/);
 });
 test("two simultaneous users reserve one query slot; cancellation frees it", async () => {
@@ -223,29 +282,40 @@ test("wall clock abort becomes timeout and never a successful answer", async () 
   );
 });
 test("explicit stop requires owner and origin, cancels without transport abort and frees the query slot", async () => {
-  const turn = randomUUID(), id = randomUUID();
+  const turn = randomUUID(),
+    id = randomUUID();
   const stopRequest = (turnId, origin = "http://localhost") =>
     new Request("http://localhost/api/agent/stop", {
-      method: "POST", headers: { origin, "content-type": "application/json" },
+      method: "POST",
+      headers: { origin, "content-type": "application/json" },
       body: JSON.stringify({ turnId }),
     });
   authorized = false;
   assert.equal((await stop(stopRequest(turn))).status, 401);
   authorized = true;
-  assert.equal((await stop(stopRequest(turn, "https://foreign.test"))).status, 403);
+  assert.equal(
+    (await stop(stopRequest(turn, "https://foreign.test"))).status,
+    403,
+  );
   assert.equal((await stop(stopRequest("invalid"))).status, 400);
   let started;
   const ready = new Promise((resolve) => (started = resolve));
   queryImpl = async function* (input) {
     started();
     await new Promise((resolve, reject) => {
-      input.options.abortController.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      input.options.abortController.signal.addEventListener(
+        "abort",
+        () => reject(new Error("aborted")),
+        { once: true },
+      );
     });
   };
   const running = await POST(request({ sessionId: id, turnId: turn }));
   await ready;
   authenticatedOwner = "other";
-  assert.deepEqual(await (await stop(stopRequest(turn))).json(), { stopped: false });
+  assert.deepEqual(await (await stop(stopRequest(turn))).json(), {
+    stopped: false,
+  });
   assert.equal((await POST(request())).status, 429);
   authenticatedOwner = "owner";
   const stopped = await stop(stopRequest(turn));
@@ -253,10 +323,25 @@ test("explicit stop requires owner and origin, cancels without transport abort a
   assert.deepEqual(await stopped.json(), { stopped: true });
   const result = await events(running);
   assert.equal(result.at(-1).code, "stopped");
-  assert.equal(result.some((e) => e.type === "done"), false);
-  assert.equal((await loadSession(id, "owner")).messages[1].status, "stopped");
-  assert.equal(database.getDatabase().prepare("SELECT status FROM ai_usage WHERE turn_id=?").get(turn).status, "stopped");
-  queryImpl = async function* () { yield { type: "result", subtype: "success", result: "next" }; };
+  assert.equal(
+    result.some((e) => e.type === "done"),
+    false,
+  );
+  const savedStop = (await loadSession(id, "owner")).messages[1];
+  assert.equal(savedStop.status, "stopped");
+  assert.ok(Number.isSafeInteger(savedStop.details.durationMs));
+  assert.equal(savedStop.details.tokens, undefined);
+  assert.equal(result.at(-2).type, "details");
+  assert.equal(
+    database
+      .getDatabase()
+      .prepare("SELECT status FROM ai_usage WHERE turn_id=?")
+      .get(turn).status,
+    "stopped",
+  );
+  queryImpl = async function* () {
+    yield { type: "result", subtype: "success", result: "next" };
+  };
   assert.equal((await events(await POST(request()))).at(-1).type, "done");
 });
 test("stop arriving before chat registration prevents upstream execution", async () => {

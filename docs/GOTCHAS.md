@@ -628,3 +628,12 @@ session tokens. Close only that created session after restoring its viewport
 and theme. Do not change ACLs, weaken sandbox policy, kill unrelated Node/app
 processes or treat client Stop alone as backend proof. Current evidence and
 remaining acceptance boundaries belong in HANDOVER §7.
+
+### NVM browser wrapper fails on multiword arguments
+
+**Symptom** the NVM agent-browser wrapper interpreted part of its Author Software
+path as a command when locator arguments contained spaces. Simple commands
+worked. **Workaround** invoke the installed agent-browser native binary directly,
+with normal PowerShell argument quoting. Do not change PATH/ACL policy globally.
+For the local mock preview, first wait for the upstream app to return HTTP 200;
+starting the fixture before the app listens causes a connection-refused exit.

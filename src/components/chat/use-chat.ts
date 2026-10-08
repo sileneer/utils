@@ -182,7 +182,16 @@ export function useChat() {
     setMessages((items) =>
       items.map((m) =>
         m.turnId === running.turnId && m.role === "assistant"
-          ? { ...m, status: "stopped", error: "stopped" }
+          ? {
+              ...m,
+              status: "stopped",
+              error: "stopped",
+              details: {
+                ...m.details,
+                durationMs: m.details?.durationMs ?? Date.now() - startedAt,
+                timingEstimated: m.details?.durationMs === undefined,
+              },
+            }
           : m,
       ),
     );
@@ -215,6 +224,7 @@ export function useChat() {
     const id = sessionId.current ?? crypto.randomUUID();
     sessionId.current = id;
     store(`${SESSION_KEY}:${owner.current}`, id);
+    const turnStartedAt = Date.now();
     const user: ChatMessage = {
       id: `${turnId}-user`,
       turnId,
@@ -233,6 +243,7 @@ export function useChat() {
       content: "",
       at: Date.now(),
       status: "streaming",
+      details: { model },
     };
     setMessages((items) => [
       ...items.filter((m) => m.turnId !== turnId),
@@ -244,7 +255,7 @@ export function useChat() {
       setContext(undefined);
     }
     setStreaming(true);
-    setStartedAt(Date.now());
+    setStartedAt(turnStartedAt);
     setStage("preparing");
     setError(undefined);
     const update = (change: Partial<ChatMessage>) =>
@@ -293,6 +304,7 @@ export function useChat() {
           sessionId.current = event.sessionId;
         }
         if (event.type === "status") setStage(event.stage);
+        if (event.type === "details") update({ details: event.details });
         if (event.type === "delta" || event.type === "replace") {
           textSoFar =
             event.type === "delta" ? textSoFar + event.text : event.text;
@@ -310,7 +322,23 @@ export function useChat() {
       if (token === epoch.current) {
         const code =
           failure instanceof Error ? failure.message : "agent_failed";
-        update({ status: "failed", error: code });
+        setMessages((items) =>
+          items.map((m) =>
+            m.id === assistant.id
+              ? {
+                  ...m,
+                  status: "failed",
+                  error: code,
+                  details: {
+                    ...m.details,
+                    durationMs:
+                      m.details?.durationMs ?? Date.now() - turnStartedAt,
+                    timingEstimated: m.details?.durationMs === undefined,
+                  },
+                }
+              : m,
+          ),
+        );
         // Draft typed during the request wins; otherwise restore a rejected send.
         if (!textSoFar && !retry)
           setDraftState((value) => {

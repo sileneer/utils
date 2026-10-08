@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { recordedDetails } from "../chat/details";
 import type { ChatMessage } from "../chat/protocol";
 export type { ChatMessage } from "../chat/protocol";
 export type ChatSession = {
@@ -48,6 +49,14 @@ export async function loadSession(
     revision?: string;
     context_json?: string;
   }[];
+  const usageRows = db()
+    .prepare(
+      "SELECT a.turn_id,a.usage_json FROM ai_usage a JOIN messages m ON m.turn_id=a.turn_id AND m.role='assistant' WHERE m.conversation_id=? AND a.user_id=? ORDER BY a.created_at,a.rowid",
+    )
+    .all(id, owner) as { turn_id: string; usage_json: string | null }[];
+  const details = new Map(
+    usageRows.map((r) => [r.turn_id, recordedDetails(r.usage_json)]),
+  );
   return {
     id,
     ownerUserId: owner,
@@ -66,6 +75,9 @@ export async function loadSession(
           : m.status,
       error: m.error ?? undefined,
       revision: m.revision ?? undefined,
+      ...(m.role === "assistant" && details.get(m.turn_id)
+        ? { details: details.get(m.turn_id) }
+        : {}),
       ...(m.context_json ? { context: JSON.parse(m.context_json) } : {}),
     })),
   };

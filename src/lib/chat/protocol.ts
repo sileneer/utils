@@ -1,3 +1,4 @@
+import { parseMessageDetails, type MessageDetails } from "./details";
 export type MessageStatus =
   "pending" | "streaming" | "complete" | "failed" | "stopped";
 export type BookContext = {
@@ -16,12 +17,14 @@ export type ChatMessage = {
   error?: string;
   context?: BookContext;
   revision?: string;
+  details?: MessageDetails;
 };
 export type ChatEvent =
   | { type: "start"; sessionId: string; revision: string }
   | { type: "status"; stage: "preparing" | "searching" | "answering" }
   | { type: "delta"; text: string }
   | { type: "replace"; text: string }
+  | { type: "details"; details: MessageDetails }
   | { type: "done" }
   | { type: "error"; code: string };
 
@@ -51,13 +54,19 @@ export async function readChatStream(
           .map((line) => line.slice(5).trimStart())
           .join("\n");
         if (!data) continue;
-        const event = JSON.parse(data) as ChatEvent;
+        let event = JSON.parse(data) as ChatEvent;
         if (!event || typeof event !== "object")
           throw new Error("invalid_stream");
         if (
-          !["start", "status", "delta", "replace", "done", "error"].includes(
-            event.type,
-          )
+          ![
+            "start",
+            "status",
+            "delta",
+            "replace",
+            "details",
+            "done",
+            "error",
+          ].includes(event.type)
         )
           throw new Error("invalid_stream");
         if (
@@ -78,6 +87,11 @@ export async function readChatStream(
           throw new Error("invalid_stream");
         if (event.type === "error" && typeof event.code !== "string")
           throw new Error("invalid_stream");
+        if (event.type === "details") {
+          const details = parseMessageDetails(event.details);
+          if (!details) throw new Error("invalid_stream");
+          event = { type: "details", details };
+        }
         onEvent(event);
         if (event.type === "done" || event.type === "error") {
           terminal = true;

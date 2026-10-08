@@ -23,6 +23,11 @@ http
       res.end(
         JSON.stringify({
           authed: true,
+          user: {
+            id: "qa-reader",
+            name: "QA mock",
+            email: "reader@example.test",
+          },
           ...(id ? { session: sessions.get(id) ?? null } : {}),
         }),
       );
@@ -68,6 +73,12 @@ http
         content: "",
         status: "streaming",
         at: Date.now(),
+        details: {
+          model: body.model,
+          startedAt: Date.now(),
+          searchCalls: 1,
+          readCalls: 1,
+        },
       };
       session.messages.push(assistant);
       sessions.set(body.sessionId, session);
@@ -78,6 +89,7 @@ http
       const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
       send({ type: "start", sessionId: body.sessionId, revision });
       send({ type: "status", stage: "searching" });
+      send({ type: "details", details: assistant.details });
       let offset = 0;
       const text = body.message.includes("[eof]")
         ? "An incomplete answer"
@@ -87,6 +99,8 @@ http
           if (offset < text.length) {
             const delta = text.slice(offset, offset + 120);
             offset += 120;
+            if (assistant.details.firstTextMs === undefined)
+              assistant.details.firstTextMs = Date.now() - assistant.at;
             assistant.content += delta;
             send({ type: "status", stage: "answering" });
             send({ type: "delta", text: delta });
@@ -101,6 +115,14 @@ http
               send({ type: "error", code: "timeout" });
             } else {
               assistant.status = "complete";
+              assistant.details.durationMs = Date.now() - assistant.at;
+              assistant.details.tokens = {
+                input: 1250,
+                output: 320,
+                cacheRead: 500,
+                cacheWrite: 150,
+              };
+              send({ type: "details", details: assistant.details });
               send({ type: "replace", text });
               send({ type: "done" });
             }
@@ -114,6 +136,7 @@ http
         if (assistant.status === "streaming") {
           assistant.status = "stopped";
           assistant.error = "stopped";
+          assistant.details.durationMs = Date.now() - assistant.at;
         }
       });
       return;
