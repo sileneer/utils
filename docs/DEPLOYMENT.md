@@ -166,8 +166,8 @@ workflow). Compose reads `/opt/utils/.env` **as the deploy user** — wrong
 ownership silently produces empty variables and a broken deploy (this was a real
 CI failure at M3).
 
-Account/mail configuration and database operations: see §11 below. Account code
-is in a draft PR awaiting release; saving env values does not release it.
+Account/mail configuration and database operations: see §11 below. Current
+release evidence lives in HANDOVER; saving env values alone does not deploy code.
 
 ## 6. Manual deploy / rollback
 
@@ -252,9 +252,10 @@ Secrets was wrong: after the M3 keyless rework there are none.
 
 ## 11. Account release preparation and operations
 
-**2026-10-08:** implementation is local; provider activation, DNS, real mail,
-Linux image and SDK acceptance precede a separately authorized release. Owner
-reported the Brevo API key saved on the server; its value was not requested/read.
+Account release authorization and acceptance evidence live in HANDOVER.
+The owner authorized deployment with AI disabled; real SDK acceptance and AI
+activation remain separate. The Brevo API key stays on the server: readiness
+scripts consume it there without displaying or copying it locally.
 
 ### Domain and services
 
@@ -311,8 +312,9 @@ PY
 ```
 
 Changing env requires container recreation at the authorized release; `restart`
-does not re-read env_file. Prepare configuration now; do not deploy the old image
-as an account rollout. Quotas remain disabled until owner chooses values. Reused
+does not re-read env_file. Do not deploy the old image as an account rollout.
+Quota policy and authorization live in PLANNING §11.8; keep AI disabled until
+separately authorized activation and real Agent acceptance. Reused
 provider credentials remain only in the main server process's environment; the
 SDK gets its explicit runtime/provider allowlist.
 
@@ -340,7 +342,9 @@ SDK gets its explicit runtime/provider allowlist.
   Rollback of app images must preserve newly registered accounts.
 
 Before publishing, test the Node 22 Debian native driver in the image, migration
-startup, persistence on restart and backup restoration. Check Brevo actual delivery
-to authorized Gmail/Outlook/QQ/163 addresses, production Turnstile success/failure,
-Secure cookies, owned history, real book MCP/SDK query and enforced quotas.
+startup, persistence on restart and backup restoration. For account acceptance,
+check the complete owner-operated signup/verification/login/reset flow, real
+Turnstile hostname validation, delivery to authorized recipients, Secure cookies
+and owned history. A direct diagnostic mail is not a completed app registration.
+For later AI activation, verify real book MCP/SDK queries and enforced quotas.
 Lint/test/build and a Windows native driver do not prove those external gates.

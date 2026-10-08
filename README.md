@@ -9,7 +9,7 @@ backed by agents running on your own server.
 
 | | |
 |---|---|
-| **`/htlb` — reading + ask-the-book** | Full-screen reader for [HowToLiveBetter](https://github.com/eternity4719/HowToLiveBetter) (CC BY 4.0), with an AI sidebar. The assistant runs **Claude Code on the server**, searches verified book content using restricted read-only tools, and answers with section/item citations. Verified email/password accounts and owned history are implemented locally, awaiting release. |
+| **`/htlb` — reading + ask-the-book** | Full-screen reader for [HowToLiveBetter](https://github.com/eternity4719/HowToLiveBetter) (CC BY 4.0), with an AI sidebar. The assistant runs **Claude Code on the server**, searches verified book content using restricted read-only tools, and answers with section/item citations. Verified email/password accounts protect owned history; AI access is controlled by server configuration. |
 | **Planned tools** | text diff, QR studio, JSON formatter, unit converter — see the registry in `src/lib/tools.ts` |
 
 More tools are on the way; the interesting part is the pattern: heavy AI work
@@ -42,7 +42,7 @@ npm run lint && npm run build
 The reader at `/htlb` works with an empty `.env`. Account/AI runtime variables
 are documented in [ARCHITECTURE §8](docs/ARCHITECTURE.md#8-environment-contract),
 with service setup and secure handoff in [DEPLOYMENT §11](docs/DEPLOYMENT.md#11-account-release-preparation-and-operations).
-AI is disabled until explicit daily quotas are configured. Dev/start applies
+AI requires explicit activation and positive daily quotas. Dev/start applies
 versioned migrations before serving; old unowned JSON chats are not imported.
 The offered model IDs live in `src/lib/agent/models.ts`.
 

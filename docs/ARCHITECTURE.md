@@ -3,8 +3,8 @@
 How the running application is put together — routes, data flow, the agent
 runtime, the on-disk state, and the environment contract.
 
-**Working-tree contract, 2026-10-08:** account replacement is implemented locally;
-production still runs the previously shipped passcode version until release.
+**Runtime contract, 2026-10-08:** verified email/password accounts replace the
+shared passcode. Current release and acceptance evidence: HANDOVER §1/§7.
 
 - Ops, deploys, rollback, server access: **[DEPLOYMENT.md](DEPLOYMENT.md)**
 - Things that broke and why: **[GOTCHAS.md](GOTCHAS.md)**
@@ -23,7 +23,7 @@ the browser is a thin client.
 - **One container**, bound to `127.0.0.1:3100` on the VM, reached only through a Cloudflare Tunnel.
 - **SQLite** for accounts, owned conversations and budgets; book files remain on
   the existing persistent volume. Better Auth 1.7.7 / better-sqlite3 13.0.3
-  (SQLite 3.53.4 verified on Windows).
+  (SQLite 3.53.4 verified in the Linux image and production).
 - **No middleware.** Each private route resolves a verified, active database
   session through `currentUser()`; book and tool pages remain public.
 - Server routes that read cookies/headers render **dynamic (ƒ)** — expected, not a regression (see §7).
@@ -113,7 +113,7 @@ search / integer section / bounded offsets, no paths, shell or network. The
 prompt adapts the book-reading workflow to these tools. `maxTurns: 40`, partial
 messages and the existing model remain. The child gets an explicit runtime/
 provider env allowlist, never auth/mail/Turnstile secrets. Real SDK acceptance
-of this new tool boundary remains a release gate.
+of this new tool boundary remains an AI activation gate.
 
 **Usage.** Atomically reserve one turn against user/global UTC-day limits before
 SDK invocation. Pre-upstream failures release it; any attempted upstream query
