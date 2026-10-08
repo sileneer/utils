@@ -33,9 +33,11 @@ active account and completed successfully; first signup never gains admin.
 Local main includes deployed accounts, password policy and private daily backups.
 The cancellation/persistence repair is committed and deployed as `3e2c6a1`;
 [its full CI/CD passed](https://github.com/sileneer/utils/actions/runs/37808664282).
-This follow-up bounds book tool payloads and adds targeted read offsets
-with pagination regressions. The prompt distinguishes explicit conditions from
-inferences and directs relevant fragment reads.
+The smaller book-payload follow-up is committed/deployed as `1ed3310`;
+[its full CI/CD passed](https://github.com/sileneer/utils/actions/runs/37827946769).
+It adds targeted read offsets and pagination regressions. The prompt distinguishes
+explicit conditions from inferences and directs relevant fragment reads. This
+handover refresh changes documentation only; tracked implementation is committed.
 No dependency, schema, component or secret changes are included. Host compose was
 updated through operator sudo while retaining its other settings; the pipeline
 does not synchronize compose. Every main push runs full CI/CD and must be verified.
@@ -65,8 +67,8 @@ trust remain intact. Do not recursively chown the app volume to the deploy user.
    naturally scheduled run has not yet been observed. Select owner-controlled
    off-machine storage and retention before uploading private data or pruning
    existing backups. A same-VM backup does not protect against VM loss.
-2. **Finish the authorized AI acceptance.** Publish the smaller tool payloads with
-   AI off, then finish only the remaining two real requests: actual server-side
+2. **Finish the authorized AI acceptance.** The smaller-payload release is
+   installed with AI off. Finish only the remaining two real requests: server-side
    Stop and recovery with grounded original-text lookup. Browser control must be
    restored or the owner must perform the UI actions. Four of the maximum six
    requests have been sent; do not reset the count on deployment. Native resume
@@ -118,7 +120,11 @@ insufficient resources. Do not alter ACLs or build on the 1 GB production VM.
 - The smaller-payload follow-up passed lint, all 30 tests and full production
   build/type checks/standalone sanitization. Tests verify the search ceiling,
   hit locations, continued access to late entries and section pagination.
-  Publication/live verification still must be checked for this follow-up.
+  Full CI/CD and actual revision verification passed for the follow-up; the
+  origin/Docker container was healthy with AI off, exact quotas, both mounts,
+  private file permissions, database integrity and verified admin preserved.
+  Cache-busted public pages, account config, sanitized anonymous session, private
+  chat/history/Stop rejection and retired-passcode rejection also passed.
 - Four real acceptance requests on the unchanged default model: request 1 showed
   client Stop but DB timeout; request 2 completed `book.search`, saved usage and a
   citation to section 3 entry 4. Its citation opened the matching original on
