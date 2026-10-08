@@ -610,3 +610,21 @@ Verify the smaller payload with the actual provider before declaring acceptance
 passed. Remaining credits and app daily quotas do not override provider rate
 limits; inspect owner-visible provider limits rather than silently increasing
 app quotas or issuing unlimited retries.
+
+### Windows CUA startup can fail while bundled runtime files are in use
+
+**Symptom** both browser control and the default shell failed with
+`helper_unknown_error: setup refresh had errors`; CUA also reported a trusted
+Node process exiting unexpectedly. Filtered local sandbox logs identified an
+`os error 32` sharing violation while opening `node_repl.exe`/`node.exe` to
+refresh runtime access. A restart and a limited failed-kernel reset did not
+provide a durable recovery; the exact broader runtime defect is unresolved.
+
+**Fallback** the installed agent-browser CLI worked through the approved host
+execution context, but auto-connect found no accessible Chrome. Open a separate
+named headed session and let the owner log in directly on the product. This
+allowed real UI acceptance without copying credentials, cookies or database
+session tokens. Close only that created session after restoring its viewport
+and theme. Do not change ACLs, weaken sandbox policy, kill unrelated Node/app
+processes or treat client Stop alone as backend proof. Current evidence and
+remaining acceptance boundaries belong in HANDOVER §7.

@@ -4,10 +4,11 @@
 successful registration, logout/login and email password reset, and explicitly designated their registered account as
 administrator; promotion is complete. Daily server backups and an isolated
 restore drill passed. The owner now approved AI activation and up to six real
-acceptance turns. AI is currently off after real timeout/rate-limit failures.
-The cancellation/persistence repair is deployed; a follow-up bounds book tool
-payloads. Four real requests have been sent, leaving at most two. Browser
-control cannot currently start, so final Stop/recovery acceptance is incomplete.**
+acceptance turns. AI is enabled at the approved limits after the smaller-payload
+release. All six real requests have been used: a new grounded lookup completed,
+and the final request was stopped with persisted usage and SDK termination.
+Refresh restored the completed/stopped history; light/dark 360 px checks passed.
+A new completed provider request after Stop was not exercised within this budget.**
 
 Runtime contracts: [ARCHITECTURE](ARCHITECTURE.md). Operations:
 [DEPLOYMENT](DEPLOYMENT.md). Debugging: [GOTCHAS](GOTCHAS.md). Design:
@@ -67,15 +68,14 @@ trust remain intact. Do not recursively chown the app volume to the deploy user.
    naturally scheduled run has not yet been observed. Select owner-controlled
    off-machine storage and retention before uploading private data or pruning
    existing backups. A same-VM backup does not protect against VM loss.
-2. **Finish the authorized AI acceptance.** The smaller-payload release is
-   installed with AI off. Finish only the remaining two real requests: server-side
-   Stop and recovery with grounded original-text lookup. Browser control must be
-   restored or the owner must perform the UI actions. Four of the maximum six
-   requests have been sent; do not reset the count on deployment. Native resume
-   reached real book tools after container replacement, but its final answer
-   timed out. Preserve the model/quotas and keep AI off if the remaining provider
-   acceptance fails. Existing activation approval remains valid; no new approval
-   is required within this scope. Provider and maintenance findings are in GOTCHAS.
+2. **Preserve the AI acceptance boundary.** The six-request allowance is used.
+   Current evidence covers real search/read completion, citation navigation,
+   SDK startup/Stop/termination and restored complete/stopped history. The last
+   request reused the completed native session before Stop; safe rebuild is now
+   required. A further completed provider request after Stop, or a completed
+   post-recreation native resume, would need an additional authorized request.
+   Do not automatically retry or reset the counter. Local browser failure and
+   the working independent-window fallback are recorded in GOTCHAS §J.
 3. **Physical phone keyboard/IME.** Browser emulation does not prove keyboard
    occlusion, safe-area handling or Chinese composition on a real phone.
 
@@ -89,7 +89,7 @@ trust remain intact. Do not recursively chown the app volume to the deploy user.
 | Domain/sender and Turnstile | Real services configured; diagnostic mail and actual registration succeeded; message headers not inspected |
 | Backup scheduling | Installed and manual backup/isolated restore passed; first scheduled run still awaits observation |
 | Off-machine copying and retention | Unconfigured; owner storage/lifecycle choice still needed |
-| AI | Activation/at-most-six-turn acceptance approved; AI off after timeout/rate-limit failures; four requests used |
+| AI | Enabled at prepared limits; six requests used; latest real lookup and server Stop passed, reload history restored |
 | Independent decisions | External VM IP, docs-only workflow filtering, Windows Docker and earlier “Tencent” meaning remain unresolved |
 
 ## 6. Local preview and evidence handling
@@ -125,15 +125,32 @@ insufficient resources. Do not alter ACLs or build on the 1 GB production VM.
   private file permissions, database integrity and verified admin preserved.
   Cache-busted public pages, account config, sanitized anonymous session, private
   chat/history/Stop rejection and retired-passcode rejection also passed.
-- Four real acceptance requests on the unchanged default model: request 1 showed
-  client Stop but DB timeout; request 2 completed `book.search`, saved usage and a
-  citation to section 3 entry 4. Its citation opened the matching original on
-  revision `a18ee405`, but it added an unsupported bedtime condition. Request 3
-  used the same private native SDK transcript across deployment/recreation and
-  executed both `search` and `read_section`; it ultimately timed out. Request 4
-  failed with rate_limited. No request 5 or 6 has been sent, and no failed answer
-  is counted as successful acceptance. After failures, native resume IDs were
-  invalidated, rebuild required, reservations finished and SDK children absent.
+- All six authorized real requests on the unchanged default model are used.
+  Request 1 showed client Stop but DB timeout; request 2 completed search and
+  citation navigation but added an unsupported bedtime condition. Request 3
+  reached search/read in the prior native session after recreation, then timed
+  out. Request 4 failed with rate_limited. These earlier failures are not passes.
+  After the smaller-payload release, request 5 completed real search/read, saved
+  usage and opened the matching section 3 entry 4 on revision `a18ee405`.
+  Its answer did not repeat the unsupported bedtime cutoff direction.
+  Request 6 was stopped through the UI: a bounded read-only monitor observed
+  the actual SDK child, then its exit and terminal `stopped` usage. The child
+  contained none of the protected server-secret variable names. Usage is now
+  complete=2, failed=3, stopped=1; stopped usage is recorded. SQLite retains the
+  completed answer and incomplete stopped answer, clears the native session ID
+  and requires rebuild. No seventh request was issued.
+- Refresh/reopen restored the completed/stopped conversation from the server.
+  Model and input controls recovered; Retry was visible but not activated.
+  Actual light/dark 360 x 800 screenshots were rendered and visually inspected,
+  with readable messages, citations, Stop/Retry state and composer. The dark
+  document width was exactly 360 px without horizontal overflow. The independent
+  user-authenticated test window was restored to its original dimensions/theme
+  and closed; no credentials or cookie/session-token exports were used.
+  A new completed provider response after Stop remains outside this evidence.
+- Guarded same-image activation at `0b766bb` passed origin/Docker health with the
+  prepared 100 user/day and 2,000 global/day limits; AI remains enabled after the
+  latest successful lookup/Stop checks. Release verification for this record
+  must preserve that flag and the six-request count.
 - The repaired image matched revision `3e2c6a1`, healthy origin and Docker health,
   exact positive quotas, loopback-only ingress, both persistent mounts, env mode
   600, DB mode 600, SDK mode 700, schema/integrity and the active verified admin.
@@ -180,8 +197,9 @@ insufficient resources. Do not alter ACLs or build on the 1 GB production VM.
   simulated answers; current real-query evidence is recorded above.
 
 **Still unverified:** cross-device production session revocation after reset;
-actual DKIM/SPF/DMARC message headers and other mailbox providers; the remaining
-grounded follow-up completion, repaired real Stop/recovery and current light/dark 360 px behavior; physical mobile keyboard; first scheduled backup run and
+actual DKIM/SPF/DMARC message headers and other mailbox providers; a completed
+provider response after Stop and completed native resume after recreation;
+physical mobile keyboard; first scheduled backup run and
 owner-controlled off-machine protection. A successful isolated restore proves
 backup structure/data, not a live application restore or restored login flow.
 
