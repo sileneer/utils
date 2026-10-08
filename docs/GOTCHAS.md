@@ -512,3 +512,18 @@ Docker environment. No Docker CLI exists in the Windows development environment.
 **Action** do not change Windows resource/security settings or build on the 1 GB
 production VM to work around it. Prepare the isolated full-image CI acceptance
 in DEPLOYMENT §2; record the actual Actions result separately from local lint.
+
+### Bulk public auth probes can return HTML 429
+
+**Symptom** rapid CLI password-policy probes through Cloudflare returned an
+HTML 429 for a reset request, causing JSON parsing to fail. A separate signup
+request returned the expected JSON 400. `cf-mitigated` was absent; the exact
+upstream rate-limit rule was not established.
+**Finding** the deployed revision and health were correct. Bounded probes over
+the authorized IAP/loopback path confirmed both invalid-password guards and
+that valid eight-character signup still stops at the missing CAPTCHA. No
+account, mail or AI call was created by these probes.
+**Fix** inspect status/content-type before decoding JSON and pace public probes.
+Use the protected origin for a batch of negative application checks, preserving
+origin/auth/CAPTCHA validation. Do not weaken public protection or rate limits
+to accommodate a diagnostic; origin checks do not prove a real browser signup.

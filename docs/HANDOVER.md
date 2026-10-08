@@ -3,7 +3,7 @@
 **Written 2026-10-08: PR #1 merged and the verified-email account version
 successfully deployed. AI remains disabled. Real owner registration and later
 Agent acceptance remain outstanding. Owner-requested password-policy follow-up
-is implemented and locally verified; verify its latest main CI/live revision.**
+is deployed and verified; AI remains off.**
 
 Runtime contracts: [ARCHITECTURE](ARCHITECTURE.md). Operations:
 [DEPLOYMENT](DEPLOYMENT.md). Debugging: [GOTCHAS](GOTCHAS.md). Design:
@@ -32,9 +32,11 @@ Live runtime and public-route verification passed. Release evidence is in §7.
 Local `main` includes the merged account/chat implementation and this focused
 password-policy follow-up: auth options/route validation, registration/reset
 form validation, localized hints, auth regression tests and canonical docs.
-No dependency, schema, secret or AI activation changes are included. After
-committing this work, verify its full main CI/CD run and actual live revision
-before ending the session. Local lint, 28 tests and full build passed.
+No dependency, schema, secret or AI activation changes are included. Policy
+commit `43c0391` passed [CI/CD](https://github.com/sileneer/utils/actions/runs/37795631458)
+and its actual live revision/health/database/disabled AI were verified. This
+documentation-only acceptance refresh adds no application changes. Any later
+main push still runs full CI/CD; verify its live revision before ending work.
 
 The former submission branch is `codex/verified-email-chat`. Integration
 `c14b114`, dependency-stage Docker fix `854192c` and documentation head
@@ -118,8 +120,14 @@ insufficient system resources. Do not alter ACLs or build on the 1 GB VM.
   reset password (including a symbol) succeeds and revokes the old session;
   short/missing-letter/missing-digit/overlong/non-string inputs are rejected
   for signup/reset before mail or account side effects. Invalid reset passwords
-  do not consume the valid reset OTP. Production acceptance must use this
-  follow-up's exact revision. Prior initial-release CI passed its 27-test suite.
+  do not consume the valid reset OTP. Exact policy revision `43c0391` also
+  passed full CI/CD/image acceptance and deployment. Live origin probes over
+  IAP rejected invalid passwords at both endpoints and accepted the eight-character
+  format up to the still-required CAPTCHA guard; no account or mail was created.
+  Public routes/gates and deployed revision/database/AI-off checks passed.
+  Production Chinese registration shows the new hint; local English light/dark
+  at 360 px has no horizontal overflow. Prior initial-release CI passed 27 tests.
+  Bulk public negative probes encountered HTML 429; see GOTCHAS §J.
 - Full PR image acceptance at `854192c` and exact head `df2f21c`; original
   dependency toolchain failure is fixed (GOTCHAS §J). Release CI ran the same
   complete image/startup/migration/persistence/backup-restore gate before publishing.
