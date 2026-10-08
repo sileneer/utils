@@ -78,9 +78,9 @@ query. A failure prevents image publication and the dependent deploy job.
 requests or manual dispatch, plus Node 22 lint/tests. It has only contents-read
 permission and neither registry login/push nor GCP/deployment steps. Use a draft
 PR for external Linux acceptance before separately authorizing a production
-release. Its first execution passed Ubuntu lint/tests but exposed the dependency
-stage's missing native-build tools (GOTCHAS §J); a successful full-image result
-is still required. Python/make/g++ are present only in the dependency build stage,
+release. Current acceptance outcomes live in HANDOVER §7; the initial missing
+native-build-tools failure and fix are documented in GOTCHAS §J.
+Python/make/g++ are present only in the dependency build stage,
 not the deployed runner. Input/output support follows the pinned
 [build-push-action v6 contract](https://github.com/docker/build-push-action/blob/v6/action.yml).
 
@@ -167,7 +167,7 @@ ownership silently produces empty variables and a broken deploy (this was a real
 CI failure at M3).
 
 Account/mail configuration and database operations: see §11 below. Account code
-is currently local and uncommitted; saving env values does not release it.
+is in a draft PR awaiting release; saving env values does not release it.
 
 ## 6. Manual deploy / rollback
 

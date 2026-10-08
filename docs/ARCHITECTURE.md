@@ -284,4 +284,5 @@ set in the Dockerfile; the app runs as the non-root `nextjs` user (uid 1001).
   multi-replica deployment needs a shared lock/coordinator and database migration.
 - 1 GB VM: no builds on the VM (OOM), agent subprocess is the biggest memory consumer.
 - Turn quotas are conservative; accurate provider billing depends on actual SDK
-  usage data and provider budgets. Real mail, SDK and full Linux image/startup acceptance pending.
+  usage data and provider budgets. Real service/SDK and deployment acceptance
+  status lives in HANDOVER §7.

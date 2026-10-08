@@ -1,9 +1,9 @@
 # Handover
 
 **Written 2026-10-08: approved AI Chat and public email accounts implemented
-locally. Gmail delivery passed; higher AI quotas and full-image CI gates prepared.
-Git check-branch/draft-PR work and Cloudflare IP preparation are authorized.
-External acceptance and separate production release approval remain pending.**
+on a submitted check branch. Gmail delivery and full Linux image acceptance passed.
+Cloudflare IP configuration and higher quotas are prepared; AI remains off.
+Real service/Agent acceptance and production release approval remain pending.**
 
 Runtime contracts live in [ARCHITECTURE](ARCHITECTURE.md), operations in
 [DEPLOYMENT](DEPLOYMENT.md), debugging in [GOTCHAS](GOTCHAS.md), design rules in
@@ -37,10 +37,11 @@ was refreshed and matches that base. The authorized submission includes:
 | Approved accounts | Better Auth/SQLite, migrations and backup/admin/start scripts; registration/verification/login/reset forms; Brevo and Turnstile adapters; persistent limits, user-owned conversations and AI quota/tool boundaries |
 | Supporting release preparation | DESIGN registration, package/lock, Docker/start changes, environment example, standalone artifact sanitization, isolated final-image smoke script, read-only PR acceptance workflow, publication gate and canonical documentation |
 
-The initial integration was committed as `c14b114`, pushed and attached as
-[draft PR #1](https://github.com/sileneer/utils/pull/1). The current Docker fix and
-its documentation are awaiting a follow-up commit. No production deployment has
-occurred. `.env.example` is the only tracked environment file; ignored
+The integration `c14b114` and Docker fix `854192c` are committed and pushed to
+[draft PR #1](https://github.com/sileneer/utils/pull/1), attached to this task.
+The code tree at `854192c` passed full PR CI; this handover accompanies its
+documentation-only status refresh. No production deployment has occurred.
+`.env.example` is the only tracked environment file; ignored
 `data/` contains test databases, caches and local evidence. Do not import old
 JSON conversations or expose the explicit QA fixtures.
 
@@ -75,7 +76,7 @@ new environment configuration and acceptance before this work is released.
    returned 201 and a delivered event; the owner then confirmed it arrived in
    the Gmail inbox. Do not send another mail automatically.
    Turnstile rejected an invalid token; actual widget success remains pending.
-2. **Run the prepared full-image CI gate.** `tests/image-smoke.cjs` now checks
+2. **Review the passing draft PR.** `tests/image-smoke.cjs` checks
    final-image native loading/offline SDK executable, clean artifacts, non-root
    standalone startup/routes, migration, volume persistence across restart and
    backup restore. `.github/workflows/acceptance.yml` runs it on PRs with read-only
@@ -83,8 +84,12 @@ new environment configuration and acceptance before this work is released.
    on the same check. The first
    [Actions run](https://github.com/sileneer/utils/actions/runs/37787836712) passed
    Ubuntu install/lint/tests, but failed Docker npm ci because node-gyp could not
-   find Python. The dependency-stage toolchain and stale binding COPY fix are
-   now prepared; commit/push them and wait for the complete image check.
+   find Python. The dependency-stage toolchain and stale binding COPY fix shipped
+   in `854192c`; the
+   [second run](https://github.com/sileneer/utils/actions/runs/37788562118) passed
+   the entire image/startup/persistence/restore check. GitGuardian and qlty also
+   passed for that code head. Wait for any subsequent documentation-head CI before
+   reporting the latest branch checks green.
    No Windows Docker exists. WSL host enumeration found Ubuntu, but startup
    failed with insufficient system resources; do not build on the 1 GB VM
    (DEPLOYMENT §9). The authorized branch/draft PR exists; CI fixes remain within
@@ -123,7 +128,7 @@ new environment configuration and acceptance before this work is released.
 | Public AI quota | Owner requested larger limits; initial policy in PLANNING §11.8 saved server-side, AI disabled |
 | Cloudflare client IP trust | Explicitly authorized; loopback-only Docker binding rechecked and server env prepared; applies at later container recreation |
 | “Tencent” meaning | Unconfirmed; no Tencent service configured |
-| Commit/check-branch push/draft PR | Authorized and completed: initial c14b114, codex/verified-email-chat, draft PR #1 |
+| Commit/check-branch push/draft PR | Completed: c14b114 + Docker fix 854192c, codex/verified-email-chat, draft PR #1; complete image CI passed |
 | Merge/deploy | Separate authorization not received; not implied by approving a test branch/PR |
 | Prior independent decisions | VM external IP, docs-only pipeline filtering, Docker on Windows and skills-loading meaning remain in PLANNING/DEPLOYMENT |
 
@@ -156,11 +161,21 @@ Do not weaken ACLs. No Docker is installed on the development machine.
 - After adding the final-image gate, lint/test/build were rerun successfully;
   the standalone filename scan again found zero env/database/backup artifacts.
   Both workflow YAML files parse and the image smoke script passes Node syntax
-  checking. This proves only preparation; Docker execution is still pending.
+  checking. Full Docker execution subsequently passed as recorded below.
 - First PR run `37787836712` passed Ubuntu Node 22 install/lint/27 tests and the
   GitGuardian check, but failed the complete image dependency install before
   smoke acceptance. Dependency build tools and version-13 packaging were fixed
-  for a new run (GOTCHAS §J); do not report full-image success yet.
+  in `854192c` (GOTCHAS §J).
+- Full PR run `37788562118` at `854192c` completed **success**: Node 22 clean
+  install/lint/27 tests, complete production Docker build including TypeScript,
+  and `tests/image-smoke.cjs` against that final image. It verified uid 1001,
+  SQLite 3.53.4 native loading, offline SDK ELF execution, no env/private database
+  artifacts or QA launcher in the image, the actual migration/start entrypoint,
+  account page HTTP responses, private/unconfigured gates, account/chat/message
+  persistence across container restart, coherent backup restore and integrity/FKs.
+  The temporary volume/container were removed by the test. No image was published
+  and no production service, mail, CAPTCHA or paid Agent call was used. This is
+  full image acceptance, not a real provider or successful registration test.
 - Real pinned Better Auth and SQLite tests cover verified password login,
   hash-only OTP storage, expiry/wrong/replaced/single-use/concurrent codes,
   resend limits, rejected CAPTCHA, mail-failure recovery, reset revocation,
@@ -243,8 +258,9 @@ No environment values were displayed and no permission change was needed.
 **Not yet passed:** actual mail-header confirmation, full app signup
 mail acceptance (other mailbox providers remain untested),
 real Turnstile validation, real SDK/provider calls, physical mobile keyboard,
-full Linux application-image/startup and restart acceptance, installed backup scheduling,
-GitHub Actions and production verification. No paid Agent calls were made.
+installed backup scheduling and production deploy/live verification.
+PR Actions image acceptance passed; production Actions/deployment did not run.
+No paid Agent calls were made.
 Historical production streaming through `6cd9151` does not validate this tree.
 
 ## 8. Independent record inconsistencies

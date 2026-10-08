@@ -655,8 +655,9 @@ PR 运行只读 CI，及在 Tunnel/loopback 入口前提下保存 Cloudflare IP 
 ### 11.9 本地实施落点（2026-10-08）
 
 A–C 的本地账号/数据库/会话归属/配额守门与窄化书籍 MCP 工具已实现。
-27 项回归、lint/type-check 与生产构建通过；真实邮件/SDK、完整 Linux 应用镜像、
-实体手机键盘尚未验收，不视为已上线。数据库实际 SQLite 为 3.53.4。
+27 项回归、lint/type-check 与生产构建通过；完整 Linux 应用镜像验收已在草稿 PR
+CI 通过。完整真实注册邮件/Turnstile/SDK 与实体手机键盘仍待验，不视为已上线。
+数据库实际 SQLite 为 3.53.4；当前验收证据统一见 HANDOVER §7。
 默认关闭 AI（额度准备见 §11.8）；第一位注册者不自动提权。
 没有为了缺少真实 key 而在产品添加开发邮件或认证绕过入口：测试在独立
 loopback 进程/数据库拦截邮件与 CAPTCHA，应用仍走真实 Better Auth 路径。
