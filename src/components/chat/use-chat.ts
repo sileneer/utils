@@ -9,6 +9,14 @@ import {
 const SESSION_KEY = "htlb_chat_session_id";
 const DRAFT_KEY = "htlb_chat_draft";
 const MODEL_KEY = "htlb_chat_model";
+function requestStop(turnId: string) {
+  return fetch("/api/agent/stop", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ turnId }),
+    keepalive: true,
+  }).catch(() => undefined);
+}
 function store(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
@@ -67,6 +75,7 @@ export function useChat() {
       const account = await identity.json();
       if (token !== epoch.current) return;
       if (owner.current !== (account.user?.id ?? null)) {
+        if (active.current) void requestStop(active.current.turnId);
         active.current?.abort.abort();
         active.current = null;
         token = ++epoch.current;
@@ -159,12 +168,14 @@ export function useChat() {
       window.removeEventListener("focus", focus);
       window.removeEventListener("storage", storage);
       requestEpoch.current++;
+      if (requestState.current) void requestStop(requestState.current.turnId);
       requestState.current?.abort.abort();
     };
   }, [restore]);
   function stop() {
     const running = active.current;
     if (!running) return;
+    const cancellation = requestStop(running.turnId);
     epoch.current++;
     running.abort.abort();
     active.current = null;
@@ -176,6 +187,7 @@ export function useChat() {
       ),
     );
     setStreaming(false);
+    return cancellation;
   }
   function newChat() {
     stop();
@@ -315,7 +327,7 @@ export function useChat() {
     }
   }
   async function logout() {
-    stop();
+    await stop();
     const response = await fetch("/api/auth/sign-out", {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -313,8 +313,11 @@ PY
 
 Changing env requires container recreation at the authorized release; `restart`
 does not re-read env_file. Do not deploy the old image as an account rollout.
-Quota policy and authorization live in PLANNING §11.8; keep AI disabled until
-separately authorized activation and real Agent acceptance. Reused
+Quota policy and authorization live in PLANNING §11.8. Activation uses the
+existing deploy lock, preserves the running image and positive quotas, and
+recreates the container so it reads the new flag. Check origin health and Docker
+health, and restore the previous flag/recreate if activation fails. Keep AI off
+when real acceptance finds a blocking problem. Reused
 provider credentials remain only in the main server process's environment; the
 SDK gets its explicit runtime/provider allowlist.
 
@@ -349,6 +352,15 @@ SDK gets its explicit runtime/provider allowlist.
   set, replace with the coherent backup, set uid/gid 1001 and mode 600, then start
   and verify. Never copy a live main DB alone or silently restore on image rollback.
   Rollback of app images must preserve newly registered accounts.
+- The host compose also mounts `/opt/utils/data/sdk` at
+  `/home/nextjs/.claude`. Create the SDK directory as app uid 1001, mode 700,
+  before recreation. This preserves native SDK resume files across deployments;
+  it is not included in the SQLite backup API. For a database-only restore,
+  clear `conversations.sdk_session_id` and set `needs_rebuild=1` before starting
+  the app. User-visible history then supplies the next query's context. Do not
+  attach a restored database to stale/mismatched SDK transcripts. The workflow
+  does not synchronize compose; update the host's existing mount list explicitly
+  while retaining its env/loopback/data configuration.
 
 Before publishing, test the Node 22 Debian native driver in the image, migration
 startup, persistence on restart and backup restoration. For account acceptance,

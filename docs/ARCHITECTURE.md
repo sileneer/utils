@@ -77,6 +77,16 @@ continues for other readers. Thirty-second SSE comment keepalives remain.
 Timers and the slot are released in finally. A client request epoch invalidates
 late callbacks on Stop/New chat; there is no automatic retry.
 
+Stop also posts the active turn UUID to `/api/agent/stop`, independently of the
+stream's abort signal. The handler requires a verified active user and the exact
+app Origin. Only that owner's matching turn can be aborted. Chat and Stop share
+one process-wide query registry across route bundles; a bounded, 30-second stop
+intent handles Stop arriving before chat registration. The SDK controller stops
+the upstream process, persists `stopped`, discards native resume state, and
+releases the slot in finally. Post-upstream stopped usage remains counted.
+Logout waits for the stop request before revoking its login session. Transport
+abort remains an additional signal, but proxy forwarding is not its sole gate.
+
 **SSE contract** (src/lib/chat/protocol.ts):
 
 | Event | Meaning |
@@ -114,6 +124,9 @@ prompt adapts the book-reading workflow to these tools. `maxTurns: 40`, partial
 messages and the existing model remain. The child gets an explicit runtime/
 provider env allowlist, never auth/mail/Turnstile secrets. Real SDK acceptance
 of this new tool boundary remains an AI activation gate.
+The prompt distinguishes conditions explicitly stated in the book from the
+assistant's labeled inferences; correct citation navigation alone does not prove
+that every statement is supported by that entry.
 
 **Usage.** Atomically reserve one turn against user/global UTC-day limits before
 SDK invocation. Pre-upstream failures release it; any attempted upstream query
@@ -174,6 +187,15 @@ All paths are relative to AGENT_DATA_DIR (default cwd/data/agent):
 | versions/<revision>/manifest.json | verified source revision/preparation time |
 | versions/<revision>/book.html | release HTML declaring that same source commit |
 | versions/<revision>/reader/ | book Markdown, README and installed reader skill |
+
+The SDK's native session transcripts are separate from SQLite's visible history.
+Production mounts host `/opt/utils/data/sdk` at `/home/nextjs/.claude`, owned by
+uid 1001 with directory mode 700, so recorded SDK session IDs remain resumable
+after container replacement. Without this mount the default SDK home directory
+is ephemeral, even though the app's SQLite conversations survive. These private
+transcripts are never served to the browser. SQLite backups do not include them;
+on database-only restoration invalidate saved SDK IDs and rebuild from completed
+visible history rather than resuming an unavailable transcript.
 
 GET /api/agent/session without id returns authed and a minimal user identity;
 with id it returns only that user's visible transcript/revision, never SDK IDs

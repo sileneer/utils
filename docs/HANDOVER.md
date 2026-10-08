@@ -3,7 +3,9 @@
 **Written 2026-10-08: verified-email accounts are deployed. The owner confirmed
 successful registration, logout/login and email password reset, and explicitly designated their registered account as
 administrator; promotion is complete. Daily server backups and an isolated
-restore drill passed. AI remains disabled.**
+restore drill passed. The owner now approved AI activation and up to six real
+acceptance turns. AI is temporarily off while the observed cancellation problem
+is repaired; the private SDK persistence mount is installed.**
 
 Runtime contracts: [ARCHITECTURE](ARCHITECTURE.md). Operations:
 [DEPLOYMENT](DEPLOYMENT.md). Debugging: [GOTCHAS](GOTCHAS.md). Design:
@@ -15,7 +17,8 @@ at the next session; keep sections 2, 4 and 7 current.
 The owner approved public email registration, password login and registration
 verification; old unowned chats are explicitly not migrated. PR #1 was merged
 and deployed under the explicit instruction to keep AI off. Do not ask those
-approvals again or infer AI activation from account rollout approval.
+approvals again. The owner's subsequent explicit activation approval supersedes
+the earlier AI-off release instruction; its scope is recorded in PLANNING §11.8.
 
 The owner subsequently requested an eight-character minimum with a letter and
 digit, confirmed successful real registration/logout/login/email reset, and explicitly confirmed which
@@ -25,13 +28,13 @@ active account and completed successfully; first signup never gains admin.
 
 ## 2. Working tree
 
-Local main contains the merged account/chat implementation and deployed
-password-policy follow-up. This operational change adds private locking to
-`deploy/backup.sh`, enforces LF for shell files, and updates canonical operational
-and debugging documentation. The host script was installed manually and verified
-before scheduling; the deploy workflow does not synchronize it. No dependency,
-schema, UI, secret or AI activation changes are included. Every main push still
-runs full CI/CD; inspect its actual outcome and live revision.
+Local main includes deployed accounts, password policy and private daily backups.
+Current changes add private persistent SDK storage, an owner-scoped Stop API,
+process-wide single-query cancellation, browser stop notifications and regression
+coverage. The book prompt distinguishes explicit conditions from inferences.
+No dependency, schema, component or secret changes are included. Host compose was
+updated through operator sudo while retaining its other settings; the pipeline
+does not synchronize compose. Every main push runs full CI/CD and must be verified.
 
 The former branch `codex/verified-email-chat` and merged
 [PR #1](https://github.com/sileneer/utils/pull/1) remain available as history.
@@ -58,11 +61,12 @@ trust remain intact. Do not recursively chown the app volume to the deploy user.
    naturally scheduled run has not yet been observed. Select owner-controlled
    off-machine storage and retention before uploading private data or pruning
    existing backups. A same-VM backup does not protect against VM loss.
-2. **Later AI acceptance and activation.** Keep `AI_ENABLED=0` under the latest
-   explicit instruction. Obtain separate authorization before changing it or
-   making paid Agent calls. Then execute PLANNING §10.5's bounded real SDK
-   lookup/follow-up/resume/stop sequence and verify tools, ownership and quotas.
-   Prepared generous quotas do not enable AI. Preserve the default model.
+2. **Finish the authorized AI acceptance.** Publish the cancellation fix with AI
+   off, then reactivate and finish lookup/read/follow-up, refresh/container resume,
+   actual server-side Stop and recovery. Two of the maximum six requests have
+   been sent; do not reset that count on deployment. Preserve the model and quotas.
+   Disable AI again if a blocking failure remains; no further activation approval
+   is needed within the owner's current authorization.
 3. **Physical phone keyboard/IME.** Browser emulation does not prove keyboard
    occlusion, safe-area handling or Chinese composition on a real phone.
 
@@ -76,7 +80,7 @@ trust remain intact. Do not recursively chown the app volume to the deploy user.
 | Domain/sender and Turnstile | Real services configured; diagnostic mail and actual registration succeeded; message headers not inspected |
 | Backup scheduling | Installed and manual backup/isolated restore passed; first scheduled run still awaits observation |
 | Off-machine copying and retention | Unconfigured; owner storage/lifecycle choice still needed |
-| AI | Disabled; generous quota policy prepared; separate activation and real Agent acceptance remain |
+| AI | Activation/at-most-six-turn acceptance approved; temporarily off during cancellation repair; two requests used |
 | Independent decisions | External VM IP, docs-only workflow filtering, Windows Docker and earlier “Tencent” meaning remain unresolved |
 
 ## 6. Local preview and evidence handling
@@ -99,6 +103,21 @@ insufficient resources. Do not alter ACLs or build on the 1 GB production VM.
 
 - This operational change passed local lint, all 28 regression tests and the full
   production build/type checks/standalone sanitizer. It changes no UI or schema.
+- Current cancellation regressions: lint, all 30 tests and the full production
+  build/type checks/standalone sanitizer passed, including owner/
+  Origin enforcement, cancellation without transport abort, early Stop, persistent
+  stopped status and freed concurrency. Shared query state has an explicit
+  QueryState annotation, verified by the complete production type check.
+- Two real acceptance requests on the deployed default model: the first client
+  Stop displayed stopped but DB ultimately recorded timeout; the second completed
+  real `book.search`, saved usage and a citation to section 3 entry 4. Clicking
+  the citation opened the matching original entry on revision `a18ee405`. The
+  second answer added an unsupported bedtime condition, motivating explicit
+  prompt separation of book conditions and inference. Follow-up read/resume/
+  reliable server-side Stop remain to be verified on the repair.
+- The SDK home mount is installed, uid 1001/mode 700. The completed SDK transcript
+  exists separately from SQLite history. The earlier child-env alert was a
+  diagnostic self-match, corrected; SDK env uses the supplied replacement map.
 - Owner reports successful production registration, logout/login and email
   password reset. Read-only DB inspection found
   the designated account verified and active, with two active sessions. Explicit
@@ -131,12 +150,12 @@ insufficient resources. Do not alter ACLs or build on the 1 GB production VM.
 - Exactly one authorized Brevo diagnostic was delivered to Gmail's inbox, confirmed
   by the owner. Private idempotent receipt remains in the server's operational
   directory; do not resend automatically or publish its recipient.
-- Earlier 34-section source hashes matched upstream. Chat visual acceptance used
-  simulated answers; no paid Agent call has been made for this rollout.
+- Earlier source hashes matched the then-current upstream. Prior visual QA used
+  simulated answers; current real-query evidence is recorded above.
 
 **Still unverified:** cross-device production session revocation after reset;
-actual DKIM/SPF/DMARC message headers and other mailbox providers; real paid
-SDK/Agent sequence; physical mobile keyboard; first scheduled backup run and
+actual DKIM/SPF/DMARC message headers and other mailbox providers; the remaining
+real SDK read/resume/Stop sequence; physical mobile keyboard; first scheduled backup run and
 owner-controlled off-machine protection. A successful isolated restore proves
 backup structure/data, not a live application restore or restored login flow.
 

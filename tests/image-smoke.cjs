@@ -70,6 +70,7 @@ async function routeCheck() {
   assert.deepEqual(await session.json(), { authed: false, user: null });
   await request("/api/agent/session?id=00000000-0000-4000-8000-000000000001", 401);
   await request("/api/agent/chat", 401, { method: "POST", body: "{}" });
+  await request("/api/agent/stop", 401, { method: "POST", body: "{}" });
   await request("/api/agent/auth", 410, { method: "POST", body: "{}" });
   await request("/api/auth/sign-in/email", 503, {
     method: "POST", headers: { origin: base, "content-type": "application/json" },

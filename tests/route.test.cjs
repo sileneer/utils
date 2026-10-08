@@ -40,6 +40,7 @@ test.before(async () => {
 });
 const revision = "a".repeat(40);
 let authorized = true;
+let authenticatedOwner = "owner";
 let queryImpl;
 const load = Module._load;
 Module._load = function (name, ...args) {
@@ -49,7 +50,7 @@ Module._load = function (name, ...args) {
     return {
       currentUser: async () =>
         authorized
-          ? { id: "owner", name: "Owner", email: "owner@example.test" }
+          ? { id: authenticatedOwner, name: "Owner", email: "owner@example.test" }
           : null,
     };
   if (name === "@/lib/agent/book-tools")
@@ -67,6 +68,7 @@ Module._load = function (name, ...args) {
 };
 const { POST } = require("../src/app/api/agent/chat/route.ts");
 const { GET } = require("../src/app/api/agent/session/route.ts");
+const { POST: stop } = require("../src/app/api/agent/stop/route.ts");
 const { loadSession } = require("../src/lib/agent/sessions.ts");
 const { readChatStream } = require("../src/lib/chat/protocol.ts");
 function request(input = {}, signal) {
@@ -219,6 +221,56 @@ test("wall clock abort becomes timeout and never a successful answer", async () 
     result.some((e) => e.type === "done"),
     false,
   );
+});
+test("explicit stop requires owner and origin, cancels without transport abort and frees the query slot", async () => {
+  const turn = randomUUID(), id = randomUUID();
+  const stopRequest = (turnId, origin = "http://localhost") =>
+    new Request("http://localhost/api/agent/stop", {
+      method: "POST", headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify({ turnId }),
+    });
+  authorized = false;
+  assert.equal((await stop(stopRequest(turn))).status, 401);
+  authorized = true;
+  assert.equal((await stop(stopRequest(turn, "https://foreign.test"))).status, 403);
+  assert.equal((await stop(stopRequest("invalid"))).status, 400);
+  let started;
+  const ready = new Promise((resolve) => (started = resolve));
+  queryImpl = async function* (input) {
+    started();
+    await new Promise((resolve, reject) => {
+      input.options.abortController.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    });
+  };
+  const running = await POST(request({ sessionId: id, turnId: turn }));
+  await ready;
+  authenticatedOwner = "other";
+  assert.deepEqual(await (await stop(stopRequest(turn))).json(), { stopped: false });
+  assert.equal((await POST(request())).status, 429);
+  authenticatedOwner = "owner";
+  const stopped = await stop(stopRequest(turn));
+  assert.equal(stopped.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await stopped.json(), { stopped: true });
+  const result = await events(running);
+  assert.equal(result.at(-1).code, "stopped");
+  assert.equal(result.some((e) => e.type === "done"), false);
+  assert.equal((await loadSession(id, "owner")).messages[1].status, "stopped");
+  assert.equal(database.getDatabase().prepare("SELECT status FROM ai_usage WHERE turn_id=?").get(turn).status, "stopped");
+  queryImpl = async function* () { yield { type: "result", subtype: "success", result: "next" }; };
+  assert.equal((await events(await POST(request()))).at(-1).type, "done");
+});
+test("stop arriving before chat registration prevents upstream execution", async () => {
+  const turn = randomUUID();
+  await stop(new Request("http://localhost/api/agent/stop", {
+    method: "POST", headers: { origin: "http://localhost", "content-type": "application/json" },
+    body: JSON.stringify({ turnId: turn }),
+  }));
+  let calls = 0;
+  queryImpl = async function* () { calls++; yield { type: "result", subtype: "success", result: "unexpected" }; };
+  const result = await events(await POST(request({ turnId: turn })));
+  assert.equal(result.at(-1).code, "stopped");
+  assert.equal(calls, 0);
+  assert.equal(database.getDatabase().prepare("SELECT status FROM ai_usage WHERE turn_id=?").get(turn).status, "released");
 });
 test("source preparation failures persist an incomplete turn without invoking the SDK", async () => {
   const id = randomUUID();

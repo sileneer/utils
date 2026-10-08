@@ -539,3 +539,47 @@ returns, then test both syntax and direct execution before installing cron.
 `.gitattributes` enforces LF for shell files in future checkouts. The failed run
 installed no schedule; a successful backup and isolated restore preceded cron
 installation. No production database replacement or app restart was needed.
+
+### SDK transcript storage is separate from application persistence
+
+**Finding** SQLite records SDK session IDs, while the SDK defaults to storing
+transcripts under `~/.claude/projects`. The app's data mount alone does not
+persist that home directory; container replacement loses the native session.
+**Fix** persist the SDK config directory through the private additional mount in
+DEPLOYMENT §11. Database-only restores invalidate native IDs and rebuild using
+completed visible history. The SDK's [session documentation](https://code.claude.com/docs/en/sessions)
+describes the independent transcript store. Real post-recreation resume must be
+checked; persistent SQLite alone does not prove SDK resume.
+
+### Process inspection can match its own diagnostic script
+
+**Symptom** a runtime SDK environment probe reported protected server variable
+names despite the actual native SDK child having none of them.
+**Cause** matching the whole `/proc/*/cmdline` also matched the `node -e` probe,
+whose script contained the SDK package name and inherited the app environment.
+**Fix** identify the executable/launcher arguments rather than arbitrary script
+text; exclude the probe itself. SDK 0.3.292 uses the supplied `options.env` as a
+replacement. Inspect variable names only, never values. The initial diagnosis
+was corrected; no credential value was printed by the probe.
+
+### Host compose changes require the operator's sudo access
+
+**Symptom** utils-deploy could read `/opt/utils/docker-compose.yml` but editing
+the mount list returned permission denied.
+**Cause** the host compose is root-owned and readable by the deploy user; this
+differs from the private deploy-user-owned `.env`.
+**Fix** edit the existing compose through operator sudo access, retain ownership
+and all other configuration, and validate with `docker compose config --quiet`.
+Do not change env permissions or recursively chown the application volume.
+
+### Closing a browser stream does not prove upstream cancellation
+
+**Symptom** production showed an immediate client-side stopped answer, but the
+stored turn ultimately had `timeout`; cancelling the browser stream had not
+produced a timely server-side stopped terminal state through the deployed proxy.
+**Finding** the exact proxy propagation cause was not established. Direct mocked
+request-signal tests passed and did not reproduce that production path.
+**Fix** explicitly post an authenticated, same-origin, owner-scoped turn UUID to
+the Stop handler described in ARCHITECTURE §3. Retain transport cancellation as
+an additional signal. Check stored `stopped` status, SDK termination and a freed
+query slot in real acceptance, rather than accepting the optimistic client label.

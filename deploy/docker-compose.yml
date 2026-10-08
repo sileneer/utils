@@ -18,6 +18,7 @@ services:
         required: false
     volumes:
       - ../data:/app/data # SQLite account/chat state and verified book cache
+      - ../data/sdk:/home/nextjs/.claude # SDK resumes survive container replacement
     restart: unless-stopped
     healthcheck:
       test:
