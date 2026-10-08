@@ -521,7 +521,7 @@ Next build 或每个请求中自动修改 schema。迁移前和每日使用
 
 ### 11.4 注册、登录与恢复流程
 
-1. 用户在 `/register` 填邮箱、密码，昵称可选（认证层提供默认显示名）。密码建议 12–128 字符，支持密码管理器
+1. 用户在 `/register` 填邮箱、密码，昵称可选（认证层提供默认显示名）。密码策略见 ARCHITECTURE 的 Account and mail lifecycle，支持密码管理器
    粘贴，不强制符号拼凑；由框架做慢哈希。注册/重发/找回入口校验
    [Turnstile](https://developers.cloudflare.com/turnstile/plans/)（免费方案可用），
    叠加限流，而非把 CAPTCHA 当唯一额度保护。
@@ -653,6 +653,9 @@ PR 运行只读 CI，及在 Tunnel/loopback 入口前提下保存 Cloudflare IP 
 随后 owner 明确批准“合并 PR #1 并部署，先不启用 AI”。按此执行账号版本上线，
 保持 `AI_ENABLED=0`；不等待真实 Agent 验收来发布账号功能，也不因此视为 Agent
 验收通过。真实注册/Turnstile/邮件全流程在上线后由 owner 操作验证，记录见 HANDOVER。
+
+Owner 随后要求新密码最低 8 字符，最低组合要求仅为英文字母加数字，不要求特殊
+字符或大小写混合。注册和重置统一执行，现有账号登录不增加格式限制；实际契约见 ARCHITECTURE。
 
 ### 11.9 本地实施落点（2026-10-08）
 

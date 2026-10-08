@@ -2,7 +2,8 @@
 
 **Written 2026-10-08: PR #1 merged and the verified-email account version
 successfully deployed. AI remains disabled. Real owner registration and later
-Agent acceptance remain outstanding.**
+Agent acceptance remain outstanding. Owner-requested password-policy follow-up
+is implemented and locally verified; verify its latest main CI/live revision.**
 
 Runtime contracts: [ARCHITECTURE](ARCHITECTURE.md). Operations:
 [DEPLOYMENT](DEPLOYMENT.md). Debugging: [GOTCHAS](GOTCHAS.md). Design:
@@ -16,6 +17,8 @@ anyone may register, daily login uses email/password, registration verifies
 email with a six-digit code, and old unowned chats are explicitly not migrated.
 On 2026-10-08 the owner explicitly approved merging PR #1 and deploying,
 with AI kept off. Do not ask these approvals again or enable AI during this release.
+The subsequent owner request changes new-password requirements; its decision
+is in PLANNING §11.8 and its runtime contract in ARCHITECTURE.
 
 [PR #1](https://github.com/sileneer/utils/pull/1) was squash-merged as
 `b57f458b45d3c2ab5906f86223413862350f9a19`. Its exact reviewed head was
@@ -26,11 +29,12 @@ Live runtime and public-route verification passed. Release evidence is in §7.
 
 ## 2. Working tree
 
-Local `main` includes the merged account/chat implementation. This operational
-documentation refresh records the approved release and remaining acceptance;
-it changes no application behavior. No uncommitted application work remains.
-Any subsequent documentation push to main still runs the full deployment
-pipeline; verify that run and its actual live revision before ending work.
+Local `main` includes the merged account/chat implementation and this focused
+password-policy follow-up: auth options/route validation, registration/reset
+form validation, localized hints, auth regression tests and canonical docs.
+No dependency, schema, secret or AI activation changes are included. After
+committing this work, verify its full main CI/CD run and actual live revision
+before ending the session. Local lint, 28 tests and full build passed.
 
 The former submission branch is `codex/verified-email-chat`. Integration
 `c14b114`, dependency-stage Docker fix `854192c` and documentation head
@@ -56,7 +60,7 @@ and now applies in the recreated container. Preserve this ingress boundary.
 ## 4. Next work, in order
 
 1. **Owner-operated real account acceptance.** Open `/register`, enter the
-   intended email and a 12–128-character password directly in the website,
+   intended email and a password meeting ARCHITECTURE's policy directly in the website,
    complete Turnstile if prompted, verify the received code, then explicitly
    log in and log out. Do not collect passwords or OTPs in chat. Production
    Turnstile loaded and displayed automatic widget success; the app's real
@@ -108,9 +112,14 @@ insufficient system resources. Do not alter ACLs or build on the 1 GB VM.
 
 **Passed:**
 
-- Local lint, 27 tests and full production build/type-check/static generation/
-  standalone sanitization; `git diff --check`. No new application changes
-  followed those checks. Ubuntu Node 22 release CI also passed all these gates.
+- Password-policy follow-up: local lint, 28 tests and full production build/
+  type-check/static generation/standalone sanitization passed. Tests prove an
+  eight-character letter/digit password registers and logs in, an eight-character
+  reset password (including a symbol) succeeds and revokes the old session;
+  short/missing-letter/missing-digit/overlong/non-string inputs are rejected
+  for signup/reset before mail or account side effects. Invalid reset passwords
+  do not consume the valid reset OTP. Production acceptance must use this
+  follow-up's exact revision. Prior initial-release CI passed its 27-test suite.
 - Full PR image acceptance at `854192c` and exact head `df2f21c`; original
   dependency toolchain failure is fixed (GOTCHAS §J). Release CI ran the same
   complete image/startup/migration/persistence/backup-restore gate before publishing.

@@ -16,7 +16,7 @@
     "defaultName": "Reader",
     "code": "Verification code",
     "codeHint": "Six digits. Expires after 10 minutes. A new code replaces the previous one.",
-    "passwordHint": "Use 12–128 characters. Password-manager paste is supported.",
+    "passwordHint": "Use 8–128 characters, including at least one letter (A–Z or a–z) and one number. Password-manager paste is supported.",
     "emailInvalid": "Enter a valid email address.",
     "required": "This field is required.",
     "codeInvalid": "Enter the six-digit code.",

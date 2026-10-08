@@ -107,7 +107,12 @@ export function AccountForm({ mode }: { mode: Mode }) {
     email: z.email(t("emailInvalid")).max(254, t("emailInvalid")),
     password:
       mode === "register" || (mode === "reset" && resetStep)
-        ? z.string().min(12, t("passwordHint")).max(128, t("passwordHint"))
+        ? z
+            .string()
+            .min(8, t("passwordHint"))
+            .max(128, t("passwordHint"))
+            .regex(/[A-Za-z]/, t("passwordHint"))
+            .regex(/[0-9]/, t("passwordHint"))
         : mode === "login"
           ? z.string().min(1, t("required"))
           : z.string(),

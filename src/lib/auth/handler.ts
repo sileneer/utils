@@ -71,8 +71,10 @@ export async function handleAuth(request: Request) {
     if (
       (route === "/sign-up/email" || route === "/email-otp/reset-password") &&
       (typeof body.password !== "string" ||
-        body.password.length < 12 ||
-        body.password.length > 128)
+        body.password.length < 8 ||
+        body.password.length > 128 ||
+        !/[A-Za-z]/.test(body.password) ||
+        !/[0-9]/.test(body.password))
     )
       return json("bad_request", 400);
     if (

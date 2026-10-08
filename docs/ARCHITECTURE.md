@@ -187,7 +187,10 @@ Refresh restores history/draft, not a stream. Rejected sends restore drafts.
 
 Register email/password/name -> unverified credential (no session) -> six-digit
 email OTP -> verified -> explicit password login. Passwords use framework hashing
-and 12–128 character validation. OTP expires in 600 seconds, allows five incorrect
+and 8–128 character validation with at least one ASCII letter and one digit for
+registration/reset. Symbols are allowed; uppercase/lowercase mixing is optional.
+Login accepts existing credentials without reapplying creation rules.
+OTP expires in 600 seconds, allows five incorrect
 attempts, rotates on resend and is atomically consumed; storage is an HMAC digest.
 Verification and reset identifiers have different purposes. Reset revokes sessions.
 Cookies are HttpOnly, host-only, SameSite=Lax, Secure with HTTPS baseURL; 14-day

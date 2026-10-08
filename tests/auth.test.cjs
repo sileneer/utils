@@ -67,8 +67,33 @@ function cookie(response) {
     .join("; ");
 }
 const email = "reader@example.test",
-  password = "correct-horse-battery-123";
+  password = "reader12";
 let loginCookie;
+
+test("signup and reset reject short passwords or missing letters/numbers before side effects", async () => {
+  for (const candidate of [
+    "abc1234", "abcdefgh", "12345678", "!!!!1234", "Abc!!!!!",
+    "a".repeat(128) + "1", null, 12345678,
+  ]) {
+    for (const route of ["sign-up/email", "email-otp/reset-password"]) {
+      const response = await post(route, {
+        email: "policy@example.test",
+        name: "Policy",
+        password: candidate,
+        otp: "000000",
+        turnstileToken: "test",
+      });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: "bad_request" });
+    }
+  }
+  assert.equal(deliveries.length, 0);
+  assert.equal(
+    database.getDatabase().prepare("SELECT count(*) n FROM user").get().n,
+    0,
+  );
+});
+
 test("register without session; OTP hashed; unverified password login cannot mail or authorize", async () => {
   const response = await post("sign-up/email", {
     email: "READER@EXAMPLE.TEST",
@@ -197,11 +222,19 @@ test("reset purpose rejects verification code and revokes previous login; logout
     200,
   );
   const resetOTP = code(email),
-    newPassword = password + "-new";
+    newPassword = "R!234567";
   assert.equal(
     (await post("email-otp/verify-email", { email, otp: resetOTP })).status,
     400,
   );
+  for (const invalid of ["abc1234", "abcdefgh", "12345678"]) {
+    assert.equal(
+      (await post("email-otp/reset-password", {
+        email, otp: resetOTP, password: invalid,
+      })).status,
+      400,
+    );
+  }
   assert.equal(
     (
       await post("email-otp/reset-password", {
