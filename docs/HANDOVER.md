@@ -37,8 +37,10 @@ was refreshed and matches that base. The authorized submission includes:
 | Approved accounts | Better Auth/SQLite, migrations and backup/admin/start scripts; registration/verification/login/reset forms; Brevo and Turnstile adapters; persistent limits, user-owned conversations and AI quota/tool boundaries |
 | Supporting release preparation | DESIGN registration, package/lock, Docker/start changes, environment example, standalone artifact sanitization, isolated final-image smoke script, read-only PR acceptance workflow, publication gate and canonical documentation |
 
-The approved changes are being reviewed for the first check-branch submission.
-No production deployment has occurred. `.env.example` is the only tracked environment file; ignored
+The initial integration was committed as `c14b114`, pushed and attached as
+[draft PR #1](https://github.com/sileneer/utils/pull/1). The current Docker fix and
+its documentation are awaiting a follow-up commit. No production deployment has
+occurred. `.env.example` is the only tracked environment file; ignored
 `data/` contains test databases, caches and local evidence. Do not import old
 JSON conversations or expose the explicit QA fixtures.
 
@@ -78,11 +80,15 @@ new environment configuration and acceptance before this work is released.
    standalone startup/routes, migration, volume persistence across restart and
    backup restore. `.github/workflows/acceptance.yml` runs it on PRs with read-only
    permissions and no publish/deploy; the production workflow gates publication
-   on the same check. These changes are local and have not run in Actions.
+   on the same check. The first
+   [Actions run](https://github.com/sileneer/utils/actions/runs/37787836712) passed
+   Ubuntu install/lint/tests, but failed Docker npm ci because node-gyp could not
+   find Python. The dependency-stage toolchain and stale binding COPY fix are
+   now prepared; commit/push them and wait for the complete image check.
    No Windows Docker exists. WSL host enumeration found Ubuntu, but startup
    failed with insufficient system resources; do not build on the 1 GB VM
-   (DEPLOYMENT §9). Git approval is now received: commit/push the check branch and
-   create a draft PR, without merging to main or deploying.
+   (DEPLOYMENT §9). The authorized branch/draft PR exists; CI fixes remain within
+   that scope, without merging to main or deploying.
 3. **Complete service/Agent acceptance.** The owner requested more generous AI
    limits; initial values are recorded in PLANNING §11.8 and saved on the server.
    `AI_ENABLED=0` remains; production was not restarted. Production CAPTCHA
@@ -117,7 +123,7 @@ new environment configuration and acceptance before this work is released.
 | Public AI quota | Owner requested larger limits; initial policy in PLANNING §11.8 saved server-side, AI disabled |
 | Cloudflare client IP trust | Explicitly authorized; loopback-only Docker binding rechecked and server env prepared; applies at later container recreation |
 | “Tencent” meaning | Unconfirmed; no Tencent service configured |
-| Commit/check-branch push/draft PR | Explicitly authorized; being prepared on codex/verified-email-chat |
+| Commit/check-branch push/draft PR | Authorized and completed: initial c14b114, codex/verified-email-chat, draft PR #1 |
 | Merge/deploy | Separate authorization not received; not implied by approving a test branch/PR |
 | Prior independent decisions | VM external IP, docs-only pipeline filtering, Docker on Windows and skills-loading meaning remain in PLANNING/DEPLOYMENT |
 
@@ -146,11 +152,15 @@ Do not weaken ACLs. No Docker is installed on the development machine.
 
 - `npm run lint`, `npm test` (27/27), and the complete `npm run build` including
   TypeScript/static generation and standalone sanitization. `git diff --check`
-  also passes. CI has not run for these uncommitted changes.
+  also passes. PR CI execution is recorded below; production CI has not run.
 - After adding the final-image gate, lint/test/build were rerun successfully;
   the standalone filename scan again found zero env/database/backup artifacts.
   Both workflow YAML files parse and the image smoke script passes Node syntax
   checking. This proves only preparation; Docker execution is still pending.
+- First PR run `37787836712` passed Ubuntu Node 22 install/lint/27 tests and the
+  GitGuardian check, but failed the complete image dependency install before
+  smoke acceptance. Dependency build tools and version-13 packaging were fixed
+  for a new run (GOTCHAS §J); do not report full-image success yet.
 - Real pinned Better Auth and SQLite tests cover verified password login,
   hash-only OTP storage, expiry/wrong/replaced/single-use/concurrent codes,
   resend limits, rejected CAPTCHA, mail-failure recovery, reset revocation,

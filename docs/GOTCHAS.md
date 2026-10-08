@@ -441,6 +441,18 @@ false, so ordinary/unverified password login cannot bypass CAPTCHA mail budgets.
 package.json. Windows native query reported SQLite 3.53.4. This does not prove
 Node 22 Debian image startup; Docker/CI acceptance remains required.
 
+The first complete-image PR run exposed an additional install difference:
+`npm ci` with Node 22's npm 10.9.9 invoked `node-gyp rebuild`; Debian slim lacked
+Python and failed before the app build, whereas the Ubuntu runner had the
+toolchain. Supply Python, make and g++ only in the Docker dependency stage;
+the runner remains compiler-free. Version 13 carries its own prebuild/loader
+and no longer depends on `bindings` or `file-uri-to-path`; those absent packages
+must not appear in explicit Docker COPY instructions. Package-level probes and
+an existing Windows node_modules directory do not validate a clean image install.
+Upstream [binding selection](https://github.com/WiseLibs/better-sqlite3/blob/v13.0.3/binding.gyp)
+and [node-gyp requirements](https://github.com/nodejs/node-gyp#on-unix) explain
+the dependency-stage prerequisites; rerun the full-image gate after fixing them.
+
 ### Standalone includes local env even with tracing excludes
 
 **Symptom** `.next/standalone/.env` existed after a green local build.

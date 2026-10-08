@@ -78,8 +78,10 @@ query. A failure prevents image publication and the dependent deploy job.
 requests or manual dispatch, plus Node 22 lint/tests. It has only contents-read
 permission and neither registry login/push nor GCP/deployment steps. Use a draft
 PR for external Linux acceptance before separately authorizing a production
-release. This workflow/script is prepared locally; its first Actions execution
-remains pending. Input/output support follows the pinned
+release. Its first execution passed Ubuntu lint/tests but exposed the dependency
+stage's missing native-build tools (GOTCHAS §J); a successful full-image result
+is still required. Python/make/g++ are present only in the dependency build stage,
+not the deployed runner. Input/output support follows the pinned
 [build-push-action v6 contract](https://github.com/docker/build-push-action/blob/v6/action.yml).
 
 **The deploy job holds no credentials.** It federates a GitHub OIDC token
