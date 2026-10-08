@@ -326,10 +326,19 @@ SDK gets its explicit runtime/provider allowlist.
   `docker exec utils-utils-1 node scripts/database.cjs admin <owner-email>`.
   This changes only that verified active account; never promote first signup.
 - Before migration the CLI makes an API-based coherent backup. Daily backup script
-  `deploy/backup.sh` needs to be copied manually and installed in the deploy user's
-  scheduler **after release** (e.g. daily 03:15 UTC, with scheduler timezone set
-  explicitly). It writes owner-readable backups under the existing persistent
-  data volume. Scheduler/off-machine encrypted copying/retention are not installed.
+  `deploy/backup.sh` is installed manually as `/opt/utils/backup.sh`, owned by
+  utils-deploy, mode 750. Transfer with LF line endings (also enforced for shell
+  files by `.gitattributes`); verify with `bash -n` and execute once before scheduling.
+  The script uses a private `flock` lock to prevent overlapping backups and the
+  SQLite backup API to include outstanding WAL pages.
+- The utils-deploy crontab runs daily at 03:15 on the UTC host:
+  `15 3 * * * /opt/utils/backup.sh >> /opt/utils/backup.log 2>&1`.
+  Verify `cron.service` is active and `timedatectl` reports `Etc/UTC` or `UTC`;
+  preserve unrelated jobs when installing. This is 04:15 in London during BST
+  and 03:15 during GMT. Precreate the log with mode 600. Backup files are mode
+  600, uid 1001, under `/app/data/backups` (directory mode 700). The deploy workflow
+  does not synchronize this host script. Off-machine copying and automatic
+  retention remain unconfigured; backups must not be silently pruned.
 - Manual backup:
   `docker exec utils-utils-1 node scripts/database.cjs backup /app/data/backups/manual.sqlite`.
   A volume backup alone does not protect against VM loss; copy protected backups

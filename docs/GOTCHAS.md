@@ -527,3 +527,15 @@ account, mail or AI call was created by these probes.
 Use the protected origin for a batch of negative application checks, preserving
 origin/auth/CAPTCHA validation. Do not weaken public protection or rate limits
 to accommodate a diagnostic; origin checks do not prove a real browser signup.
+
+### Raw Windows shell-script transfer fails before Bash starts
+
+**Symptom** directly executing a manually transferred backup script returned 127:
+`env: 'bash\r': No such file or directory`, although `bash -n` returned success.
+**Cause** raw Windows working-tree bytes retained CRLF in the shebang; syntax
+checking explicitly invokes Bash and does not exercise executable startup.
+**Fix** normalize CRLF to LF at the transfer boundary, reject remaining carriage
+returns, then test both syntax and direct execution before installing cron.
+`.gitattributes` enforces LF for shell files in future checkouts. The failed run
+installed no schedule; a successful backup and isolated restore preceded cron
+installation. No production database replacement or app restart was needed.
