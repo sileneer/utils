@@ -177,7 +177,7 @@ async function main() {
       "--mount", "type=volume,source=" + volume + ",target=/app/data",
       "-e", "AI_ENABLED=0", "-e", "APP_URL=http://127.0.0.1:3000",
       "-e", "ANTHROPIC_BASE_URL=http://127.0.0.1:9",
-      "-e", "ANTHROPIC_AUTH_TOKEN=" + randomUUID(),
+      "-e", "AI_API_KEY=" + randomUUID(),
       "-e", "ANTHROPIC_MODEL=image-runtime-model",
       "-e", "AI_MODELS=" + JSON.stringify([{id:"image-runtime-model",name:"Runtime image model"},{id:"image-alternative",name:"Image alternative"}]), image);
     containerCreated = true;

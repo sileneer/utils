@@ -18,6 +18,24 @@ test('runtime models/default are public allowlisted metadata; custom model has n
   assert.ok(!JSON.stringify(config).includes(process.env.SENSENOVA_API_KEY));
 });
 
+test('generic key takes priority; blank/missing names retain SDK and legacy aliases', () => {
+  const canonical=randomUUID(),sdkAlias=randomUUID(),legacy=process.env.SENSENOVA_API_KEY;
+  process.env.AI_API_KEY=' '+canonical+' ';
+  process.env.ANTHROPIC_AUTH_TOKEN=sdkAlias;
+  assert.equal(aiConfiguration().apiKey,canonical);
+  assert.ok(!JSON.stringify(publicModelConfig()).includes(canonical));
+  process.env.AI_API_KEY='   ';
+  assert.equal(aiConfiguration().apiKey,sdkAlias);
+  delete process.env.AI_API_KEY;
+  assert.equal(aiConfiguration().apiKey,sdkAlias);
+  process.env.ANTHROPIC_AUTH_TOKEN='   ';
+  assert.equal(aiConfiguration().apiKey,legacy);
+  delete process.env.ANTHROPIC_AUTH_TOKEN;
+  assert.equal(aiConfiguration().apiKey,legacy);
+  delete process.env.SENSENOVA_API_KEY;
+  assert.equal(aiConfiguration(),undefined);
+});
+
 test('no catalog defaults to exactly configured model; missing values never fall back to provider defaults', () => {
   delete process.env.AI_MODELS;
   assert.deepEqual(publicModelConfig(),{defaultModel:'deepseek-flash',models:[{id:'deepseek-flash',name:'deepseek-flash'}]});
@@ -39,7 +57,7 @@ test('invalid URLs/catalogs/default membership/auxiliary IDs fail closed', () =>
 });
 
 test('SDK receives configured endpoint/token and selected main/auxiliary models, excluding auth/mail secrets', () => {
-  const canonical=randomUUID();process.env.ANTHROPIC_AUTH_TOKEN=canonical;
+  const canonical=randomUUID();process.env.AI_API_KEY=canonical;process.env.ANTHROPIC_AUTH_TOKEN=randomUUID();
   process.env.ANTHROPIC_BASE_URL='http://127.0.0.1:9/';
   process.env.BETTER_AUTH_SECRET=randomUUID();process.env.BREVO_API_KEY=randomUUID();process.env.TURNSTILE_SECRET_KEY=randomUUID();
   let env=agentEnvironment('qa-alternative');
@@ -47,7 +65,7 @@ test('SDK receives configured endpoint/token and selected main/auxiliary models,
   assert.equal(env.ANTHROPIC_BASE_URL,'http://127.0.0.1:9');
   assert.equal(env.ANTHROPIC_MODEL,'qa-alternative');
   for(const slot of ['SONNET','HAIKU','OPUS']) assert.equal(env['ANTHROPIC_DEFAULT_'+slot+'_MODEL'],'qa-alternative');
-  for(const key of ['BETTER_AUTH_SECRET','BREVO_API_KEY','TURNSTILE_SECRET_KEY','SENSENOVA_API_KEY','AI_MODELS','DATABASE_PATH'])assert.equal(key in env,false);
+  for(const key of ['BETTER_AUTH_SECRET','BREVO_API_KEY','TURNSTILE_SECRET_KEY','AI_API_KEY','SENSENOVA_API_KEY','AI_MODELS','DATABASE_PATH'])assert.equal(key in env,false);
   process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL='aux-model';env=agentEnvironment('qa-alternative');assert.equal(env.ANTHROPIC_DEFAULT_HAIKU_MODEL,'aux-model');
   assert.throws(()=>agentEnvironment('unlisted'),/ai_configuration_missing/);
 });
@@ -58,8 +76,8 @@ test('a real disposable .env loads the quoted JSON catalog and canonical token a
   await fs.mkdir(directory,{recursive:true});
   try {
     const catalog=[{id:'dotenv-custom',name:'Model from .env'}];
-    await fs.writeFile(path.join(directory,'.env'),['ANTHROPIC_BASE_URL=http://127.0.0.1:9','ANTHROPIC_AUTH_TOKEN='+randomUUID(),'ANTHROPIC_MODEL=dotenv-custom',"AI_MODELS='"+JSON.stringify(catalog)+"'"].join('\n'));
-    const child="require('./tests/register.cjs');for(const key of ['ANTHROPIC_BASE_URL','ANTHROPIC_AUTH_TOKEN','SENSENOVA_API_KEY','ANTHROPIC_MODEL','AI_MODELS','ANTHROPIC_DEFAULT_SONNET_MODEL','ANTHROPIC_DEFAULT_HAIKU_MODEL','ANTHROPIC_DEFAULT_OPUS_MODEL'])delete process.env[key];require('@next/env').loadEnvConfig(process.argv[1],false,{info(){},error(){}});const c=require('./src/lib/agent/config.ts');console.log(JSON.stringify({ready:Boolean(c.aiConfiguration()),public:c.publicModelConfig()}));";
+    await fs.writeFile(path.join(directory,'.env'),['ANTHROPIC_BASE_URL=http://127.0.0.1:9','AI_API_KEY='+randomUUID(),'ANTHROPIC_MODEL=dotenv-custom',"AI_MODELS='"+JSON.stringify(catalog)+"'"].join('\n'));
+    const child="require('./tests/register.cjs');for(const key of ['ANTHROPIC_BASE_URL','AI_API_KEY','ANTHROPIC_AUTH_TOKEN','SENSENOVA_API_KEY','ANTHROPIC_MODEL','AI_MODELS','ANTHROPIC_DEFAULT_SONNET_MODEL','ANTHROPIC_DEFAULT_HAIKU_MODEL','ANTHROPIC_DEFAULT_OPUS_MODEL'])delete process.env[key];require('@next/env').loadEnvConfig(process.argv[1],false,{info(){},error(){}});const c=require('./src/lib/agent/config.ts');console.log(JSON.stringify({ready:Boolean(c.aiConfiguration()),public:c.publicModelConfig()}));";
     const output=execFileSync(process.execPath,['-e',child,directory],{encoding:'utf8'});
     assert.deepEqual(JSON.parse(output),{ready:true,public:{defaultModel:'dotenv-custom',models:catalog}});
   } finally {await fs.rm(directory,{recursive:true,force:true});}

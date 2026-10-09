@@ -448,8 +448,9 @@ project ownership is a later decision if that threat must be covered.
 
 The AI environment contract and parser limits live in ARCHITECTURE §8. Edit only
 `/opt/utils/.env` on the host (600, owner utils-deploy); never copy its values into
-Git, a terminal transcript, the image or the browser. Existing SENSENOVA_API_KEY
-continues to work, so rotating/moving a key is not required for this rollout.
+Git, a terminal transcript, the image or the browser. Prefer AI_API_KEY for new
+configuration; existing token aliases continue to work, so rotating/moving a key
+is not required for this rollout. Alias precedence lives in ARCHITECTURE §8.
 When introducing this configuration version, add AI_MODELS from the commented
 example to preserve the existing five choices, and confirm ANTHROPIC_MODEL is
 explicitly set to the intended default. With no AI_MODELS, only that default is

@@ -9,7 +9,9 @@ type AIConfiguration = {
 };
 /** Runtime-only configuration. No provider, token or model fallback is baked in. */
 export function aiConfiguration(): AIConfiguration | undefined {
-  const apiKey = process.env.ANTHROPIC_AUTH_TOKEN?.trim() || process.env.SENSENOVA_API_KEY?.trim();
+  const apiKey = process.env.AI_API_KEY?.trim()
+    || process.env.ANTHROPIC_AUTH_TOKEN?.trim()
+    || process.env.SENSENOVA_API_KEY?.trim();
   const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim().replace(/\/+$/, "");
   const defaultModel = process.env.ANTHROPIC_MODEL?.trim();
   if (!apiKey || !baseUrl || !isAgentModelId(defaultModel)) return;

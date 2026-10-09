@@ -19,6 +19,8 @@ those settled approvals again.
 The owner now requests central runtime .env configuration of the AI endpoint,
 token, default and picker catalog. Implementation and draft PR preparation are
 authorized; publication follows the separate checkpoint in PLANNING §12.10.
+The owner also requested generic API-key naming; AI_API_KEY is now preferred,
+with existing aliases retained and the SDK child token mapped server-side.
 
 The fresh real AI acceptance budget is at most six turns, with no automatic
 retries. One was submitted through the normally authenticated independent Chrome
@@ -129,7 +131,9 @@ browser/provider data, private transcripts or credentials in docs, PRs or logs.
 
 ## 7. Verification state and limits
 
-62 regressions, local lint and complete production build/type checks passed.
+63 regressions, local lint and complete production build/type checks passed.
+The generic-key delta covers nonblank alias precedence, runtime dotenv loading,
+SDK child mapping and exclusion from public metadata.
 New offline configuration checks cover a quoted JSON catalog loaded from a
 disposable .env, canonical/legacy tokens, custom/removed models, safe public
 projection, default fallback, slot overrides and failure before SDK/reservation.

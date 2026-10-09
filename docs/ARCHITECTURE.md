@@ -393,7 +393,7 @@ values live in `/opt/utils/.env` (chmod 600) on the server.
 
 | Variable | Read by | Purpose |
 |---|---|---|
-| `ANTHROPIC_AUTH_TOKEN` | server config, SDK | required provider token; existing `SENSENOVA_API_KEY` remains a compatible fallback; canonical token wins if both set |
+| `AI_API_KEY` | server config | required provider key; first nonblank value wins in order: `AI_API_KEY`, compatible `ANTHROPIC_AUTH_TOKEN`, legacy `SENSENOVA_API_KEY`; mapped to SDK `ANTHROPIC_AUTH_TOKEN` only in its child environment |
 | `ANTHROPIC_BASE_URL` | server config, SDK | required HTTP(S) Anthropic-compatible endpoint; no credentials/query/fragment or `/v1` suffix; no implicit provider default |
 | `ANTHROPIC_MODEL` | server config, picker, chat route | required default model ID; must belong to the configured catalog |
 | `AI_MODELS` | server config | optional single-line JSON array of `{id,name}`, 1–20 unique IDs, at most 8192 characters; if omitted, offer only ANTHROPIC_MODEL with its ID as name |

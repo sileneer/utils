@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 // Disposable offline provider fixture; never queries an external service.
 module.exports = function configureAI() {
+  delete process.env.AI_API_KEY;
   delete process.env.ANTHROPIC_AUTH_TOKEN;
   for (const slot of ['SONNET', 'HAIKU', 'OPUS']) delete process.env['ANTHROPIC_DEFAULT_' + slot + '_MODEL'];
   process.env.SENSENOVA_API_KEY = require('node:crypto').randomUUID();
