@@ -28,9 +28,9 @@ test("book tools accept only bounded sections and literal search; env excludes a
   await fs.mkdir(path.join(directory, "book"), { recursive: true });
   await fs.writeFile(
     path.join(directory, "book", "01-test.md"),
-    "第1节第1条：睡眠。" +
+    "### 1. 睡眠\n" +
       "a".repeat(8000) +
-      "late-睡眠-entry" +
+      "\n### 2. late-睡眠-entry\n" +
       "b".repeat(7000),
   );
   for (let section = 2; section <= 8; section++) {
@@ -40,7 +40,7 @@ test("book tools accept only bounded sections and literal search; env excludes a
         "book",
         String(section).padStart(2, "0") + "-test.md",
       ),
-      ("睡眠" + "x".repeat(1000)).repeat(4),
+      Array.from({ length: 4 }, (_, i) => "### " + (i + 1) + ". 睡眠\n" + "x".repeat(1000)).join("\n"),
     );
   }
   await fs.writeFile(path.join(directory, "private.txt"), "must-not-read");
@@ -56,11 +56,12 @@ test("book tools accept only bounded sections and literal search; env excludes a
   assert.ok(
     [...found.content[0].text.matchAll(/read_section section=/g)].length <= 6,
   );
+  const late = await search.handler({ phrase: "late-睡眠-entry" });
   const hits = [
-    ...found.content[0].text.matchAll(/read_section section=1 offset=(\d+)/g),
+    ...late.content[0].text.matchAll(/read_section section=1 offset=(\d+)/g),
   ];
-  assert.equal(hits.length, 2);
-  const lateOffset = Number(hits[1][1]);
+  assert.equal(hits.length, 1);
+  const lateOffset = Number(hits[0][1]);
   assert.ok(lateOffset > 0);
   assert.match(
     (await read.handler({ section: 1, offset: lateOffset })).content[0].text,
@@ -74,7 +75,7 @@ test("book tools accept only bounded sections and literal search; env excludes a
   const next = await read.handler({ section: 1, offset: 3000 });
   assert.equal(next.content[0].text.split("\n")[1], "a".repeat(3000));
   assert.match(
-    (await read.handler({ section: 1, offset: 15000 })).content[0].text,
+    (await read.handler({ section: 1, offset: 16000 })).content[0].text,
     /\[End\]$/,
   );
   process.env.BETTER_AUTH_SECRET = "test";

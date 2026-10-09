@@ -1,0 +1,147 @@
+[
+  {
+    "question": "坐车安全带的建议在哪里？",
+    "phrase": "安全带",
+    "expected": [
+      "e-1-1"
+    ]
+  },
+  {
+    "question": "骑车头盔的建议在哪里？",
+    "phrase": "头盔",
+    "expected": [
+      "e-1-2"
+    ]
+  },
+  {
+    "question": "家里的烟雾报警器怎么找？",
+    "phrase": "烟雾报警器",
+    "expected": [
+      "e-1-3"
+    ]
+  },
+  {
+    "question": "咖啡因与休息的建议在哪里？",
+    "phrase": "咖啡因",
+    "expected": [
+      "e-3-4"
+    ]
+  },
+  {
+    "question": "账号二次验证的建议是什么？",
+    "phrase": "二次验证",
+    "expected": [
+      "e-14-1"
+    ]
+  },
+  {
+    "question": "双重验证的同义表达能否找到？",
+    "phrase": "双重验证",
+    "expected": [
+      "e-14-1"
+    ],
+    "kind": "synonym"
+  },
+  {
+    "question": "以房养老的风险在哪里？",
+    "phrase": "以房养老",
+    "expected": [
+      "e-17-6"
+    ]
+  },
+  {
+    "question": "澳大利亚学生保险条目在哪里？",
+    "phrase": "OSHC",
+    "expected": [
+      "e-32-7"
+    ]
+  },
+  {
+    "question": "留学生打工时数的条目在哪里？",
+    "phrase": "打工时数",
+    "expected": [
+      "e-32-3"
+    ]
+  },
+  {
+    "question": "感冒药重复成分的条目在哪里？",
+    "phrase": "对乙酰氨基酚",
+    "expected": [
+      "e-34-1"
+    ]
+  },
+  {
+    "question": "怀孕与布洛芬的条件在哪里？",
+    "phrase": "怀孕 布洛芬",
+    "expected": [
+      "e-34-5"
+    ],
+    "kind": "combined"
+  },
+  {
+    "question": "助听器条目的证据边界在哪里？",
+    "phrase": "助听器",
+    "expected": [
+      "e-33-17"
+    ]
+  },
+  {
+    "question": "腹泻对应的条目在哪里？",
+    "phrase": "腹泻",
+    "expected": [
+      "e-34-8"
+    ],
+    "kind": "synonym"
+  },
+  {
+    "question": "手机丢了的处置顺序在哪里？",
+    "phrase": "手机丢了",
+    "expected": [
+      "e-14-4"
+    ]
+  },
+  {
+    "question": "AI中转站的信息安全条目在哪里？",
+    "phrase": "AI 中转站",
+    "expected": [
+      "e-14-10"
+    ],
+    "kind": "combined"
+  },
+  {
+    "question": "服务器与备案的条目在哪里？",
+    "phrase": "服务器 备案",
+    "expected": [
+      "e-26-4"
+    ],
+    "kind": "combined"
+  },
+  {
+    "question": "境外医疗保险和留学保险分布在哪里？",
+    "phrase": "医疗 保险",
+    "expected": [
+      "e-21-4",
+      "e-32-7"
+    ],
+    "kind": "cross-section"
+  },
+  {
+    "question": "每晚睡觉的建议在哪里？",
+    "phrase": "每晚睡",
+    "expected": [
+      "e-2-13"
+    ]
+  },
+  {
+    "question": "书中是否有量子传送治疗？",
+    "phrase": "量子传送治疗",
+    "expected": [],
+    "kind": "absent"
+  },
+  {
+    "question": "第99节第999条是否存在？",
+    "phrase": "第99节第999条",
+    "expected": [],
+    "kind": "invalid"
+  }
+]

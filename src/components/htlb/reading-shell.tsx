@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowLeft, MessageSquare, Settings } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
+import { toast } from "sonner";
+import type { SourceDisclosure } from "@/components/chat/citation-preview";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { useChat } from "@/components/chat/use-chat";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -44,6 +46,12 @@ export function ReadingShell() {
   );
   const [desktopChat, setDesktopChat] = useState(true);
   const [mobileChat, setMobileChat] = useState(false);
+  const [sourceDisclosures, setSourceDisclosures] = useState<Record<string, SourceDisclosure>>({});
+  const [expandedChat, setExpandedChat] = useState(false);
+  const [readerRevision, setReaderRevision] = useState<string>();
+  const [returnTarget, setReturnTarget] = useState<{ messageId: string; top: number; expanded: boolean }>();
+  const [returnPosition, setReturnPosition] = useState<{ messageId: string; top: number }>();
+  const pendingNavigation = useRef<{ anchor: string; revision: string } | null>(null);
   const [book, setBook] = useState<{
     revision: string;
     anchors: Set<string>;
@@ -84,11 +92,22 @@ export function ReadingShell() {
         data.anchors.length <= 5000 &&
         data.anchors.every(isEntryAnchor)
       ) {
+        if (readerRevision && data.revision !== readerRevision) return;
         setBook((previous) =>
           previous?.revision === data.revision
             ? previous
             : { revision: data.revision, anchors: new Set(data.anchors) },
         );
+        const pending = pendingNavigation.current;
+        if (pending && pending.revision === data.revision) {
+          pendingNavigation.current = null;
+          if (data.anchors.includes(pending.anchor))
+            iframe.current?.contentWindow?.postMessage(
+              { channel: "utils-book", type: "navigate", ...pending },
+              location.origin,
+            );
+          else toast.error(c("sourceLocationMissing"));
+        }
         iframe.current?.contentWindow?.postMessage(
           {
             channel: "utils-book",
@@ -128,7 +147,7 @@ export function ReadingShell() {
         location.origin,
       );
     return () => window.removeEventListener("message", receive);
-  }, [book]);
+  }, [book, readerRevision, c]);
   useEffect(() => {
     if (book)
       iframe.current?.contentWindow?.postMessage(
@@ -141,18 +160,31 @@ export function ReadingShell() {
         location.origin,
       );
   }, [book, resolvedTheme]);
-  function navigate(anchor: string) {
-    if (!book?.anchors.has(anchor) || chat.revision !== book.revision) return;
+  function navigate(anchor: string, revision: string, messageId: string, top: number) {
+    if (!isEntryAnchor(anchor) || !isRevision(revision)) return;
+    setReturnTarget({ messageId, top, expanded: expandedChat });
+    setReturnPosition(undefined);
     setMobileChat(false);
-    iframe.current?.contentWindow?.postMessage(
-      {
-        channel: "utils-book",
-        type: "navigate",
-        revision: book.revision,
-        anchor,
-      },
-      location.origin,
-    );
+    setExpandedChat(false);
+    setSelection(undefined);
+    if (book?.revision === revision && book.anchors.has(anchor)) {
+      iframe.current?.contentWindow?.postMessage({ channel: "utils-book", type: "navigate", revision, anchor }, location.origin);
+    } else {
+      pendingNavigation.current = { anchor, revision };
+      setReaderRevision(revision);
+      setBook(undefined);
+      setBookFailed(false);
+      setBookReload(value => value + 1);
+    }
+  }
+  function returnToAnswer() {
+    if (!returnTarget) return;
+    setReturnPosition({ messageId: returnTarget.messageId, top: returnTarget.top });
+    if (wide) {
+      setDesktopChat(true);
+      setExpandedChat(returnTarget.expanded);
+    }
+    else setMobileChat(true);
   }
   const panel = (
     <ChatPanel
@@ -160,6 +192,13 @@ export function ReadingShell() {
       bookRevision={book?.revision}
       anchors={book?.anchors ?? new Set()}
       onCitation={navigate}
+      expanded={expandedChat}
+      onExpand={wide ? () => setExpandedChat(value => !value) : undefined}
+      returnPosition={returnPosition}
+      sourceDisclosures={sourceDisclosures}
+      onSourceDisclosure={(key, value) =>
+        setSourceDisclosures((previous) => ({ ...previous, [key]: value }))
+      }
       onClose={() => (wide ? setDesktopChat(false) : setMobileChat(false))}
       className="h-full w-full"
     />
@@ -261,6 +300,12 @@ export function ReadingShell() {
           </Button>
         </div>
       )}
+      {returnTarget && chat.messages.some(message => message.id === returnTarget.messageId) && !mobileChat && (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-1 text-xs">
+          <p className="min-w-0 truncate">{c("readingSource")}</p>
+          <Button variant="outline" className="h-10 shrink-0 text-xs" onClick={returnToAnswer}>{c("returnToAnswer")}</Button>
+        </div>
+      )}
       {selection && (
         <div className="flex shrink-0 items-center gap-2 border-b bg-muted px-3 py-1 text-xs">
           <span className="min-w-0 flex-1 truncate">
@@ -295,7 +340,7 @@ export function ReadingShell() {
         <iframe
           key={bookReload}
           ref={iframe}
-          src="/htlb/book"
+          src={readerRevision ? "/htlb/book?revision=" + encodeURIComponent(readerRevision) : "/htlb/book"}
           title={t("title")}
           className="min-w-0 flex-1 border-0"
           onLoad={() => {
@@ -310,7 +355,12 @@ export function ReadingShell() {
           }}
         />
         {wide && desktopChat && (
-          <div className="w-96 shrink-0 border-l xl:w-[420px]">{panel}</div>
+          <div className={expandedChat
+            ? "w-[min(65vw,48rem)] shrink-0 border-l"
+            : "w-96 shrink-0 border-l xl:w-[420px]"
+          }>
+            {panel}
+          </div>
         )}
       </div>
       {!wide && (

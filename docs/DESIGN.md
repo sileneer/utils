@@ -263,6 +263,25 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   All new copy is bilingual and touch controls remain at least 40px. Answer code
   and table scroll containers are keyboard focusable; references use a named group.
 
+### 5.6.3 Source previews and reading continuity — C+D, 2026-10-09
+
+- Register CitationPreview before use: existing Button/Collapsible/Skeleton show
+  the pinned entry title, bounded original excerpt, source revision and full-source
+  action. Fetch on explicit disclosure only; rendering a location never certifies
+  an answer's claims. Missing/wrong-version sources show a clear localized fallback.
+  No model call, new dependency, base component or token is introduced.
+- Desktop reading has two explicit chat widths: existing sidebar and expanded
+  (up to 48rem, leaving room for the original). Reuse labeled icon buttons;
+  resizing/opening cannot replace the shared controller or lose draft/scroll.
+- On mobile, citation navigation closes the existing Sheet and offers Return to
+  answer. Retain disclosed text/open state outside Sheet and restore the same
+  message position and draft; do not jump to the latest
+  message merely because a panel remounts. Keep touch controls at least 40px,
+  existing visualViewport/IME behavior and accessible focus restoration.
+- Account identity/logout move into an existing DropdownMenu; model/quota stay
+  compact. Answer copy, source disclosures and message-detail summaries remain
+  visible and wrap at 360px. Code/tables scroll within the message, not the page.
+
 ### 5.7 Public accounts — approved 2026-10-07
 
 - `/login`, `/register`, `/verify-email`, and `/reset-password` use the existing
