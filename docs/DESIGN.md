@@ -299,6 +299,25 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 - Locked chat links to login/register. Authenticated chat shows account and logout;
   private UI and browser state are scoped to the authenticated user.
 
+### 5.8 Administrator operations — owner request, 2026-10-09
+
+- Register OperationsDashboard before implementation: server-authorized `/admin`
+  page and read-only `/api/admin/operations`, using existing Card, Button, Badge,
+  Skeleton and Table primitives. No dependency, base component or color token.
+- Show bounded 24-hour/7-day aggregate request outcomes, reported token totals,
+  elapsed/first-text summaries with sample counts and missing fields, current
+  application guard state and backup success/failure/freshness. No message text,
+  email lists, provider logs, keys or native identifiers.
+- Manual refresh only, with bounded request timeout and clear failure/empty
+  states. Localize all labels; wrap long values at 360px, semantic light/dark
+  styling and 40px touch controls. Refresh never submits an AI request.
+- Add an administrator-only link to the existing account menu; access is enforced
+  from current database role/status on every API/page request.
+- Keyboard-aware mobile reading uses the visible viewport height only while a
+  text control is focused; otherwise preserve existing dynamic viewport layout.
+  Keep the same controller/draft/disclosure state, respect safe-area padding,
+  and never submit Enter during IME composition.
+
 ## 6. Motion
 
 - Micro-interactions (hover, focus, press): CSS transitions, `150ms ease-out`.

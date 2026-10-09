@@ -121,6 +121,7 @@ test("auth and UUID guards apply to chat and history; identity exposes only pers
     id: "owner",
     name: "Owner",
     email: "owner@example.test",
+    isAdmin: false,
   });
   assert.equal(identity.availability.remaining, 100);
   assert.equal(identity.availability.service, "ready");

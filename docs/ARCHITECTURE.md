@@ -137,7 +137,9 @@ are case-insensitive literal terms, max 100 characters and six whitespace-separa
 terms; all terms must match the entry. Four explicit alias groups cover 2FA,
 diarrhea, insomnia and analgesic expressions. Exact/title matches rank first,
 with at most two per section on the first pass, then deferred matches fill six
-slots. Stable section/item ties and entry deduplication make results reproducible.
+slots. For multi-term title-score ties, a sliding window ranks nearby occurrences of all
+term groups ahead of widely separated mentions; section/item ties and entry
+deduplication keep results reproducible.
 Each excerpt is at most 480 characters; total output is at most 4,000 characters,
 including title, section/item and offset locators for targeted reads. Section reads return up to 3,000 source characters
 plus a continuation offset; pagination retains access to the full original.
@@ -411,3 +413,38 @@ set in the Dockerfile; the app runs as the non-root `nextjs` user (uid 1001).
 - Turn quotas are conservative; accurate provider billing depends on actual SDK
   usage data and provider budgets. Real service/SDK and deployment acceptance
   status lives in HANDOVER §7.
+
+## 10. Administrator operations
+
+GET `/api/admin/operations` and `/admin` resolve currentUser and independently
+check the current SQLite role, verified-email flag and active status. A stored
+session/browser role claim cannot grant access; ordinary accounts receive 403
+from the API, anonymous accounts 401, and unauthorized pages redirect to login
+or return not-found. Session identity adds only isAdmin for the menu link.
+All private operation responses are no-store and vary by Cookie.
+
+The explicit 24-hour/7-day period selects the latest 10,000 ai_usage attempts
+with a truncation marker if more exist. Retries remain distinct attempts.
+Complete/failed/stopped/released/reserved/unknown outcomes are counted separately.
+Only recordedDetails' public numeric allowlist is aggregated: no message body,
+email list, native ID, provider JSON, cost or credential is returned. Legacy/
+missing usage is unavailable, not zero; cache field coverage has separate sample
+counts. Timing excludes labeled estimates. Median averages the middle pair for
+even samples; P95 uses nearest rank only with at least 20 samples. Aggregate
+integer overflow fails the response safely. These are descriptive measurements,
+not model rankings, bills or an upstream health promise.
+
+The local backup reader consumes only a small regular `backups/status.json`
+beside DATABASE_PATH, validating the version, state and numeric timestamps.
+It returns allowlisted success/attempt times, size and verified-integrity flag,
+never filenames, paths or raw errors. Complete success older than 36 hours is
+stale; an attempt running for over 30 minutes is interrupted/failed; malformed
+or missing records are unavailable. scripts/backup.cjs writes atomic mode-600
+status and coherent SQLite backups, checks restored integrity/FKs, retains prior
+success on failure and never prunes. Host rollout/restore and off-machine plan
+live in DEPLOYMENT §11–12.
+
+ReadingShell adjusts fixed mobile viewport bounds only for a focused text input
+with an actual visual-height reduction, ignoring desktop resize and pinch zoom.
+This retains existing controller/draft/source state; real-device acceptance is
+recorded separately in HANDOVER.

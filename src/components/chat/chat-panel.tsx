@@ -10,6 +10,7 @@ import {
   Loader2,
   LogOut,
   UserRound,
+  Activity,
   Maximize2,
   Minimize2,
   MessageSquarePlus,
@@ -212,6 +213,7 @@ export function ChatPanel({
                 <p className="max-w-64 break-words px-2 py-2 text-xs">
                   {chat.user.name} · {chat.user.email}
                 </p>
+                {chat.user.isAdmin && <DropdownMenuItem asChild className="min-h-10"><Link href="/admin"><Activity />{account("operations")}</Link></DropdownMenuItem>}
                 <DropdownMenuItem
                   className="min-h-10"
                   onClick={() => void chat.logout()}

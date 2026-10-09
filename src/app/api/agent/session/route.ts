@@ -1,3 +1,4 @@
+import { isAdministrator } from "@/lib/admin/access";
 import { currentUser } from "@/lib/agent/auth";
 import {
   isValidSessionId,
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
   return Response.json(
     {
       authed: true,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: { id: user.id, email: user.email, name: user.name, isAdmin: isAdministrator(user.id) },
       availability: availability(user.id),
       ...(active ? { active } : {}),
       ...(id
