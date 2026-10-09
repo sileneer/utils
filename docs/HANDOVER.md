@@ -8,7 +8,7 @@ Runtime contracts: [ARCHITECTURE](ARCHITECTURE.md) §5. Operations:
 ## 1. Authorization
 
 The owner approved implementing §13 A+B+C. Implementation and local verification
-are complete. Prepare the feature PR for review; merging and deployment still need
+are complete. The feature PR is ready for review; merging and deployment still need
 separate owner approval. Do not modify production during this account preview.
 Previously settled account/admin/AI and env-release approvals remain settled.
 Never mint/export production sessions or bypass normal authentication. Off-machine
@@ -17,7 +17,8 @@ backup uploads and pruning remain unapproved.
 ## 2. Checkout and release position
 
 Branch: `codex/site-wide-account`, based on production main `7f9d17d`.
-The feature, tests and matching documentation ship together; no new dependency,
+Draft [PR #7](https://github.com/sileneer/utils/pull/7) contains the feature, tests
+and matching documentation. Its acceptance workflow is pending; no new dependency,
 database schema or production env change. Production has not been changed by this
 feature. Prior env-release proof lives in ignored
 `data/investigation/ai-env/release-receipt.json`.
