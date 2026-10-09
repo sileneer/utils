@@ -28,8 +28,10 @@ Base main is `8ea3c7811eb745a09d3173f1003841b112051ab8`. C+D was published throu
 [PR #3](https://github.com/sileneer/utils/pull/3), with feature image acceptance
 37953518834 and CI/CD 37953929046; matching-record CI/CD 37955293934 also passed.
 Actual production container revision matched the record and was healthy again
-in this investigation. New batch files and matching docs belong together in the
-operations commit; PR exact-head image acceptance remains pending at this writing.
+in this investigation. Implementation and matching docs are committed and pushed through draft
+[PR #4](https://github.com/sileneer/utils/pull/4). The working tree is clean.
+Use that PR exact-head checks as the current Linux/image acceptance authority;
+the matching receipt lives under ignored investigation evidence.
 Do not merge/deploy until this batch is separately approved.
 
 Keep `data/investigation/chat-e/` and earlier investigation folders, cached book
@@ -50,7 +52,7 @@ revocation; Linux final-image backup-status/restore acceptance.
 
 ## 4. Next work, in order
 
-1. Complete exact-head PR acceptance and record its result. Reviewable local
+1. Inspect exact-head PR acceptance and its receipt before publication. Reviewable local
    admin page is http://localhost:3000/admin (disposable verified mock account).
    Source/chat preview is http://localhost:3001/htlb (explicit canned responses).
 2. Await owner login to the independent production browser, then run the bounded
