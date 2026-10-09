@@ -104,7 +104,11 @@ truncation, stale/interrupted/malformed backup manifests, coherent backup restor
 two independent local sessions revoked on password reset, viewport guards and
 multi-term ranking. Local lint and complete production build/type checks passed;
 final formatting was rechecked successfully before commit. No local Docker is available;
-Linux Node 22/final-image checks must run at the exact PR head.
+Linux Node 22/final-image acceptance passed at implementation/record head
+`1e6675a` in run [37965351144](https://github.com/sileneer/utils/actions/runs/37965351144):
+startup/private gates, persistence, coherent backup restoration and new scheduled
+backup status all passed. GitGuardian and qlty also passed. This matching record
+uses the same workflow; inspect the final PR head checks before publication.
 
 Final local admin UI was inspected in English/Chinese, light/dark and at
 360/768/1280px, without horizontal page overflow; action controls are 40px high.
