@@ -761,3 +761,8 @@ Controlled account confirmation dialogs have no Radix trigger in their tree.
 Without an explicit close-focus target, cancelling can leave keyboard focus on
 the document body. Keep the initiating button ref and restore it through
 `onCloseAutoFocus`; check cancellation after the closing animation.
+
+A headed Windows Chrome can reserve 15px for its vertical scrollbar. Compare
+`scrollWidth <= innerWidth` to assert no horizontal overflow; requiring equality
+mislabels ordinary scrollbars as a layout failure. Keep the selected emulated
+viewport and the actual content width in the receipt.
