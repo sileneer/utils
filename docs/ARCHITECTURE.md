@@ -192,11 +192,21 @@ not reserve usage; the existing atomic send-time guard remains authoritative.
 
 ### Model allowlist
 
-src/lib/agent/models.ts is the source of truth. Default remains owner-selected
-deepseek-flash (DeepSeek V4.1 Flash); alternatives remain deepseek-v4-flash,
-sensenova-6.8-flash-lite, glm-5.2 and kimi-k3. The picker has its own row, uses
-localized neutral book-Q&A hints, and persists htlb_chat_model:<user-id> in localStorage.
-These hints do not claim measured speed, reliability or relative pricing.
+Runtime .env is the source of truth: ANTHROPIC_MODEL selects the default;
+AI_MODELS supplies the picker allowlist and display names (environment contract
+in §8). There is no compiled provider/model catalog or default. The existing
+no-store session/status API exposes only modelConfig {defaultModel, models};
+server-only config.ts keeps credentials/endpoint out of browser responses.
+Missing/invalid provider configuration disables AI before reservation or SDK work,
+while reading, authentication, history and deployment health remain available.
+
+The picker keeps its secondary row, localized neutral default/alternative hints,
+and htlb_chat_model:<user-id> preference. Restore/status refresh validates a saved
+preference against the runtime list; a removed ID falls back to the configured
+default. The server independently applies the same allowlist/default fallback.
+Historical details validate bounded model-ID syntax separately, so removing a
+model from the picker preserves that turn's metadata (unlisted names show the ID).
+Hints do not claim measured speed, reliability or relative pricing.
 
 ## 4. Reader workspace and source versions
 
@@ -383,9 +393,11 @@ values live in `/opt/utils/.env` (chmod 600) on the server.
 
 | Variable | Read by | Purpose |
 |---|---|---|
-| `SENSENOVA_API_KEY` | chat route | mapped to `ANTHROPIC_AUTH_TOKEN` for the SDK subprocess |
-| `ANTHROPIC_BASE_URL` | SDK | `https://token.sensenova.cn` — **no `/v1` suffix** |
-| `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL` | SDK | pin every model slot to one SenseNova id |
+| `AI_API_KEY` | server config | required provider key; first nonblank value wins in order: `AI_API_KEY`, compatible `ANTHROPIC_AUTH_TOKEN`, legacy `SENSENOVA_API_KEY`; mapped to SDK `ANTHROPIC_AUTH_TOKEN` only in its child environment |
+| `ANTHROPIC_BASE_URL` | server config, SDK | required HTTP(S) Anthropic-compatible endpoint; no credentials/query/fragment or `/v1` suffix; no implicit provider default |
+| `ANTHROPIC_MODEL` | server config, picker, chat route | required default model ID; must belong to the configured catalog |
+| `AI_MODELS` | server config | optional single-line JSON array of `{id,name}`, 1–20 unique IDs, at most 8192 characters; if omitted, offer only ANTHROPIC_MODEL with its ID as name |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL` | SDK | optional auxiliary-slot overrides; absent slots follow the selected main chat model |
 | `APP_URL` | auth | fixed trusted origin/base URL; production `https://utils.lzhdev.com`, local default `http://localhost:3000` |
 | `DATABASE_PATH` | database | default `<cwd>/data/utils.sqlite`; production `/app/data/utils.sqlite` |
 | `BETTER_AUTH_SECRET` | auth, OTP/metadata digests | server-generated random secret, at least 32 characters |
@@ -399,6 +411,15 @@ values live in `/opt/utils/.env` (chmod 600) on the server.
 | `AGENT_QUERY_TIMEOUT_MS` | chat route | wall-clock bound per query, default 180 000 |
 | `DRILL_FAIL_HEALTH` | `/api/health` | `1` → 503, to exercise the rollback path |
 | `HEALTHCHECK_URL` | `deploy.sh` (not the app) | healthchecks.io ping |
+
+Provider/config values are read at request time on the server, not as NEXT_PUBLIC
+build constants. Model IDs are 1–128 characters (letters/digits first, then
+letters/digits, dot, underscore, colon, slash or hyphen); names are 1–80 characters
+without control characters. Public catalog projection discards extra fields.
+The main SDK model option and ANTHROPIC_MODEL both receive the allowed selected
+model; only explicit runtime/provider variables enter the child environment.
+.env.example supplies commented setup examples, never credentials or image defaults.
+Deployment refresh procedure lives in DEPLOYMENT §12.
 
 `PORT=3000`, `HOSTNAME=0.0.0.0`, `HOME=/home/nextjs`, `NODE_ENV=production` are
 set in the Dockerfile; the app runs as the non-root `nextjs` user (uid 1001).

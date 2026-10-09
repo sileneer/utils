@@ -67,7 +67,11 @@ async function routeCheck() {
   const config = await request("/api/auth-config", 200);
   assert.deepEqual(await config.json(), { siteKey: "", available: false });
   const session = await request("/api/agent/session", 200);
-  assert.deepEqual(await session.json(), { authed: false, user: null });
+  assert.equal(session.headers.get("cache-control"), "no-store");
+  const modelConfig = process.argv[1] === "configured"
+    ? { defaultModel: "image-runtime-model", models: [{id: "image-runtime-model", name: "Runtime image model"}, {id: "image-alternative", name: "Image alternative"}] }
+    : { defaultModel: "", models: [] };
+  assert.deepEqual(await session.json(), { authed: false, user: null, modelConfig });
   await request("/api/agent/session?id=00000000-0000-4000-8000-000000000001", 401);
   await request("/api/agent/conversations", 401);
   await request("/api/admin/operations", 401);
@@ -166,6 +170,21 @@ async function main() {
     console.log(execNode(backupCheck));
     docker("exec",name,"node","scripts/backup.cjs");
     console.log(execNode(scheduledBackupCheck));
+    // Same accepted image, new runtime env, same volume; network remains disabled.
+    docker("rm", "-f", name);
+    containerCreated = false;
+    docker("run", "-d", "--name", name, ...constraints,
+      "--mount", "type=volume,source=" + volume + ",target=/app/data",
+      "-e", "AI_ENABLED=0", "-e", "APP_URL=http://127.0.0.1:3000",
+      "-e", "ANTHROPIC_BASE_URL=http://127.0.0.1:9",
+      "-e", "AI_API_KEY=" + randomUUID(),
+      "-e", "ANTHROPIC_MODEL=image-runtime-model",
+      "-e", "AI_MODELS=" + JSON.stringify([{id:"image-runtime-model",name:"Runtime image model"},{id:"image-alternative",name:"Image alternative"}]), image);
+    containerCreated = true;
+    await waitReady();
+    console.log(docker("exec", name, "node", "-e", "(" + routeCheck.toString() + ")().catch(error => { console.error(error.message); process.exit(1); })", "configured"));
+    execNode(databaseCheck);
+    console.log("Same-image runtime model configuration and retained private guards/data passed.");
     console.log("Final-image smoke acceptance passed; no mail, CAPTCHA or paid AI calls.");
   } finally {
     // Only unique resources created by this invocation are eligible for removal.

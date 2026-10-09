@@ -443,3 +443,27 @@ account/chat preservation and login before declaring off-machine protection done
 A same-project bucket protects against VM/disk loss, but does not isolate backup
 administration from compromise of the owner/project account. Separate account/
 project ownership is a later decision if that threat must be covered.
+
+### Runtime AI provider/model changes
+
+The AI environment contract and parser limits live in ARCHITECTURE §8. Edit only
+`/opt/utils/.env` on the host (600, owner utils-deploy); never copy its values into
+Git, a terminal transcript, the image or the browser. Prefer AI_API_KEY for new
+configuration; existing token aliases continue to work, so rotating/moving a key
+is not required for this rollout. Alias precedence lives in ARCHITECTURE §8.
+When introducing this configuration version, add AI_MODELS from the commented
+example to preserve the existing five choices, and confirm ANTHROPIC_MODEL is
+explicitly set to the intended default. With no AI_MODELS, only that default is
+offered. Preserve other auth/mail/CAPTCHA/quota variables and any intentional
+auxiliary-slot overrides; do not increase quotas or extend the query deadline.
+
+After editing the host file, recreate the service using the existing compose
+and its normal health checks (`docker compose up -d --force-recreate utils` from
+`/opt/utils`). A process restart alone does not reload Compose env_file values.
+The same accepted image reads new values at runtime; an image rebuild is not
+required. Check health, authenticated model selection/default, read-only status
+and administrator availability without submitting a paid test query. Existing
+browsers can refresh status or reload to fetch the updated model catalog.
+Invalid/missing AI configuration disables AI while keeping auth/reading/history
+and deployment health available. Roll back an env edit using the owner's retained
+values and recreate; never print credentials or restore a chat database for it.

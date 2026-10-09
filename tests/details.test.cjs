@@ -61,7 +61,8 @@ test("stored details and legacy usage expose only validated public fields", () =
   );
   assert.equal(recordedDetails(null), undefined);
   assert.equal(recordedDetails("bad JSON"), undefined);
-  assert.equal(parseMessageDetails({ model: "unknown" }), undefined);
+  assert.deepEqual(parseMessageDetails({ model: "retired-custom-model" }), { model: "retired-custom-model" });
+  assert.equal(parseMessageDetails({ model: "bad model\n" }), undefined);
   assert.equal(parseMessageDetails({ durationMs: -1 }), undefined);
   assert.equal(parseMessageDetails({ tokens: { input: 1 } }), undefined);
 });

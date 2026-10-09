@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 require("./register.cjs");
+require("./ai-fixture.cjs")();
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
@@ -462,4 +463,43 @@ test.after(async () => {
   Module._load = load;
   database.getDatabase().close();
   await fs.rm(process.env.AGENT_DATA_DIR, { recursive: true, force: true });
+});
+
+// Configuration failure must not reserve quota, persistence or an SDK query.
+test("runtime config controls default/custom models and missing configuration fails before paid work", async () => {
+  const configureAI = require("./ai-fixture.cjs");
+  configureAI();
+  process.env.AI_USER_DAILY_LIMIT = "100";
+  process.env.AI_GLOBAL_DAILY_LIMIT = "100";
+  const db = database.getDatabase(), before = db.prepare("SELECT count(*) n FROM ai_usage").get().n;
+  delete process.env.SENSENOVA_API_KEY;
+  queryImpl = async function* () { throw Error("must-not-query"); };
+  const rejected = await POST(request());
+  assert.equal(rejected.status, 503);
+  assert.equal((await rejected.json()).error, "ai_disabled");
+  assert.equal(db.prepare("SELECT count(*) n FROM ai_usage").get().n, before);
+  assert.equal(require("../src/lib/agent/active-query.ts").serviceBusy(), false);
+  const disabled = await (await GET(new Request("http://localhost/api/agent/session"))).json();
+  assert.equal(disabled.availability.enabled, false);
+  assert.deepEqual(disabled.modelConfig, { defaultModel: "", models: [] });
+  configureAI();
+  process.env.ANTHROPIC_MODEL = "runtime-custom";
+  process.env.AI_MODELS = JSON.stringify([{id:"runtime-custom",name:"Custom"},{id:"runtime-other",name:"Other"}]);
+  try {
+    const snapshot = await (await GET(new Request("http://localhost/api/agent/session"))).json();
+    assert.equal(snapshot.modelConfig.defaultModel, "runtime-custom");
+    assert.deepEqual(Object.keys(snapshot.modelConfig).sort(), ["defaultModel", "models"]);
+    assert.ok(!JSON.stringify(snapshot).includes(process.env.SENSENOVA_API_KEY));
+    for (const [requested, expected] of [[undefined,"runtime-custom"],["retired-preference","runtime-custom"],["runtime-other","runtime-other"]]) {
+      queryImpl = async function* (input) {
+        assert.equal(input.options.model, expected);
+        yield { type:"result",subtype:"success",result:"Offline config acceptance",usage:{input_tokens:1,output_tokens:1} };
+      };
+      const response = await POST(request({model:requested}));
+      assert.equal(response.status,200);
+      const parsed = await events(response);
+      assert.ok(parsed.some(e=>e.type==="done"));
+      assert.equal(parsed.find(e=>e.type==="details").details.model,expected);
+    }
+  } finally { configureAI(); }
 });

@@ -1,4 +1,4 @@
-import { isAllowedAgentModel } from "../agent/models";
+import { isAgentModelId } from "../agent/models";
 export type TokenUsage = {
   input: number;
   output: number;
@@ -57,7 +57,7 @@ export function parseMessageDetails(
   if (!record) return;
   const details: MessageDetails = {};
   if (record.model !== undefined) {
-    if (!isAllowedAgentModel(record.model)) return;
+    if (!isAgentModelId(record.model)) return;
     details.model = record.model;
   }
   for (const key of [

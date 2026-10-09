@@ -69,6 +69,7 @@ http
       res.end(
         JSON.stringify({
           authed: true,
+          modelConfig: { defaultModel: "qa-custom-default", models: [{id: "qa-custom-default", name: "QA runtime default"}, {id: "qa-custom-alternative", name: "QA runtime alternative"}] },
           user: identity,
           availability: availability(),
           ...(active

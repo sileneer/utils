@@ -220,7 +220,7 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   visible identity and logout; actual auth/session contract is ARCHITECTURE §5.
 - Streaming: SSE from `/api/agent/chat`; owned messages persist in SQLite;
   concurrent queries are rejected with a "busy" message (single 1GB VM).
-- Model picker: separate secondary-row dropdown with localized neutral book-Q&A hints (no unmeasured performance claims). Allowlist/default/preference persistence are described in ARCHITECTURE §3.
+- Model picker: separate secondary-row dropdown with localized neutral book-Q&A hints (no unmeasured performance claims). Existing dropdown reads runtime model metadata; disable while loading or unavailable. Allowlist/default/preference persistence are described in ARCHITECTURE §3.
 - Embedded third-party content (the HowToLiveBetter book HTML) stays single-language — i18n applies to our chrome only.
 
 ---

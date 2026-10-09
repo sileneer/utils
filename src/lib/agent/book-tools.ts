@@ -1,3 +1,5 @@
+import { aiConfiguration } from "./config";
+import { isAllowedAgentModel } from "./models";
 import { loadBookSections } from "../book/entries";
 import { formatSearch } from "../book/search";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
@@ -40,7 +42,9 @@ export async function bookTools(workspace: string) {
     ],
   });
 }
-export function agentEnvironment() {
+export function agentEnvironment(model: string) {
+  const config = aiConfiguration();
+  if (!config || !isAllowedAgentModel(model, config.modelConfig.models)) throw new Error("ai_configuration_missing");
   const result: Record<string, string> = {};
   for (const key of [
     "PATH",
@@ -57,13 +61,12 @@ export function agentEnvironment() {
     "PATHEXT",
     "COMSPEC",
     "NODE_EXTRA_CA_CERTS",
-    "ANTHROPIC_BASE_URL",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL",
   ]) {
     if (process.env[key]) result[key] = process.env[key]!;
   }
-  result.ANTHROPIC_AUTH_TOKEN = process.env.SENSENOVA_API_KEY ?? "";
+  result.ANTHROPIC_AUTH_TOKEN = config.apiKey;
+  result.ANTHROPIC_BASE_URL = config.baseUrl;
+  result.ANTHROPIC_MODEL = model;
+  for (const key of ["ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL"]) result[key] = config.slots[key] ?? model;
   return result;
 }

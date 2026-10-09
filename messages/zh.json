@@ -243,7 +243,9 @@
     "expandChat": "放大聊天",
     "compactChat": "紧凑聊天",
     "readingSource": "正在查看回答所依据的原文",
-    "returnToAnswer": "回到刚才的回答"
+    "returnToAnswer": "回到刚才的回答",
+    "modelDefault": "默认读书问答",
+    "modelAlternative": "读书问答备选"
   },
   "error": {
     "title": "出错了",
