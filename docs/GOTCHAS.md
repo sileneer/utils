@@ -136,6 +136,21 @@ though the answer arrived.
 Belt-and-braces: the client also flushes accumulated text if the `done` frame
 never arrives.
 
+### Successful search results do not establish successful model continuation
+
+**Symptom** a bounded chat turn times out after emitting search tool calls and
+an introductory sentence, without a complete answer or reported usage.
+**Investigation** inspect only the fresh, owned QA transcript on the server;
+allowlist relative timestamps, tool names, result lengths and error flags.
+A tool-call count alone does not establish slow retrieval. Non-error results
+can return promptly while the subsequent model continuation stalls.
+**Boundary** the continuation's root cause is not established by this observation.
+A healthy post-query container and empty selected log counters do not establish
+peak resource usage, upstream health or absence of throttling. Keep the deadline,
+failed/missing-usage semantics, authentication boundary and provider environment
+allowlist; stop bounded acceptance instead of silently retrying or changing quotas.
+Current production evidence and the unused acceptance budget live in HANDOVER §7.
+
 ## D. GCP, IAM & the deploy pipeline
 
 ### A desktop SSH client times out against the public IP
