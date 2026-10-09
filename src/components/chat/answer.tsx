@@ -11,20 +11,29 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { CitationPreview, type SourceDisclosure } from "./citation-preview";
 import { extractCitations } from "@/lib/chat/citations";
 
 export function Answer({
   text,
   incomplete = false,
   revision,
+  readerRevision,
   anchors,
   onCitation,
+  sourceDisclosures,
+  onSourceDisclosure,
+  sourceKey,
 }: {
   text: string;
   incomplete?: boolean;
   revision?: string;
+  readerRevision?: string;
   anchors: Set<string>;
-  onCitation: (anchor: string) => void;
+  onCitation: (anchor: string, revision: string) => void;
+  sourceKey: string;
+  sourceDisclosures: Record<string, SourceDisclosure>;
+  onSourceDisclosure: (key: string, value: SourceDisclosure) => void;
 }) {
   const t = useTranslations("chat");
   const [copied, setCopied] = useState(false);
@@ -112,26 +121,16 @@ export function Answer({
       {citations.length > 0 && (
         <div
           role="group"
-          className="flex flex-wrap gap-1"
+          className="grid min-w-0 gap-2"
           aria-label={t("citations")}
         >
-          {citations.map((c) =>
-            revision && anchors.has(c.anchor) ? (
-              <Button
-                key={c.anchor}
-                variant="outline"
-                size="sm"
-                className="h-10 text-xs"
-                onClick={() => onCitation(c.anchor)}
-              >
-                {t("citation", { section: c.section, item: c.item })}
-              </Button>
-            ) : (
-              <span key={c.anchor} className="text-xs text-muted-foreground">
-                {t("citationMissing", { section: c.section, item: c.item })}
-              </span>
-            ),
-          )}
+          {citations.map(c => (
+            <CitationPreview key={(revision ?? "missing") + c.anchor} citation={c} revision={revision}
+              canNavigate={Boolean(revision && (revision !== readerRevision || anchors.has(c.anchor)))}
+              remembered={sourceDisclosures[sourceKey + (revision ?? "missing") + c.anchor]}
+              onRemember={value => onSourceDisclosure(sourceKey + (revision ?? "missing") + c.anchor, value)}
+              onNavigate={() => { if (revision) onCitation(c.anchor, revision); }} />
+          ))}
         </div>
       )}
       {text && (
@@ -139,14 +138,15 @@ export function Answer({
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
-              className="size-10"
+              size="sm"
+              className="h-10 text-xs"
               aria-label={t(
                 copied ? "copied" : incomplete ? "copyCurrent" : "copy",
               )}
               onClick={() => void copy(text)}
             >
-              {copied ? <Check /> : <Copy />}
+              {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+              {t(copied ? "copied" : incomplete ? "copyCurrent" : "copy")}
             </Button>
           </TooltipTrigger>
           <TooltipContent>

@@ -40,7 +40,8 @@
     "logout": "退出登录",
     "loginPrompt": "登录已验证的账号后，即可使用 AI Chat。",
     "quota": "今日 AI 使用额度已用完，请明天再试。",
-    "aiDisabled": "AI Chat 暂时不可用，你的账号已可以正常使用。"
+    "aiDisabled": "AI Chat 暂时不可用，你的账号已可以正常使用。",
+    "accountMenu": "账号菜单"
   },
   "meta": {
     "title": "utils — lzhdev.com",
@@ -231,7 +232,17 @@
     "interrupted": "这次请求已中断，保存的回答尚未完成。",
     "archivedNotice": "这条对话已归档，请在历史中恢复后继续提问。",
     "copyCurrent": "复制当前未完成内容",
-    "copyFailed": "复制失败，请选中文字后手动复制。"
+    "copyFailed": "复制失败，请选中文字后手动复制。",
+    "sourceUnavailable": "此回答版本的原文条目暂不可用，引用可能缺失或无效。",
+    "sourceLoading": "正在读取原文条目",
+    "previewScope": "这是原文片段。请核对完整条目和适用条件；能定位原文不代表回答已经核实。",
+    "previewTruncated": "预览已截短。",
+    "openSource": "阅读完整原文",
+    "sourceLocationMissing": "阅读页中无法定位此条目。",
+    "expandChat": "放大聊天",
+    "compactChat": "紧凑聊天",
+    "readingSource": "正在查看回答所依据的原文",
+    "returnToAnswer": "回到刚才的回答"
   },
   "error": {
     "title": "出错了",

@@ -1,61 +1,23 @@
-import { readdir, readFile, realpath, lstat } from "node:fs/promises";
-import path from "node:path";
+import { loadBookSections } from "../book/entries";
+import { formatSearch } from "../book/search";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-const SEARCH_HITS = 6;
-const SEARCH_CHARACTERS = 4_000;
 const SECTION_CHARACTERS = 3_000;
 /** No arbitrary paths, glob, regex execution, shell or network exposed to model. */
 export async function bookTools(workspace: string) {
-  const directory = await realpath(path.join(workspace, "book"));
-  const names = (await readdir(directory))
-    .filter((n) => /^\d{2}-[^/\\]+\.md$/.test(n))
-    .sort();
-  const books = await Promise.all(
-    names.map(async (name) => {
-      const filename = path.join(directory, name);
-      if (
-        (await lstat(filename)).isSymbolicLink() ||
-        path.dirname(await realpath(filename)) !== directory
-      )
-        throw new Error("book_invalid_path");
-      return { name, text: await readFile(filename, "utf8") };
-    }),
-  );
+  const books = await loadBookSections(workspace);
   const text = (value: string) => ({
     content: [{ type: "text" as const, text: value }],
   });
   return createSdkMcpServer({
     name: "book",
-    version: "1.0.0",
+    version: "1.1.0",
     tools: [
       tool(
         "search",
-        "Search verified book Markdown by literal phrase. Returns matching sections and bounded excerpts.",
-        { phrase: z.string().min(1).max(100) },
-        async ({ phrase }) => {
-          const matches: string[] = [];
-          for (const book of books) {
-            const needle = phrase.toLowerCase(),
-              haystack = book.text.toLowerCase();
-            let from = 0;
-            for (let i = 0; i < 3; i++) {
-              const at = haystack.indexOf(needle, from);
-              if (at < 0) break;
-              const offset = Math.max(0, at - 200);
-              matches.push(
-                `${book.name} [read_section section=${Number(book.name.slice(0, 2))} offset=${offset}]\n${book.text.slice(offset, at + 400)}`,
-              );
-              from = at + needle.length;
-              if (matches.length >= SEARCH_HITS) break;
-            }
-            if (matches.length >= SEARCH_HITS) break;
-          }
-          return text(
-            matches.join("\n\n").slice(0, SEARCH_CHARACTERS) ||
-              "No matching entries. Try a shorter phrase.",
-          );
-        },
+        "Search verified numbered entries by literal keywords (up to six, separated by spaces). All keywords must match; a small explicit synonym list is supported. Returns ranked titles, section/item/offset locators and bounded excerpts.",
+        { phrase: z.string().trim().min(1).max(100).refine(v => v.split(/\s+/).length <= 6) },
+        async ({ phrase }) => text(formatSearch(books, phrase)),
       ),
       tool(
         "read_section",

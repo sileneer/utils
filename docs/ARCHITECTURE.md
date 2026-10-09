@@ -3,7 +3,7 @@
 How the running application is put together — routes, data flow, the agent
 runtime, the on-disk state, and the environment contract.
 
-**Runtime contract, 2026-10-09 (includes local A+B pending release):** verified email/password accounts replace the
+**Runtime contract, 2026-10-09 (includes local C+D pending release):** verified email/password accounts replace the
 shared passcode. Current release and acceptance evidence: HANDOVER §1/§7.
 
 - Ops, deploys, rollback, server access: **[DEPLOYMENT.md](DEPLOYMENT.md)**
@@ -35,6 +35,7 @@ the browser is a thin client.
 | `/` | page | `src/app/page.tsx` | tool index from the registry (`src/lib/tools.ts`) |
 | `/htlb` | page | `src/app/htlb/page.tsx` | reading shell + chat sidebar |
 | `/htlb/book` | handler | `src/app/htlb/book/route.ts` | book HTML proxy, GET + POST (§6) |
+| `/api/book/entry` | handler | `src/app/api/book/entry/route.ts` | public pinned entry title/excerpt, read-only GET (§6) |
 | `/about` | page | `src/app/about/page.tsx` | |
 | `/api/health` | handler | `src/app/api/health/route.ts` | container + deploy healthcheck; `DRILL_FAIL_HEALTH=1` → 503 |
 | `/login`, `/register`, `/verify-email`, `/reset-password` | pages | `src/components/auth/account-form.tsx` | shared localized form |
@@ -130,11 +131,19 @@ tools are removed (`tools: []`), settings sources disabled and MCP configuration
 strict. Only the in-process `book.search` and `book.read_section` tools are
 allowed; `canUseTool` denies every other tool. Tools preload regular Markdown
 files from the validated book directory, reject symlinks and expose literal
-search / integer section / bounded offsets, no paths, shell or network. Search
-returns at most six excerpts and 4,000 characters, including section/offset
-locators for targeted reads. Section reads return up to 3,000 source characters
+keyword search / integer section / bounded offsets, no paths, shell or network.
+Search indexes numbered `### N. title` entries, excluding section footers. Queries
+are case-insensitive literal terms, max 100 characters and six whitespace-separated
+terms; all terms must match the entry. Four explicit alias groups cover 2FA,
+diarrhea, insomnia and analgesic expressions. Exact/title matches rank first,
+with at most two per section on the first pass, then deferred matches fill six
+slots. Stable section/item ties and entry deduplication make results reproducible.
+Each excerpt is at most 480 characters; total output is at most 4,000 characters,
+including title, section/item and offset locators for targeted reads. Section reads return up to 3,000 source characters
 plus a continuation offset; pagination retains access to the full original.
-The prompt directs the model to read relevant fragments using those locators. `maxTurns: 40`, partial
+The prompt directs the model to read relevant fragments using those locators,
+try specific keywords when needed and explicitly say when the book has no basis
+for an answer. It may not fabricate book positions from general knowledge. `maxTurns: 40`, partial
 messages and the existing model remain. The child gets an explicit runtime/
 provider env allowlist, never auth/mail/Turnstile secrets. Real SDK acceptance
 of this new tool boundary remains an AI activation gate.
@@ -320,15 +329,37 @@ Both sides validate origin and exact window source. An init/ready handshake
 survives iframe completion before hydration; ready advertises the revision and
 entry anchors. Selection offers Ask AI, sending at most 2000 characters from a
 selected entry, with visible removable source context. Each send consumes that
-explicit context once. Navigation requires the answer's revision to match the
-displayed book and an existing anchor; it clears necessary filters (including
+explicit context once. Source navigation takes the message's revision and entry
+anchor. If another source is displayed, the iframe loads the exact requested
+cached revision. Navigation waits for a trusted ready event with that same
+revision and actual anchor; missing source/anchor gets explicit feedback, never
+a current-version substitute. The bridge clears necessary filters (including
 dispute/todo), renders lazy cards, aligns the entry heading and highlights it.
-Mobile navigation closes Sheet but keeps the shared conversation/draft.
+
+ReadingShell retains compact/expanded desktop state, source disclosure state and
+a return target (message ID and vertical offset within its scroll container).
+Mobile navigation closes Sheet; Return to answer reopens it and restores the
+same message position/draft. The previously expanded desktop view is restored
+on return. Disclosure text/open state is page-local, keyed by message, revision
+and anchor, shared across panel remounts; it is not stored in SQLite or sent to
+the provider. Source-version mismatch continues to guard subsequent sends.
 Theme messages sync our shell choice to the reader. Listener cleanup is explicit.
 
 Citation parsing supports definite numbered sections/items and grouped items;
-ambiguous/range references remain text. Missing/unknown-version citations get a
-text fallback. A location match does not certify the claim's factual accuracy.
+ambiguous/range references remain text. Definite references disclose a
+CitationPreview on explicit action. GET /api/book/entry requires a full 40-hex
+revision, section 1–34 and item 1–999. It calls getBook(requestedRevision) only,
+reads one numbered regular Markdown section and returns its title, first 700
+body characters, truncation flag, revision and locator. No-store responses are
+400 for invalid input, 404 for an absent entry and 502 for unavailable/invalid
+source. It exposes public book text, no filesystem path or account data, and
+performs no model/usage operation.
+
+The client fetches only an open disclosure, aborts at five seconds/on cleanup,
+validates the returned version/locator and bounds, and renders escaped plain
+text rather than active Markdown/HTML/images. Missing/unknown-version citations
+show a localized fallback and retry; a successful preview offers the full
+original. A location match does not certify the claim's factual accuracy.
 The reader reports unavailable-source responses with a retry action. A source
 change prompts a new conversation instead of mixing new book text into old SDK
 context. All interface conventions live in DESIGN §5.6.

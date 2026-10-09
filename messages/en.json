@@ -40,7 +40,8 @@
     "logout": "Log out",
     "loginPrompt": "Log in with a verified account to use AI Chat.",
     "quota": "Today's AI quota is used up. Try again tomorrow.",
-    "aiDisabled": "AI Chat is temporarily unavailable. Your account is ready to use."
+    "aiDisabled": "AI Chat is temporarily unavailable. Your account is ready to use.",
+    "accountMenu": "Account menu"
   },
   "meta": {
     "title": "utils — lzhdev.com",
@@ -231,7 +232,17 @@
     "interrupted": "This request was interrupted. Its saved response is incomplete.",
     "archivedNotice": "This conversation is archived. Restore it from History to continue.",
     "copyCurrent": "Copy current incomplete text",
-    "copyFailed": "Could not copy. Please select and copy the text manually."
+    "copyFailed": "Could not copy. Please select and copy the text manually.",
+    "sourceUnavailable": "The original entry is unavailable for this answer’s source version. The reference may be missing or invalid.",
+    "sourceLoading": "Loading the original entry",
+    "previewScope": "Original excerpt only. Check the full entry and conditions; locating it does not verify the answer.",
+    "previewTruncated": "This preview is shortened.",
+    "openSource": "Read full original",
+    "sourceLocationMissing": "This entry cannot be located in the reader.",
+    "expandChat": "Expand chat",
+    "compactChat": "Compact chat",
+    "readingSource": "Viewing the answer’s original source",
+    "returnToAnswer": "Return to answer"
   },
   "error": {
     "title": "Something went wrong",

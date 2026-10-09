@@ -9,6 +9,9 @@ import {
   ChevronDown,
   Loader2,
   LogOut,
+  UserRound,
+  Maximize2,
+  Minimize2,
   MessageSquarePlus,
   Square,
   X,
@@ -30,6 +33,7 @@ import {
 } from "@/components/ui/tooltip";
 import { AGENT_MODELS, agentModelName } from "@/lib/agent/models";
 import { cn } from "@/lib/utils";
+import type { SourceDisclosure } from "./citation-preview";
 import { Answer } from "./answer";
 import { MessageDetails } from "./message-details";
 import { ConversationHistory } from "./conversation-history";
@@ -73,13 +77,25 @@ export function ChatPanel({
   anchors,
   onCitation,
   onClose,
+  expanded,
+  onExpand,
+  returnPosition,
+  sourceDisclosures,
+  onSourceDisclosure,
   className,
 }: {
   chat: ChatController;
   bookRevision?: string;
   anchors: Set<string>;
-  onCitation: (anchor: string) => void;
+  onCitation: (
+    anchor: string, revision: string, messageId: string, top: number,
+  ) => void;
   onClose: () => void;
+  expanded?: boolean;
+  onExpand?: () => void;
+  returnPosition?: { messageId: string; top: number };
+  sourceDisclosures: Record<string, SourceDisclosure>;
+  onSourceDisclosure: (key: string, value: SourceDisclosure) => void;
   className?: string;
 }) {
   const t = useTranslations("chat");
@@ -103,6 +119,19 @@ export function ChatPanel({
     followRef.current =
       element.scrollHeight - element.clientHeight - element.scrollTop < 80;
   }, [chat.scrollTop, chat.loading]);
+  useEffect(() => {
+    if (!returnPosition || !list.current) return;
+    const element = [
+      ...list.current.querySelectorAll<HTMLElement>("[data-message-id]"),
+    ].find((el) => el.dataset.messageId === returnPosition.messageId);
+    if (element) {
+      list.current.scrollTop +=
+        element.getBoundingClientRect().top -
+        list.current.getBoundingClientRect().top - returnPosition.top;
+      followRef.current = false;
+      setFollowing(false);
+    }
+  }, [returnPosition]);
   useEffect(() => {
     if (followRef.current && list.current)
       list.current.scrollTop = list.current.scrollHeight;
@@ -163,11 +192,41 @@ export function ChatPanel({
         </h2>
         <div className="flex">
           {chat.user && (
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-10"
+                      aria-label={account("accountMenu")}
+                    >
+                      <UserRound />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>{account("accountMenu")}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="max-w-[calc(100vw-2rem)]">
+                <p className="max-w-64 break-words px-2 py-2 text-xs">
+                  {chat.user.name} · {chat.user.email}
+                </p>
+                <DropdownMenuItem
+                  className="min-h-10"
+                  onClick={() => void chat.logout()}
+                >
+                  <LogOut />{account("logout")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {onExpand && (
             <IconButton
-              label={account("logout")}
-              onClick={() => void chat.logout()}
+              label={t(expanded ? "compactChat" : "expandChat")}
+              onClick={onExpand}
             >
-              <LogOut />
+              {expanded ? <Minimize2 /> : <Maximize2 />}
             </IconButton>
           )}
           {chat.user && (
@@ -230,14 +289,6 @@ export function ChatPanel({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {chat.user && (
-        <p
-          className="truncate border-b px-3 py-2 text-xs text-muted-foreground"
-          title={chat.user.email}
-        >
-          {chat.user.name} · {chat.user.email}
-        </p>
-      )}
       {chat.user && (
         <ChatAvailability
           quota={chat.quota}
@@ -373,6 +424,7 @@ export function ChatPanel({
             {chat.messages.map((message, index) => (
               <div
                 key={message.id}
+                data-message-id={message.id}
                 className={cn(
                   "min-w-0 rounded-xl p-3",
                   message.role === "user"
@@ -395,14 +447,24 @@ export function ChatPanel({
                 ) : (
                   <Answer
                     text={message.content}
+                    sourceKey={message.id}
+                    sourceDisclosures={sourceDisclosures}
+                    onSourceDisclosure={onSourceDisclosure}
                     incomplete={message.status !== "complete"}
-                    revision={
-                      message.revision === bookRevision
-                        ? message.revision
-                        : undefined
-                    }
+                    revision={message.revision}
+                    readerRevision={bookRevision}
                     anchors={anchors}
-                    onCitation={onCitation}
+                    onCitation={(anchor, revision) => {
+                      if (list.current) chat.saveScroll(list.current.scrollTop);
+                      const element = list.current && [
+                        ...list.current.querySelectorAll<HTMLElement>("[data-message-id]"),
+                      ].find((el) => el.dataset.messageId === message.id);
+                      const top = element && list.current
+                        ? element.getBoundingClientRect().top -
+                          list.current.getBoundingClientRect().top
+                        : 0;
+                      onCitation(anchor, revision, message.id, top);
+                    }}
                   />
                 )}
                 {message.role === "assistant" &&
