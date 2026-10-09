@@ -1,10 +1,11 @@
 # Handover
 
-**Written 2026-10-09 for local C+D review.** Pinned-source previews, bounded
-retrieval improvements and expanded/mobile reading are implemented on
-`codex/chat-sources-reading`. This commit contains matching code, tests and docs.
-The owner approved C+D publication on 2026-10-09; PR/image acceptance and deployment
-are in progress. New real provider requests remain a separate approval.
+**Written 2026-10-09 after C+D production verification.** Pinned-source previews,
+bounded retrieval improvements and expanded/mobile reading shipped through
+[PR #3](https://github.com/sileneer/utils/pull/3). Feature image `dd5b9f9` is verified
+healthy in production. This matching documentation record follows the normal
+CI/CD pipeline too; verify its exact main head and actual OCI revision before
+reporting the final publication. New real provider requests remain separate.
 
 Runtime: [ARCHITECTURE](ARCHITECTURE.md). Operations:
 [DEPLOYMENT](DEPLOYMENT.md). Debugging: [GOTCHAS](GOTCHAS.md).
@@ -25,19 +26,20 @@ offline source reads are the evidence, not model-quality acceptance.
 
 ## 2. Working tree and release position
 
-Branch `codex/chat-sources-reading` starts at `0ef6b53`. The focused local commit
-includes the C+D implementation and documentation (33ca90a). Publication is
-approved; exact-head acceptance, merge and deployment are pending verification. Ignore `data/investigation/chat-cd/`, cached books,
-disposable databases, local helper scripts and user-owned `.zcode/`.
-`.env.example` remains the only tracked environment file.
+Main contains C+D feature squash `dd5b9f978948740c005c35c2b2985ba58526f6f8` and this
+matching release record. The implementation branch was `codex/chat-sources-reading`
+(local feature `33ca90a`, accepted PR head `9a95d30`). PR checks passed at that exact
+head: [image acceptance](https://github.com/sileneer/utils/actions/runs/37953518834),
+GitGuardian and qlty. The feature's
+[CI/CD](https://github.com/sileneer/utils/actions/runs/37953929046) is green;
+actual server OCI revision matched, with running/healthy container and public health 200.
+The record commit still uses normal gates; its run/runtime receipt belongs in ignored
+`data/investigation/chat-cd/` after verification. Do not substitute the feature run
+for its deployment result.
 
-Previously verified production: `0ef6b53`, following the A+B feature squash
-`ba733a6` and its release record.
-[Feature CI/CD](https://github.com/sileneer/utils/actions/runs/37924300942) and
-[release-record CI/CD](https://github.com/sileneer/utils/actions/runs/37925992128)
-were green. Production was not rechecked or modified in this C+D turn.
-A future publication needs its own green image/CI/deployment and actual runtime
-verification; do not infer them from local build success.
+This matching record changes documentation only; no implementation remains uncommitted.
+Ignore `data/investigation/chat-cd/`, caches, disposable databases, helper scripts
+and user-owned `.zcode/`. `.env.example` is the only tracked environment file.
 
 ## 3. Implementation map
 
@@ -49,26 +51,27 @@ PLANNING §12 records the fixed retrieval comparison, residual miss and quality 
 
 ## 4. Next work, in order
 
-1. Execute the approved C+D release through a focused PR, exact-head image
-   acceptance, merge, CI/CD and actual production checks. Approval is granted;
-   no new real provider acceptance call is included.
-2. Real answer fidelity, unsupported-condition checks, long-context growth and
+1. Real answer fidelity, unsupported-condition checks, long-context growth and
    SDK resume/performance measurement require a fresh bounded provider allowance.
    Offline retrieval scores and canned responses do not establish those results.
-3. Actual phone keyboard/IME, occlusion and safe areas need physical-device checks.
+2. Actual phone keyboard/IME, occlusion and safe areas need physical-device checks.
    Desktop viewport emulation is not evidence of a real software keyboard.
-4. E/admin visibility and backup protection are separate future work. Previous
+3. E/admin visibility and backup protection are separate future work. Previous
    manual backup/isolated restore passed; first naturally scheduled run and
    off-machine storage/retention are still pending. Do not upload/prune private
    data without the separate owner choices.
 
-## 5. Previously shipped service state
+## 5. Verified production service state
 
-A+B migration 003 was applied with integrity_check ok, no foreign-key violations
-and original account fields, 4 conversations, 16 message rows and 8 usage rows
-preserved against the pre-release backup. AI was enabled with the existing
-100 per-user / 2000 global daily limits. Those are prior release observations;
-this batch did not inspect or change production data/configuration.
+The coherent pre-C+D backup `/app/data/backups/release-20261009-chat-cd.sqlite`
+was created before merge, mode 600. Baseline had zero pending/streaming messages.
+After feature deployment, account id/email/verification/role/status and every
+original conversation/message/usage/meta row matched the backup exactly.
+Counts: 1 account, 4 conversations, 16 messages, 8 usage rows, 0 metadata rows.
+Migrations remain 001-auth, 002-product, 003-chat-history; integrity_check ok,
+foreign-key violations zero. No C+D migration or quota/config change occurred.
+AI remains enabled, 100 per-user / 2000 global daily limits. SDK persistent
+volume exists; server env remains mode 600, owned by utils-deploy.
 
 Mail/Turnstile and owner-operated account flows passed previously.
 Cross-device reset revocation, mail authentication headers/other mailboxes,
@@ -126,8 +129,23 @@ rule for obscured/offscreen text; do not describe it as full accessibility proof
 The mock counter stayed at one canned stream while these read-only operations ran.
 No new provider, physical phone or full focus-trap traversal was tested.
 
-No local Docker is available. Linux Node 22/image/SDK/startup acceptance and
-production-source availability for this change await the separate release workflow.
+Linux Node 22/final-image acceptance passed in PR and main CI, including offline
+SDK executable checks, fail-closed startup, persistence and coherent backup restore.
+No local Docker is available; no real provider request ran in those image checks.
+
+Production read-only checks passed after feature deployment: health/reader/login 200,
+anonymous session exposes no user, private history/chat/Stop 401, source preview
+200/400/404/502 boundaries. Saved old source `a18ee40519ed34562ac12a8dc88e053a9c8a9973`
+returned the exact revision and bounded original excerpt; its rendered source had
+anchor e-8-18. Current source `bb25081b423091f9e22059aab6b4ed7343a2266d`
+also returned its matching preview. This newer upstream source does not change the
+frozen benchmark version or establish model quality on new content.
+
+Fresh anonymous production browser screenshots at 360 and 1280px, light/dark,
+were visually inspected with no page horizontal overflow. Logged-in citation,
+draft/scroll return and history interactions were checked locally with explicit
+mock history; this rollout did not perform a new authenticated user workflow or
+send an AI message. New real provider calls: zero.
 
 ## 8. Independent record inconsistencies
 

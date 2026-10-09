@@ -3,7 +3,7 @@
 How the running application is put together — routes, data flow, the agent
 runtime, the on-disk state, and the environment contract.
 
-**Runtime contract, 2026-10-09 (includes local C+D pending release):** verified email/password accounts replace the
+**Runtime contract, 2026-10-09 (C+D released):** verified email/password accounts replace the
 shared passcode. Current release and acceptance evidence: HANDOVER §1/§7.
 
 - Ops, deploys, rollback, server access: **[DEPLOYMENT.md](DEPLOYMENT.md)**
