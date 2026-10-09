@@ -18,7 +18,8 @@ backup uploads and pruning remain unapproved.
 
 Branch: `codex/site-wide-account`, based on production main `7f9d17d`.
 Draft [PR #7](https://github.com/sileneer/utils/pull/7) contains the feature, tests
-and matching documentation. Its acceptance workflow is pending; no new dependency,
+and matching documentation. Exact-head acceptance results are kept in ignored
+`data/investigation/site-account/review-receipt.json`; no new dependency,
 database schema or production env change. Production has not been changed by this
 feature. Prior env-release proof lives in ignored
 `data/investigation/ai-env/release-receipt.json`.
@@ -87,7 +88,8 @@ Manual checks pass Tab containment, both cancel-focus targets and modal descript
 contrast (6.26:1). This is browser emulation, not physical-device acceptance.
 
 No real emails, production mutations or paid AI calls were made for this feature.
-PR/image CI and deployed feature acceptance must be confirmed separately. Earlier
+PR/image CI is checked separately at the final PR head; deployed feature acceptance
+follows owner publication approval. Earlier
 real source-answer QA used one turn that timed out before final answer/token data;
 source fidelity, unsupported-condition and long-context acceptance remain unpassed.
 Its continuation cause remains unknown; see GOTCHAS §C. Five real turns remain.
