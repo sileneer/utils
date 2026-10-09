@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { isTurnActive } from "./active-query";
 import { recordedDetails } from "../chat/details";
 import type { ChatMessage } from "../chat/protocol";
 export type { ChatMessage } from "../chat/protocol";
@@ -9,6 +10,8 @@ export type ChatSession = {
   messages: ChatMessage[];
   revision?: string;
   needsRebuild?: boolean;
+  title?: string;
+  archived?: boolean;
 };
 export function isValidSessionId(id: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -26,13 +29,17 @@ export async function loadSession(
 ): Promise<ChatSession | null> {
   if (!isValidSessionId(id)) return null;
   const row = db()
-    .prepare("SELECT * FROM conversations WHERE id=? AND owner_user_id=?")
+    .prepare(
+      "SELECT c.*,h.title,h.archived_at FROM conversations c LEFT JOIN conversation_meta h ON h.conversation_id=c.id WHERE c.id=? AND c.owner_user_id=?",
+    )
     .get(id, owner) as
     | {
         id: string;
         revision?: string;
         sdk_session_id?: string;
         needs_rebuild: number;
+        title: string | null;
+        archived_at: number | null;
       }
     | undefined;
   if (!row) return null;
@@ -63,6 +70,12 @@ export async function loadSession(
     revision: row.revision ?? undefined,
     sdkSessionId: row.sdk_session_id ?? undefined,
     needsRebuild: Boolean(row.needs_rebuild),
+    title: (row.title ?? rows.find((m) => m.role === "user")?.content ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 100)
+      .trim(),
+    archived: row.archived_at !== null,
     messages: rows.map((m) => ({
       id: m.id,
       turnId: m.turn_id,
@@ -71,9 +84,15 @@ export async function loadSession(
       at: m.at,
       status:
         m.status === "streaming" || m.status === "pending"
-          ? "stopped"
+          ? isTurnActive(owner, m.turn_id, id)
+            ? m.status
+            : "failed"
           : m.status,
-      error: m.error ?? undefined,
+      error:
+        (m.status === "streaming" || m.status === "pending") &&
+        !isTurnActive(owner, m.turn_id, id)
+          ? "interrupted"
+          : (m.error ?? undefined),
       revision: m.revision ?? undefined,
       ...(m.role === "assistant" && details.get(m.turn_id)
         ? { details: details.get(m.turn_id) }
@@ -95,7 +114,7 @@ export async function saveSession(session: ChatSession) {
         throw new Error("session_forbidden");
       database
         .prepare(
-          "INSERT INTO conversations VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision, sdk_session_id=excluded.sdk_session_id, needs_rebuild=excluded.needs_rebuild, updated_at=excluded.updated_at",
+          "INSERT INTO conversations (id,owner_user_id,revision,sdk_session_id,needs_rebuild,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision, sdk_session_id=excluded.sdk_session_id, needs_rebuild=excluded.needs_rebuild, updated_at=excluded.updated_at",
         )
         .run(
           session.id,
@@ -104,6 +123,18 @@ export async function saveSession(session: ChatSession) {
           session.sdkSessionId ?? null,
           session.needsRebuild ? 1 : 0,
           Date.now(),
+        );
+      database
+        .prepare(
+          "INSERT INTO conversation_meta(conversation_id,title) VALUES (?,?) ON CONFLICT(conversation_id) DO NOTHING",
+        )
+        .run(
+          session.id,
+          (session.messages.find((m) => m.role === "user")?.content ?? "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 100)
+            .trim(),
         );
       database
         .prepare("DELETE FROM messages WHERE conversation_id=?")

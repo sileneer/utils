@@ -72,7 +72,13 @@ export async function POST(request: Request) {
   }
   // Reserve after asynchronous validation, before any preparation/session await.
   const abortController = new AbortController();
-  const activeQuery = { owner: owner.id, turn: turnId, abort: abortController };
+  const activeQuery = {
+    owner: owner.id,
+    turn: turnId,
+    sessionId,
+    startedAt: Date.now(),
+    abort: abortController,
+  };
   if (!reserveQuery(activeQuery))
     return NextResponse.json({ error: "busy" }, { status: 429 });
   let existing: ChatSession | null;
@@ -82,6 +88,13 @@ export async function POST(request: Request) {
     if (!existing && sessionExists(sessionId)) {
       releaseQuery(activeQuery);
       return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    if (existing?.archived) {
+      releaseQuery(activeQuery);
+      return NextResponse.json(
+        { error: "conversation_archived" },
+        { status: 409 },
+      );
     }
     reservation = reserveUsage(owner.id, turnId);
     if ("error" in reservation) {

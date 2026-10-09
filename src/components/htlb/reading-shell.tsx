@@ -213,7 +213,11 @@ export function ReadingShell() {
             </TooltipTrigger>
             <TooltipContent>{t("settings")}</TooltipContent>
           </Tooltip>
-          <PopoverContent align="end" className="w-auto">
+          <PopoverContent
+            align="end"
+            className="w-auto"
+            aria-label={t("settings")}
+          >
             <p className="text-xs font-medium">{t("settings")}</p>
             <div className="flex">
               <ThemeToggle />

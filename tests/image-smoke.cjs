@@ -69,6 +69,8 @@ async function routeCheck() {
   const session = await request("/api/agent/session", 200);
   assert.deepEqual(await session.json(), { authed: false, user: null });
   await request("/api/agent/session?id=00000000-0000-4000-8000-000000000001", 401);
+  await request("/api/agent/conversations", 401);
+  await request("/api/agent/conversations", 401, { method: "PATCH", body: "{}" });
   await request("/api/agent/chat", 401, { method: "POST", body: "{}" });
   await request("/api/agent/stop", 401, { method: "POST", body: "{}" });
   await request("/api/agent/auth", 410, { method: "POST", body: "{}" });
@@ -81,7 +83,7 @@ async function routeCheck() {
 function databaseCheck() {
   const assert = require("node:assert/strict"), fs = require("node:fs");
   const { open, databasePath } = require("./src/lib/database.cjs"), db = open();
-  assert.equal(db.prepare("SELECT count(*) n FROM schema_migrations").get().n, 2);
+  assert.equal(db.prepare("SELECT count(*) n FROM schema_migrations").get().n, 3);
   assert.equal(db.pragma("journal_mode", { simple: true }), "wal");
   assert.equal(fs.statSync(databasePath()).mode & 0o777, 0o600);
   if (process.argv[1] === "seed") {
@@ -91,7 +93,7 @@ function databaseCheck() {
       "image-smoke-owner", "Image smoke", "image-smoke@example.test", 1, null,
       now, now, "user", "active",
     );
-    db.prepare("INSERT INTO conversations VALUES (?,?,?,?,?,?)").run(
+    db.prepare("INSERT INTO conversations (id,owner_user_id,revision,sdk_session_id,needs_rebuild,updated_at) VALUES (?,?,?,?,?,?)").run(
       "image-smoke-chat", "image-smoke-owner", null, null, 1, now,
     );
     db.prepare("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(
@@ -114,7 +116,7 @@ function backupCheck() {
   const db = new Database(restored);
   assert.equal(db.pragma("integrity_check", { simple: true }), "ok");
   assert.deepEqual(db.pragma("foreign_key_check"), []);
-  assert.equal(db.prepare("SELECT count(*) n FROM schema_migrations").get().n, 2);
+  assert.equal(db.prepare("SELECT count(*) n FROM schema_migrations").get().n, 3);
   assert.equal(db.prepare("SELECT owner_user_id FROM conversations WHERE id=?").get("image-smoke-chat").owner_user_id, "image-smoke-owner");
   assert.equal(db.prepare("SELECT content FROM messages WHERE id=?").get("image-smoke-message").content, "Image smoke persistence marker");
   db.close();

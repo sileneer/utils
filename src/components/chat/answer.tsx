@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -14,11 +15,13 @@ import { extractCitations } from "@/lib/chat/citations";
 
 export function Answer({
   text,
+  incomplete = false,
   revision,
   anchors,
   onCitation,
 }: {
   text: string;
+  incomplete?: boolean;
   revision?: string;
   anchors: Set<string>;
   onCitation: (anchor: string) => void;
@@ -31,6 +34,7 @@ export function Answer({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
+      toast.error(t("copyFailed"));
       setCopied(false);
     }
   }
@@ -65,7 +69,10 @@ export function Answer({
             </blockquote>
           ),
           pre: ({ children }) => (
-            <pre className="my-3 max-w-full overflow-x-auto rounded-lg bg-background p-3 text-xs">
+            <pre
+              tabIndex={0}
+              className="my-3 max-w-full overflow-x-auto rounded-lg bg-background p-3 text-xs"
+            >
               {children}
             </pre>
           ),
@@ -75,7 +82,7 @@ export function Answer({
             </code>
           ),
           table: ({ children }) => (
-            <div className="my-3 overflow-x-auto">
+            <div tabIndex={0} className="my-3 overflow-x-auto">
               <table className="w-full border-collapse text-xs">
                 {children}
               </table>
@@ -103,7 +110,11 @@ export function Answer({
         {text}
       </ReactMarkdown>
       {citations.length > 0 && (
-        <div className="flex flex-wrap gap-1" aria-label={t("citations")}>
+        <div
+          role="group"
+          className="flex flex-wrap gap-1"
+          aria-label={t("citations")}
+        >
           {citations.map((c) =>
             revision && anchors.has(c.anchor) ? (
               <Button
@@ -130,13 +141,17 @@ export function Answer({
               variant="ghost"
               size="icon"
               className="size-10"
-              aria-label={t(copied ? "copied" : "copy")}
+              aria-label={t(
+                copied ? "copied" : incomplete ? "copyCurrent" : "copy",
+              )}
               onClick={() => void copy(text)}
             >
               {copied ? <Check /> : <Copy />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{t(copied ? "copied" : "copy")}</TooltipContent>
+          <TooltipContent>
+            {t(copied ? "copied" : incomplete ? "copyCurrent" : "copy")}
+          </TooltipContent>
         </Tooltip>
       )}
     </div>

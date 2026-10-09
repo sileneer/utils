@@ -236,12 +236,32 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   reasoning transcript, credentials, provider logs or billing estimate is shown.
 - Details include the model used for that turn, first-text wait, input/output and
   reported cache tokens, tool counts and pinned source revision. Old/unreported
-  values are explicitly unavailable. Local disconnected/Stop timing is labeled
-  approximate until server history supplies final timing. Token scope and cache
+  values are explicitly unavailable. Unconfirmed termination retains recovery
+  state until a server snapshot supplies final timing. Token scope and cache
   inclusion are explained; it is not a billing statement.
 - Keep summary text wrapping at 360 px, use accessible disclosure controls,
   and avoid announcing the ticking timer to screen readers every second.
   No additional dependency or base component is introduced.
+
+### 5.6.2 Recovery and conversation history — A+B approved 2026-10-09
+
+- Register ConversationHistory and ChatAvailability project wrappers before use.
+  Reuse existing Button/Input/Label/Collapsible/DropdownMenu and semantic tokens;
+  no new base component, dependency or token. History replaces the message area
+  while open, preserving the existing Sheet and composer state. Search, archived
+  filter, open, rename, archive/restore and pagination have accessible labels.
+  Rename follows the registered §5.7 RHF/Zod/Label/inline-error form contract,
+  with a pending spinner and disabled mutations.
+- Personal quota and local reset time use an expandable compact summary. Service
+  availability exposes no other reader's identity. Status checks invoke no model.
+  Distinguish requesting Stop, confirmed terminal state and confirmation unavailable;
+  bounded reconciliation offers manual refresh instead of automatic paid retry.
+- Drafts belong to an account and conversation, including an unsent new draft.
+  Switching/new-chat waits for confirmed cancellation; failed confirmation keeps
+  the current conversation and draft visible. Archive is reversible, not deletion.
+- Incomplete-copy actions are labeled; clipboard failure uses the adopted toast.
+  All new copy is bilingual and touch controls remain at least 40px. Answer code
+  and table scroll containers are keyboard focusable; references use a named group.
 
 ### 5.7 Public accounts — approved 2026-10-07
 
