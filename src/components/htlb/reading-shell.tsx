@@ -1,4 +1,5 @@
 "use client";
+import { keyboardViewport } from "@/lib/chat/viewport";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ArrowLeft, MessageSquare, Settings } from "lucide-react";
@@ -66,13 +67,22 @@ export function ReadingShell() {
   useEffect(() => {
     const visual = window.visualViewport;
     if (!visual) return;
-    const update = () =>
-      setViewport({ height: visual.height, top: visual.offsetTop });
+    let frame=0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame=requestAnimationFrame(()=>setViewport(keyboardViewport({
+        height:visual.height,top:visual.offsetTop,scale:visual.scale,layoutHeight:window.innerHeight,
+        mobile:!matchMedia("(min-width: 1024px)").matches,
+        textFocused:document.activeElement instanceof HTMLTextAreaElement || document.activeElement instanceof HTMLInputElement,
+      })));
+    };
     visual.addEventListener("resize", update);
     visual.addEventListener("scroll", update);
+    document.addEventListener("focusin",update);document.addEventListener("focusout",update);
     return () => {
-      visual.removeEventListener("resize", update);
+      cancelAnimationFrame(frame);visual.removeEventListener("resize", update);
       visual.removeEventListener("scroll", update);
+      document.removeEventListener("focusin",update);document.removeEventListener("focusout",update);
     };
   }, []);
   useEffect(() => {

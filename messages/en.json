@@ -41,7 +41,8 @@
     "loginPrompt": "Log in with a verified account to use AI Chat.",
     "quota": "Today's AI quota is used up. Try again tomorrow.",
     "aiDisabled": "AI Chat is temporarily unavailable. Your account is ready to use.",
-    "accountMenu": "Account menu"
+    "accountMenu": "Account menu",
+    "operations": "Service operations"
   },
   "meta": {
     "title": "utils — lzhdev.com",
@@ -248,5 +249,67 @@
     "title": "Something went wrong",
     "message": "An unexpected error occurred. Try again — if it keeps happening, please open an issue on GitHub.",
     "retry": "Try again"
+  },
+  "operations": {
+    "title": "Service operations",
+    "description": "Administrator-only aggregate service and backup status. No reader messages, email list or provider logs.",
+    "day": "Last 24 hours",
+    "week": "Last 7 days",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "unavailable": "Not available",
+    "loadFailed": "Could not refresh. Check your login and try again.",
+    "oldData": "Previous snapshot",
+    "updated": "Updated: {time}",
+    "truncated": "Showing only the latest 10,000 attempts in this period. These totals are incomplete.",
+    "service": "Application status",
+    "disabled": "AI disabled",
+    "busy": "Busy",
+    "ready": "Ready",
+    "limits": "Daily limits: {user} per reader · {global} total",
+    "serviceNote": "Application guards only. This does not measure provider availability or concurrency capacity.",
+    "backup": "Local backup",
+    "lastSuccess": "Last verified success",
+    "lastAttempt": "Last attempt",
+    "backupBytes": "Backup size: {value} bytes",
+    "integrityVerified": "SQLite integrity and foreign-key checks passed.",
+    "integrityUnknown": "No verified status is available.",
+    "backupNote": "Freshness threshold: 36 hours. This status verifies local backups only; it does not verify off-machine protection.",
+    "backupState": {
+      "fresh": "Up to date",
+      "stale": "Overdue",
+      "failed": "Failed or interrupted",
+      "running": "Running",
+      "unavailable": "Status unavailable"
+    },
+    "duration": "Total request time",
+    "firstText": "Wait for first visible text",
+    "median": "Median",
+    "p95": "95th percentile",
+    "milliseconds": "{value} ms",
+    "samples": "{count} reported samples · {missing} missing",
+    "attempts": "Request attempts: {count}",
+    "outcome": "Outcome",
+    "count": "Count",
+    "outcomes": {
+      "complete": "Completed",
+      "failed": "Failed",
+      "stopped": "Stopped",
+      "released": "Released before upstream",
+      "reserved": "Reserved / unfinished",
+      "unknown": "Unknown"
+    },
+    "attemptNote": "Retries are separate attempts. Pre-upstream releases do not consume AI quota; unfinished reservations remain counted.",
+    "tokens": "Reported tokens",
+    "tokenFields": {
+      "input": "Uncached input",
+      "output": "Output",
+      "cacheRead": "Cache read",
+      "cacheWrite": "Cache write",
+      "total": "Reported total"
+    },
+    "cacheSamples": "Cache read reported by {read} samples; cache write by {write} samples.",
+    "tokenNote": "Totals include only reported main-loop turn usage, including tool rounds. Missing usage is not zero; auxiliary usage and provider bills are not inferred.",
+    "statisticsNote": "Statistics include failures and stops when they report measurements. Missing or estimated timings are excluded. P95 is shown only with at least 20 samples; these figures are descriptive, not a model ranking."
   }
 }

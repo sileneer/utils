@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const fs = require("node:fs/promises");
-const { randomUUID } = require("node:crypto");
+const { randomUUID, randomBytes } = require("node:crypto");
 const directory = path.join(process.cwd(), "data", "auth-test-" + randomUUID());
 process.env.DATABASE_PATH = path.join(directory, "utils.sqlite");
 process.env.BETTER_AUTH_SECRET = randomUUID() + randomUUID();
@@ -67,7 +67,7 @@ function cookie(response) {
     .join("; ");
 }
 const email = "reader@example.test",
-  password = "reader12";
+  password = "R"+randomBytes(3).toString("hex")+"1";
 let loginCookie;
 
 test("signup and reset reject short passwords or missing letters/numbers before side effects", async () => {
@@ -211,6 +211,11 @@ test("password login creates revocable HttpOnly session; OTP login and mutation 
   );
 });
 test("reset purpose rejects verification code and revokes previous login; logout revokes new session", async () => {
+  const secondLogin=await post("sign-in/email",{email,password});
+  const secondCookie=cookie(secondLogin);
+  assert.equal(secondLogin.status,200);
+  assert.notEqual(secondCookie,loginCookie);
+  assert.ok(await getAuth().api.getSession({headers:new Headers({cookie:secondCookie})}));
   resetLimits();
   assert.equal(
     (
@@ -222,7 +227,7 @@ test("reset purpose rejects verification code and revokes previous login; logout
     200,
   );
   const resetOTP = code(email),
-    newPassword = "R!234567";
+    newPassword = "R"+randomBytes(3).toString("hex")+"2";
   assert.equal(
     (await post("email-otp/verify-email", { email, otp: resetOTP })).status,
     400,
@@ -261,6 +266,8 @@ test("reset purpose rejects verification code and revokes previous login; logout
     ).status,
     400,
   );
+  assert.equal(await getAuth().api.getSession({headers:new Headers({cookie:secondCookie})}),null);
+  assert.equal((await post("sign-in/email",{email,password})).status,400);
   const response = await post("sign-in/email", {
     email,
     password: newPassword,

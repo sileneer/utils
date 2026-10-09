@@ -377,3 +377,69 @@ Turnstile hostname validation, delivery to authorized recipients, Secure cookies
 and owned history. A direct diagnostic mail is not a completed app registration.
 For later AI activation, verify real book MCP/SDK queries and enforced quotas.
 Lint/test/build and a Windows native driver do not prove those external gates.
+
+## 12. Operations dashboard and backup protection
+
+`/admin` and GET `/api/admin/operations?hours=24|168` require a verified active
+account and current database administrator role. The account menu exposes the
+link only for administrators. Refresh is read-only and never reserves AI usage.
+Aggregate definitions and bounds live in ARCHITECTURE §10. Current acceptance
+and release state live in HANDOVER.
+
+### Scheduled backup status rollout
+
+`deploy/backup.sh` now invokes `node scripts/backup.cjs`. CI does not synchronize
+the host script. After the application image containing that script is released,
+copy the matching LF host script through IAP, preserve owner utils-deploy and
+mode 750, run `bash -n`, execute once as utils-deploy and check the dashboard.
+Retain the existing 03:15 UTC crontab and private log; do not install a duplicate.
+The backup records a private atomic status manifest, verifies SQLite integrity/FKs
+before marking success, preserves prior success after failure, and never prunes.
+A missing status in an older installation is unavailable, not a successful backup.
+
+### Off-machine proposal (not enabled)
+
+No destination is selected yet. Recommended reviewable option: an owner-owned
+private Cloud Storage bucket in `us-east1`, regional Standard storage, uniform
+bucket access and public-access prevention. Use the VM's workload identity with
+bucket-scoped `roles/storage.objectCreator`; the owner's restore identity gets
+read permission separately. Never create a service-account JSON key, grant a
+public principal or reuse the CI deploy identity for backup administration.
+Inspect existing project-level permissions and VM access scopes before claiming
+the upload identity is restricted or operational.
+
+As checked on 2026-10-09, the
+[Google Free Tier](https://docs.cloud.google.com/free/docs/free-cloud-features#free-tier-usage-limits)
+includes 5 GB-months in the eligible US regions, with operation/network limits.
+Usage is shared across the billing account; overage can be billed. Storage growth,
+other projects, network destinations, versions and soft-deleted objects must fit
+the budget. This is not an unconditional free service. Proposed retention:
+initially keep all artifacts and show growth; no lifecycle deletion, retention lock
+or pruning without an explicit owner choice.
+[Object Creator permissions](https://docs.cloud.google.com/storage/docs/access-control/iam-roles#standard-roles)
+allow create without read/delete/overwrite; confirm the effective IAM, not just
+this one bucket grant.
+
+Configuration to review, not run blindly:
+
+```bash
+# Values must be supplied/approved by the owner; this does not create a bucket.
+UTILS_BACKUP_BUCKET="<owner-owned-unique-bucket>"
+UTILS_BACKUP_PREFIX="gs://${UTILS_BACKUP_BUCKET}/utils/"
+# Creation, IAM binding and uploads are a separate activation step.
+```
+
+Export a freshly verified API-based SQLite snapshot and SHA-256 manifest, plus
+immutable book version pairs needed by saved references. Never export .env or
+copy the live SQLite main file while WAL is active. Native SDK files are excluded
+from the proposed first version: visible history supplies context after restoring
+with sdk_session_id cleared and needs_rebuild=1. The owner must independently
+retain configuration/API keys in their password manager for VM-loss recovery.
+Objects have unique names and generation-zero creation preconditions so existing
+backups cannot be overwritten. Check upload success and retrieve into an isolated
+restore directory with the owner read identity; verify checksum, integrity/FKs,
+account/chat preservation and login before declaring off-machine protection done.
+
+A same-project bucket protects against VM/disk loss, but does not isolate backup
+administration from compromise of the owner/project account. Separate account/
+project ownership is a later decision if that threat must be covered.

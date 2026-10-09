@@ -70,6 +70,7 @@ async function routeCheck() {
   assert.deepEqual(await session.json(), { authed: false, user: null });
   await request("/api/agent/session?id=00000000-0000-4000-8000-000000000001", 401);
   await request("/api/agent/conversations", 401);
+  await request("/api/admin/operations", 401);
   await request("/api/agent/conversations", 401, { method: "PATCH", body: "{}" });
   await request("/api/agent/chat", 401, { method: "POST", body: "{}" });
   await request("/api/agent/stop", 401, { method: "POST", body: "{}" });
@@ -122,6 +123,17 @@ function backupCheck() {
   db.close();
   console.log("Persistent account/chat records and coherent backup restoration passed.");
 }
+function scheduledBackupCheck() {
+  const assert=require("node:assert/strict"),fs=require("node:fs"),DB=require("better-sqlite3");
+  const status=JSON.parse(fs.readFileSync("/app/data/backups/status.json","utf8"));
+  assert.equal(status.version,1);assert.equal(status.state,"complete");assert.equal(status.lastSuccess.integrity,"ok");
+  assert.equal(fs.statSync("/app/data/backups/status.json").mode&0o777,0o600);
+  const target="/app/data/backups/"+status.lastSuccess.file;
+  assert.equal(fs.statSync(target).mode&0o777,0o600);
+  const db=new DB(target,{readonly:true});assert.equal(db.pragma("integrity_check",{simple:true}),"ok");assert.equal(db.pragma("foreign_key_check").length,0);
+  assert.equal(db.prepare("SELECT count(*) n FROM user").get().n,1);db.close();
+  console.log("Scheduled backup status and restored image data passed.");
+}
 async function waitReady() {
   for (let attempt = 0; attempt < 60; attempt++) {
     if (docker("inspect", "--format", "{{.State.Running}}", name) !== "true")
@@ -152,6 +164,8 @@ async function main() {
     execNode(databaseCheck);
     docker("exec", name, "node", "scripts/database.cjs", "backup", "/app/data/backups/image-smoke.sqlite");
     console.log(execNode(backupCheck));
+    docker("exec",name,"node","scripts/backup.cjs");
+    console.log(execNode(scheduledBackupCheck));
     console.log("Final-image smoke acceptance passed; no mail, CAPTCHA or paid AI calls.");
   } finally {
     // Only unique resources created by this invocation are eligible for removal.

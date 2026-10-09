@@ -35,7 +35,7 @@ async function requestStop(turnId: string) {
   if (!response.ok) throw new Error("stop_unconfirmed");
   // Accepted/queued cancellation is not proof of terminal SDK state.
 }
-type Identity = { id: string; email: string; name: string };
+type Identity = { id: string; email: string; name: string; isAdmin?: boolean };
 type Snapshot = {
   user: Identity | null;
   availability?: Availability;
