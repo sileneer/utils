@@ -1,191 +1,103 @@
 # Handover
 
-**Written 2026-10-09 during runtime AI environment configuration.**
-PR #4 is published at verified production OCI revision `860157b`.
-PR #5 is merged at `69904b6`, but Docker Hub 429 prevented image publication.
-Production remains `860157b`; the registry-cache release repair is on
-`codex/registry-mirror`. Compatible host env changes are staged.
-
-Runtime: [ARCHITECTURE](ARCHITECTURE.md). Operations and backup procedures:
-[DEPLOYMENT](DEPLOYMENT.md). Binding UI: [DESIGN](DESIGN.md).
-Decisions, fixed retrieval results and approval scope: [PLANNING](PLANNING.md) §12.
+**Written 2026-10-09 after approved PR #5 publication and online env changes.**
+Runtime: [ARCHITECTURE](ARCHITECTURE.md). Operations: [DEPLOYMENT](DEPLOYMENT.md).
+Binding UI: [DESIGN](DESIGN.md). Decisions and approval scope: [PLANNING](PLANNING.md) §12.
 
 ## 1. Position and authorization
 
-The owner explicitly approved merging and publishing PR #4. Publication and
-matching host backup-script activation have completed. Owner account, verified
-email/password flow, administrator and AI activation were approved previously;
-registration, login and password reset passed owner testing. Do not request
-those settled approvals again.
-
-The owner now requests central runtime .env configuration of the AI endpoint,
-token, default and picker catalog. Implementation and draft PR preparation are
-authorized. The owner subsequently approved merging PR #5 and completing online
-configuration; its release and necessary registry-cache repair are in progress.
-The owner also requested generic API-key naming; AI_API_KEY is now preferred,
-with existing aliases retained and the SDK child token mapped server-side.
-
-The fresh real AI acceptance budget is at most six turns, with no automatic
-retries. One was submitted through the normally authenticated independent Chrome
-session `utils-e-live`; it timed out. Five remain unused. Acceptance was stopped
-at that failure. Never mint/export production sessions or bypass the normal
-route with direct SDK calls. Off-machine uploads and pruning remain unapproved.
+The owner approved merging PR #5 and completing online configuration. This includes
+the necessary registry-cache release repair. Owner account, administrator, verified
+email/password registration/login/reset and AI activation were approved previously;
+do not request those settled approvals again. No paid AI call was made for this release.
+The earlier six-turn real acceptance budget has one timeout and five unused turns.
+Never mint/export production sessions or bypass normal authentication. Off-machine
+uploads and pruning remain unapproved.
 
 ## 2. Working tree and release position
 
-[PR #4](https://github.com/sileneer/utils/pull/4) passed exact-head Linux/final-image
-acceptance at `0ef87e2c33e4bfc7c85f4de3397b947954ba691d`, run
-[37965890797](https://github.com/sileneer/utils/actions/runs/37965890797), plus
-GitGuardian and qlty. Squash merge produced
-`a7eb218228048848c6ee72dd65123c137f4d677a`; normal CI/CD
-[37966769716](https://github.com/sileneer/utils/actions/runs/37966769716) passed.
-Production OCI revision matched that feature commit and was running/healthy.
-Matching documentation `860157b2a3af06ff55f080a2de45720e4d709f78` passed CI/CD
-[37969859258](https://github.com/sileneer/utils/actions/runs/37969859258); actual
-runtime revision matched and was healthy. Fresh private backup matched all eight
-live account/auth/chat/usage tables. Original records remain preserved.
+[PR #5](https://github.com/sileneer/utils/pull/5) passed exact-head Linux/image
+acceptance at `5de4f4a` in [37987342058](https://github.com/sileneer/utils/actions/runs/37987342058)
+and merged as `69904b6`. Its first deployment and failed-job retry hit Docker Hub
+429 before image build; deploy stayed skipped and the prior image remained healthy.
+[PR #6](https://github.com/sileneer/utils/pull/6) repaired this with shared registry
+cache configuration; exact-head `4000e1e` passed [37990334329](https://github.com/sileneer/utils/actions/runs/37990334329),
+GitGuardian and qlty, then merged as `57d7ac89e0bb9a72d6698b90a996093be4f98b2f`.
+Normal CI/CD [37990663912](https://github.com/sileneer/utils/actions/runs/37990663912)
+passed all jobs. Actual production OCI matched that revision and was running/healthy
+after the health-checked env-only recreation. Publication and host env changes are complete.
+This matching documentation commit follows the same normal CI/CD; its final exact
+runtime revision/run and sanitized proof are kept in ignored
+`data/investigation/ai-env/release-receipt.json`. No dependency or migration was added.
 
-[PR #5](https://github.com/sileneer/utils/pull/5) passed all exact-head checks at
-`5de4f4a`, Linux image run [37987342058](https://github.com/sileneer/utils/actions/runs/37987342058),
-and squash-merged to `69904b614de5d7088c07ebeff89b6460f649f15a`. Main CI/CD
-[37989673754](https://github.com/sileneer/utils/actions/runs/37989673754) passed
-test/build checks but both image-build attempts hit Docker Hub 429 before building;
-deploy was skipped. The release repair configures a shared public registry cache;
-full image acceptance must pass before merging/publishing it.
-
-Fresh private release backup `release-20261009-ai-env.sqlite` passed integrity/FKs;
-active requests were zero, with 1 user, 1 account, 5 conversations, 18 messages and
-9 usage rows. Host env now stages AI_API_KEY and the five-model catalog from the
-commented template, retaining old aliases for the existing image. Internal checks
-confirmed the same key value, unchanged other settings and mode 600/utils-deploy.
-After the new accepted image is running, remove old aliases and health-check a
-container recreation under the deploy lock. No paid call or quota change occurred.
-Sanitized receipts/scripts remain in ignored `data/investigation/ai-env/`.
-
-Keep `data/investigation/chat-e/` and earlier investigation folders, cached book
-files, disposable databases, browser receipts and `.zcode/` out of Git. Only
-`.env.example` may be tracked. No production credentials are used locally.
+Keep investigation folders, cached book files, disposable databases, browser receipts
+and `.zcode/` out of Git. Only `.env.example` may be tracked; production secrets stay
+on the server. Do not publish raw sessions, transcripts or credentials.
 
 ## 3. Implementation map
 
-New runtime config: ARCHITECTURE §3/§8 owns configuration, public projection and
-historical-model behavior; DEPLOYMENT §12 owns env rollout; PLANNING §12.10 owns
-its decision and approval boundary. Existing dropdown styling remains registered
-in DESIGN §5.6, with localized neutral hints and unavailable/loading disabling.
-
-Published operations: ARCHITECTURE §10 owns aggregate definitions, current-role checks,
-reported/missing metrics and backup status contract. DESIGN §5.8 registered the
-OperationsDashboard before use. DEPLOYMENT §12 owns host-script rollout and the
-owner-reviewable off-machine storage proposal. PLANNING §12.9 records the scope
-and retrieval result. No dependency or database migration was introduced.
-
-Other changes: account-menu administrator link; focus/keyboard-only visual
-viewport handling; multi-term proximity tie-break; real local two-session reset
-revocation; Linux final-image backup-status/restore acceptance.
+ARCHITECTURE §3/§8 owns runtime configuration, safe public projection, SDK mapping
+and historical-model behavior; DEPLOYMENT §12 owns env refresh/rollback. The server
+now uses AI_API_KEY only, with old token assignments removed; its value is unchanged.
+The existing endpoint, default, auxiliary overrides, auth/mail/CAPTCHA settings and
+100 per-user / 2000 global limits were preserved. AI_MODELS contains the five choices
+from the commented template. The private host env remains 600, owned by utils-deploy.
+Runtime parser alias compatibility remains available to other self-deployments.
+DEPLOYMENT §2 owns the shared registry-cache workflow; all image/health/keyless
+publication guards remain intact. Existing picker styling is registered in DESIGN §5.6.
+ARCHITECTURE §10 and DEPLOYMENT §12 own the published administrator/backup contracts.
 
 ## 4. Next work, in order
 
-1. Complete registry-cache Linux/image acceptance, merge the focused repair and
-   verify normal CI/CD/exact healthy production OCI. Normalize host key aliases
-   using the prepared lock/rollback/health workflow, then verify original data,
-   anonymous boundaries and authenticated catalog/history/availability. The owner
-   logged in the new independent `utils-env-release` Chrome session. No paid query.
-2. Diagnose model continuation after successful search results before spending
-   any of the five remaining acceptance turns. Keep the existing deadline,
-   authentication boundary, provider environment allowlist and no-retry budget.
-   No root cause or model-quality/context acceptance has been established.
-3. Await actual phone keyboard/IME/source-return report. Desktop emulation is
-   complete but does not establish physical software-keyboard behavior.
-4. Owner must select off-machine destination/ownership before creating storage,
-   granting IAM, uploading private account/chat data or setting retention. The
-   concrete GCS proposal is ready; no bucket/upload/pruning was performed.
-5. Verify the next natural execution of the new backup producer. Manual execution
-   passed; the previous producer's natural schedule is separate evidence.
+1. Diagnose model continuation after successful search before spending any of the
+   five remaining real acceptance turns. Preserve deadline, guards and no-retry budget.
+2. Await actual phone keyboard/IME/source-return evidence. Desktop emulation does
+   not establish physical software-keyboard behavior.
+3. Owner must choose off-machine destination/ownership before storage/IAM/upload
+   or retention actions. The concrete GCS proposal lives in DEPLOYMENT §12.
+4. Verify the next natural execution of the installed backup producer; its manual
+   execution passed, while the prior producer had separate natural-run evidence.
+5. Cross-device production reset, mail headers/other inboxes and long-context
+   SDK measurement remain distinct from completed local regressions.
 
-## 5. Verified production backup/data state
+## 5. Data and backup state
 
-The previous producer's naturally scheduled 2026-10-09 03:15 UTC backup was
-verified with integrity ok, zero foreign-key issues and an isolated restoration
-preserving every user/account/conversation/message/usage row. Counts were
-1/1/4/16/8. SDK resume IDs were cleared in the restored copy only; live data was
-unchanged and the temporary restore directory was removed.
+Fresh coherent private release backup: `/app/data/backups/release-20261009-ai-env.sqlite`
+(600), made before host changes with zero active requests, integrity ok and no FK issues.
+After deployment/recreation all original rows across user/account/session/verification/
+conversation/message/usage/metadata tables were compared internally and preserved exactly.
+Account identity, verified state, role/status and schema versions were preserved.
+Saved source versions and SDK mount remain present. No production database was replaced.
+Host backup script and existing 03:15 UTC cron remain active; administrator backup status
+is fresh. No off-machine copy or pruning was activated.
 
-Before PR #4 deployment a coherent private release backup was created at
-`/app/data/backups/release-20261009-chat-e.sqlite` (600). Every original account,
-conversation, message, usage and metadata row was preserved exactly after release;
-account identity/verified/role/status values were compared internally. The first
-QA turn added a conversation and failed exchange; only that conversation's title
-was changed to identify the timeout. No existing chat was deleted or modified.
+## 6. Local preview and evidence
 
-Matching `deploy/backup.sh` is installed at `/opt/utils/backup.sh`, owned by
-utils-deploy (750); its previous version is retained as
-`/opt/utils/backup.sh.pre-chat-e-20261009`. Cron is active, with the existing
-03:15 UTC job and unchanged crontab. Manual execution as utils-deploy succeeded:
-manifest complete, SQLite integrity ok, zero foreign-key issues, database/status
-600 and directory 700. The authenticated dashboard reports fresh backup status.
-No off-machine copy or pruning was activated.
-
-Schema remains 001-auth, 002-product, 003-chat-history. AI remains enabled at
-100 per-user / 2000 global daily limits; server environment is mode 600.
-No configuration, quota, auth or deployment guard was changed during release.
-
-## 6. Local preview and evidence handling
-
-Isolated app launcher: `data/investigation/ai-env/preview-app.cjs`; fake local mail
-and CAPTCHA/provider config, AI/quotas disabled, disposable `qa-env.sqlite`. Proxy:
-`tests/preview.cjs` on loopback 3001, never imported into the production image.
-These fixtures are not evidence of real authentication delivery/model behavior.
-
-PID/log files in the investigation folder own the processes. Verify the recorded
-PID's current command line before stopping it. Stop the owned standalone before
-rebuilding its output on Windows; wait for readiness before starting QA.
-Screenshots with `env-models-`, `e-final-` and `e-production-` prefixes are outside Git in the
-permitted visualization folder. Do not publish session values, raw production
-browser/provider data, private transcripts or credentials in docs, PRs or logs.
+Isolated app launcher: `data/investigation/ai-env/preview-app.cjs`; disposable auth/mail/
+CAPTCHA/provider config, AI/quotas disabled, separate SQLite. Loopback proxy on 3001:
+`tests/preview.cjs`, never imported into production. Verify recorded PID command lines
+before stopping owned processes; stop the standalone before rebuilding on Windows.
+Local and live screenshots remain outside Git in the permitted visualization folder.
+The independent `utils-env-release` Chrome session was normally logged in by the owner;
+only readonly catalog/history/availability/admin checks were made. No cookies were exported.
 
 ## 7. Verification state and limits
 
-63 regressions, local lint and complete production build/type checks passed.
-The generic-key delta covers nonblank alias precedence, runtime dotenv loading,
-SDK child mapping and exclusion from public metadata.
-New offline configuration checks cover a quoted JSON catalog loaded from a
-disposable .env, canonical/legacy tokens, custom/removed models, safe public
-projection, default fallback, slot overrides and failure before SDK/reservation.
-Client chunks contain no provider env variable names or configured endpoint.
-Linux image smoke asserts the new complete anonymous response shape, private
-gates and same-image runtime model changes while preserving account/chat data.
-Its exact-head run, including final acceptance status, is recorded in the ignored
-PR receipt; no local Docker is available.
-Current local model picker checks cover custom runtime defaults, preference
-persistence and removed-ID fallback in English light/Chinese dark at 360px and
-1280px desktop. One canned stream verified displayed per-message model metadata,
-not real AI quality. Mobile dark axe had zero violations, with one manual check
-for the existing modal focus guards; this is not a zero-incomplete full audit.
-Current release runtime/authenticated checks remain pending behind registry
-image build. The production checks below belong to previously published PR #4.
-Coverage includes current active/verified/admin role isolation, bounded aggregates
-and missing metrics, percentile thresholds, truncation, malformed/stale/interrupted
-backup status, coherent restoration, two independent local sessions revoked on
-password reset, viewport guards and multi-term ranking. Final-image acceptance
-and normal deployment gates passed at the release commits listed in §2.
-
-Production anonymous probes passed: health/reading 200, admin and conversation
-API 401, session unauthenticated with no user, admin page redirect to login,
-pinned-source entry 200 and invalid revision 400. Normal authenticated admin
-access returned 200 with no-store, current quotas and fresh backup status.
-
-Admin UI was inspected at 360px in English light/Chinese dark and at 1280px;
-no horizontal page overflow. Settled production axe audits passed with 42 passes,
-zero violations/incomplete in both mobile theme/language combinations. A theme
-transition left a closed tooltip in the first dark audit; reloading and checking
-the fully loaded dashboard cleared it before the final audit. Local UI also
-passed 768px and loading/error/truncation states; controls are 40px high.
-
-Local canned-chat regression verified Chinese composition/229 does not send,
-touch Enter makes a newline, and a simulated 430px keyboard leaves input visible.
-Multi-line draft/expanded source survive source return; same-viewport scroll
-position was unchanged (2293px). These are desktop emulation, not physical phone
-acceptance. Fixed retrieval comparison and limits live in PLANNING §12.8/§12.9.
+63 regressions, local lint and complete production build/type checks passed. Both accepted
+PR heads and normal release CI ran Linux native SQLite/SDK/final-image persistence/restore/
+runtime-env acceptance. Configuration tests cover quoted JSON dotenv loading, canonical/
+legacy precedence, custom/removed models, safe metadata, SDK mapping, selected slots and
+failure before quota/SDK. Client chunks contain no provider env names or configured endpoint.
+Anonymous production probes pass health/reading 200, private APIs 401, admin login redirect,
+exact safe no-store catalog projection, pinned source 200 and invalid source 400.
+Normal authenticated readonly APIs return 200/no-store with all five models, unchanged
+default, history and quota use, administrator access and fresh backup status.
+Published picker was inspected at 360px in light/dark and at desktop width; no page overflow.
+Local custom-default/preference/removed-model tests passed English light/Chinese dark.
+One local canned stream verified per-message model display, not real AI quality.
+Local dark axe had zero violations and one manual modal-focus check; no zero-incomplete
+full-audit claim. Previous administrator mobile audits passed, but this env release adds
+no new administrator UI. Desktop keyboard/IME/source-return emulation passed previously.
 
 The first production answer/source QA turn used deepseek-flash with pinned source
 `bb25081b423091f9e22059aab6b4ed7343a2266d`. It timed out after 189592ms,
@@ -200,11 +112,3 @@ The dashboard correctly reflected a failed request, missing Token sample, no
 active request and a released concurrency slot. Five unused turns were retained,
 with no retry or model switch. Source fidelity, unsupported-condition handling
 and long-context acceptance remain unpassed. See GOTCHAS §C for diagnostic method.
-
-## 8. Independent gaps
-
-Off-machine protection is not enabled. Real cross-device production reset,
-mail authentication headers/other inboxes, physical phone behavior and long-context
-SDK measurement remain distinct from local regressions. Historical DESIGN records
-and docs-only workflow filtering remain independent; DEPLOYMENT is the operations
-authority. Do not infer external acceptance from mock, retrieval or unit checks.
