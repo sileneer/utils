@@ -40,8 +40,9 @@ Matching documentation `860157b2a3af06ff55f080a2de45720e4d709f78` passed CI/CD
 runtime revision matched and was healthy. Fresh private backup matched all eight
 live account/auth/chat/usage tables. Original records remain preserved.
 
-The runtime-config implementation and matching docs are prepared on the branch
-named above. Inspect its draft PR exact-head checks before publication; its
+The runtime-config implementation and matching docs are committed/pushed through
+[draft PR #5](https://github.com/sileneer/utils/pull/5). Inspect its exact-head
+Linux/image checks before publication; its
 receipt lives in ignored `data/investigation/ai-env/`. No dependency/migration,
 production env edit, quota change, deployment or paid request occurred in this work.
 
@@ -133,6 +134,10 @@ New offline configuration checks cover a quoted JSON catalog loaded from a
 disposable .env, canonical/legacy tokens, custom/removed models, safe public
 projection, default fallback, slot overrides and failure before SDK/reservation.
 Client chunks contain no provider env variable names or configured endpoint.
+Linux image smoke asserts the new complete anonymous response shape, private
+gates and same-image runtime model changes while preserving account/chat data.
+Its exact-head run, including final acceptance status, is recorded in the ignored
+PR receipt; no local Docker is available.
 Current local model picker checks cover custom runtime defaults, preference
 persistence and removed-ID fallback in English light/Chinese dark at 360px and
 1280px desktop. One canned stream verified displayed per-message model metadata,

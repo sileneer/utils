@@ -52,6 +52,17 @@ commit that only deleted a file.
 **Fix** `public/robots.txt` exists on purpose. Don't delete the last file in a
 directory the Dockerfile copies.
 
+### Extending public status metadata changes strict image smoke expectations
+
+**Symptom** the final image starts and private gates remain closed, but image
+acceptance fails on the anonymous session JSON after adding runtime model metadata.
+**Cause** the smoke check still asserts the old complete response shape.
+**Fix** retain a strict full-shape assertion including the public empty catalog,
+not a partial auth-only assertion. Recreate the same accepted image with explicit
+offline provider/model fixtures and verify the configured public catalog, no-store
+header, unchanged private gates and retained volume records. Network stays disabled
+and AI stays off; this check must not query a real provider or use production env.
+
 ## B. Streaming & Cloudflare
 
 ### Cloudflare kills idle proxied streams at ~100 s
