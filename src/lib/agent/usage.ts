@@ -1,3 +1,4 @@
+import { aiConfiguration } from "./config";
 import { randomUUID } from "node:crypto";
 import { db } from "../db";
 import { serviceBusy } from "./active-query";
@@ -13,7 +14,7 @@ export function reserveUsage(
     !Number.isSafeInteger(total) ||
     perUser < 1 ||
     total < 1 ||
-    process.env.AI_ENABLED !== "1"
+    process.env.AI_ENABLED !== "1" || !aiConfiguration()
   )
     return { error: "ai_disabled" };
   const database = db(),
@@ -54,7 +55,7 @@ export function availability(user: string, now = Date.now()): Availability {
   const limit = Number(process.env.AI_USER_DAILY_LIMIT ?? 0),
     total = Number(process.env.AI_GLOBAL_DAILY_LIMIT ?? 0);
   const enabled =
-    process.env.AI_ENABLED === "1" &&
+    process.env.AI_ENABLED === "1" && Boolean(aiConfiguration()) &&
     Number.isSafeInteger(limit) &&
     limit > 0 &&
     Number.isSafeInteger(total) &&

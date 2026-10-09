@@ -1,3 +1,4 @@
+import { publicModelConfig } from "@/lib/agent/config";
 import { isAdministrator } from "@/lib/admin/access";
 import { currentUser } from "@/lib/agent/auth";
 import {
@@ -12,9 +13,10 @@ export async function GET(request: Request) {
   const user = await currentUser(),
     id = new URL(request.url).searchParams.get("id");
   const headers = { "cache-control": "no-store" };
+  const modelConfig = publicModelConfig();
   if (!user)
     return Response.json(
-      { authed: false, user: null },
+      { authed: false, user: null, modelConfig },
       { status: id ? 401 : 200, headers },
     );
   if (id && !isValidSessionId(id))
@@ -28,6 +30,7 @@ export async function GET(request: Request) {
   return Response.json(
     {
       authed: true,
+      modelConfig,
       user: { id: user.id, email: user.email, name: user.name, isAdmin: isAdministrator(user.id) },
       availability: availability(user.id),
       ...(active ? { active } : {}),

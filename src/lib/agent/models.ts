@@ -1,43 +1,16 @@
-/**
- * Chat models offered by the model picker. Source of truth mirrors the
- * SenseNova model list (https://platform.sensenova.cn/docs) minus the
- * image-generation models (U1.5 series). The allowlist is enforced
- * server-side; display names are product proper nouns (no i18n needed).
- */
-export const AGENT_MODELS = [
-  {
-    id: "deepseek-flash",
-    name: "DeepSeek V4.1 Flash",
-    hint: { en: "default for book Q&A", zh: "默认读书问答" },
-  },
-  {
-    id: "deepseek-v4-flash",
-    name: "DeepSeek V4 Flash",
-    hint: { en: "alternative for book Q&A", zh: "读书问答备选" },
-  },
-  {
-    id: "sensenova-6.8-flash-lite",
-    name: "SenseNova 6.8 Flash Lite",
-    hint: { en: "alternative for book Q&A", zh: "读书问答备选" },
-  },
-  {
-    id: "glm-5.2",
-    name: "GLM-5.2",
-    hint: { en: "alternative for book Q&A", zh: "读书问答备选" },
-  },
-  {
-    id: "kimi-k3",
-    name: "Kimi K3",
-    hint: { en: "alternative for book Q&A", zh: "读书问答备选" },
-  },
-] as const;
+export type AgentModel = { id: string; name: string };
+export type AgentModelConfig = { defaultModel: string; models: AgentModel[] };
 
-export const DEFAULT_AGENT_MODEL: string = AGENT_MODELS[0].id;
-
-export function isAllowedAgentModel(id: unknown): id is string {
-  return typeof id === "string" && AGENT_MODELS.some((m) => m.id === id);
+/** Historical metadata may describe a model removed from today's send allowlist. */
+export function isAgentModelId(id: unknown): id is string {
+  return typeof id === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/.test(id);
 }
-
-export function agentModelName(id: string): string {
-  return AGENT_MODELS.find((m) => m.id === id)?.name ?? id;
+export function isAllowedAgentModel(id: unknown, models: readonly AgentModel[]): id is string {
+  return typeof id === "string" && models.some((model) => model.id === id);
+}
+export function selectAgentModel(preference: unknown, config: AgentModelConfig): string {
+  return isAllowedAgentModel(preference, config.models) ? preference : config.defaultModel;
+}
+export function agentModelName(id: string, models: readonly AgentModel[]): string {
+  return models.find((model) => model.id === id)?.name ?? id;
 }

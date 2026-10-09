@@ -1,8 +1,8 @@
 # Handover
 
-**Written 2026-10-09 after PR #4 publication and bounded production acceptance.**
-The operations batch is live. Matching release records follow the normal CI/CD
-pipeline; ignored investigation receipts record its final commit/run/runtime.
+**Written 2026-10-09 during runtime AI environment configuration.**
+PR #4 is published at verified production OCI revision `860157b`.
+The configuration work is on `codex/ai-env-config`; it is not published.
 
 Runtime: [ARCHITECTURE](ARCHITECTURE.md). Operations and backup procedures:
 [DEPLOYMENT](DEPLOYMENT.md). Binding UI: [DESIGN](DESIGN.md).
@@ -15,6 +15,10 @@ matching host backup-script activation have completed. Owner account, verified
 email/password flow, administrator and AI activation were approved previously;
 registration, login and password reset passed owner testing. Do not request
 those settled approvals again.
+
+The owner now requests central runtime .env configuration of the AI endpoint,
+token, default and picker catalog. Implementation and draft PR preparation are
+authorized; publication follows the separate checkpoint in PLANNING §12.10.
 
 The fresh real AI acceptance budget is at most six turns, with no automatic
 retries. One was submitted through the normally authenticated independent Chrome
@@ -31,8 +35,15 @@ GitGuardian and qlty. Squash merge produced
 `a7eb218228048848c6ee72dd65123c137f4d677a`; normal CI/CD
 [37966769716](https://github.com/sileneer/utils/actions/runs/37966769716) passed.
 Production OCI revision matched that feature commit and was running/healthy.
-This matching documentation record changes no runtime code; verify its own
-normal CI/CD and final runtime revision using the ignored release receipt.
+Matching documentation `860157b2a3af06ff55f080a2de45720e4d709f78` passed CI/CD
+[37969859258](https://github.com/sileneer/utils/actions/runs/37969859258); actual
+runtime revision matched and was healthy. Fresh private backup matched all eight
+live account/auth/chat/usage tables. Original records remain preserved.
+
+The runtime-config implementation and matching docs are prepared on the branch
+named above. Inspect its draft PR exact-head checks before publication; its
+receipt lives in ignored `data/investigation/ai-env/`. No dependency/migration,
+production env edit, quota change, deployment or paid request occurred in this work.
 
 Keep `data/investigation/chat-e/` and earlier investigation folders, cached book
 files, disposable databases, browser receipts and `.zcode/` out of Git. Only
@@ -40,7 +51,12 @@ files, disposable databases, browser receipts and `.zcode/` out of Git. Only
 
 ## 3. Implementation map
 
-ARCHITECTURE §10 owns administrator aggregate definitions, current-role checks,
+New runtime config: ARCHITECTURE §3/§8 owns configuration, public projection and
+historical-model behavior; DEPLOYMENT §12 owns env rollout; PLANNING §12.10 owns
+its decision and approval boundary. Existing dropdown styling remains registered
+in DESIGN §5.6, with localized neutral hints and unavailable/loading disabling.
+
+Published operations: ARCHITECTURE §10 owns aggregate definitions, current-role checks,
 reported/missing metrics and backup status contract. DESIGN §5.8 registered the
 OperationsDashboard before use. DEPLOYMENT §12 owns host-script rollout and the
 owner-reviewable off-machine storage proposal. PLANNING §12.9 records the scope
@@ -52,16 +68,21 @@ revocation; Linux final-image backup-status/restore acceptance.
 
 ## 4. Next work, in order
 
-1. Diagnose model continuation after successful search results before spending
+1. Inspect the runtime-config draft PR and its Linux/image gate. On approved
+   publication preserve the server key/base/default and auxiliary overrides;
+   add the commented AI_MODELS catalog to the host .env to retain the existing
+   five choices. Use DEPLOYMENT §12 rollout; no provider credentials are needed
+   in Git/local QA, and no paid acceptance is implicit.
+2. Diagnose model continuation after successful search results before spending
    any of the five remaining acceptance turns. Keep the existing deadline,
    authentication boundary, provider environment allowlist and no-retry budget.
    No root cause or model-quality/context acceptance has been established.
-2. Await actual phone keyboard/IME/source-return report. Desktop emulation is
+3. Await actual phone keyboard/IME/source-return report. Desktop emulation is
    complete but does not establish physical software-keyboard behavior.
-3. Owner must select off-machine destination/ownership before creating storage,
+4. Owner must select off-machine destination/ownership before creating storage,
    granting IAM, uploading private account/chat data or setting retention. The
    concrete GCS proposal is ready; no bucket/upload/pruning was performed.
-4. Verify the next natural execution of the new backup producer. Manual execution
+5. Verify the next natural execution of the new backup producer. Manual execution
    passed; the previous producer's natural schedule is separate evidence.
 
 ## 5. Verified production backup/data state
@@ -93,21 +114,31 @@ No configuration, quota, auth or deployment guard was changed during release.
 
 ## 6. Local preview and evidence handling
 
-Isolated app launcher: `data/investigation/chat-e/preview-app.cjs`; fake local mail
-and CAPTCHA, AI/quotas disabled, disposable `qa-reviewed.sqlite`. Proxy:
+Isolated app launcher: `data/investigation/ai-env/preview-app.cjs`; fake local mail
+and CAPTCHA/provider config, AI/quotas disabled, disposable `qa-env.sqlite`. Proxy:
 `tests/preview.cjs` on loopback 3001, never imported into the production image.
 These fixtures are not evidence of real authentication delivery/model behavior.
 
 PID/log files in the investigation folder own the processes. Verify the recorded
 PID's current command line before stopping it. Stop the owned standalone before
 rebuilding its output on Windows; wait for readiness before starting QA.
-Screenshots with `e-final-` and `e-production-` prefixes are outside Git in the
+Screenshots with `env-models-`, `e-final-` and `e-production-` prefixes are outside Git in the
 permitted visualization folder. Do not publish session values, raw production
 browser/provider data, private transcripts or credentials in docs, PRs or logs.
 
 ## 7. Verification state and limits
 
-56 regressions, local lint and complete production build/type checks passed.
+62 regressions, local lint and complete production build/type checks passed.
+New offline configuration checks cover a quoted JSON catalog loaded from a
+disposable .env, canonical/legacy tokens, custom/removed models, safe public
+projection, default fallback, slot overrides and failure before SDK/reservation.
+Client chunks contain no provider env variable names or configured endpoint.
+Current local model picker checks cover custom runtime defaults, preference
+persistence and removed-ID fallback in English light/Chinese dark at 360px and
+1280px desktop. One canned stream verified displayed per-message model metadata,
+not real AI quality. Mobile dark axe had zero violations, with one manual check
+for the existing modal focus guards; this is not a zero-incomplete full audit.
+Production checks below belong to the already published PR #4, not this branch.
 Coverage includes current active/verified/admin role isolation, bounded aggregates
 and missing metrics, percentile thresholds, truncation, malformed/stale/interrupted
 backup status, coherent restoration, two independent local sessions revoked on

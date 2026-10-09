@@ -1,3 +1,4 @@
+import { aiConfiguration } from "../agent/config";
 import { readFile, lstat } from "node:fs/promises";
 import path from "node:path";
 import { databasePath } from "../database.cjs";
@@ -113,7 +114,7 @@ export async function operationsSnapshot(hours: 24 | 168, now = Date.now()): Pro
     if (!Object.values(tokens).every(integer))
         throw Error("operations_unavailable");
     const userLimit = Number(process.env.AI_USER_DAILY_LIMIT ?? 0), globalLimit = Number(process.env.AI_GLOBAL_DAILY_LIMIT ?? 0);
-    const enabled = process.env.AI_ENABLED === "1" && integer(userLimit) && userLimit > 0 && integer(globalLimit) && globalLimit > 0;
+    const enabled = process.env.AI_ENABLED === "1" && Boolean(aiConfiguration()) && integer(userLimit) && userLimit > 0 && integer(globalLimit) && globalLimit > 0;
     return { checkedAt: now, hours, attempts: rows.length, truncated, outcomes, tokens,
         duration: samples(durations, rows.length - durations.length), firstText: samples(firsts, rows.length - firsts.length),
         service: { enabled, busy: serviceBusy(), userLimit: enabled ? userLimit : 0, globalLimit: enabled ? globalLimit : 0 },

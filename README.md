@@ -44,7 +44,8 @@ are documented in [ARCHITECTURE §8](docs/ARCHITECTURE.md#8-environment-contract
 with service setup and secure handoff in [DEPLOYMENT §11](docs/DEPLOYMENT.md#11-account-release-preparation-and-operations).
 AI requires explicit activation and positive daily quotas. Dev/start applies
 versioned migrations before serving; old unowned JSON chats are not imported.
-The offered model IDs live in `src/lib/agent/models.ts`.
+Provider credentials, endpoint, default and offered model IDs are runtime `.env`
+configuration; see [ARCHITECTURE §8](docs/ARCHITECTURE.md#8-environment-contract).
 
 ## Self-deploy
 

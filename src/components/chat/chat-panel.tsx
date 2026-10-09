@@ -17,7 +17,7 @@ import {
   Square,
   X,
 } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,7 +32,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { AGENT_MODELS, agentModelName } from "@/lib/agent/models";
+import { agentModelName } from "@/lib/agent/models";
 import { cn } from "@/lib/utils";
 import type { SourceDisclosure } from "./citation-preview";
 import { Answer } from "./answer";
@@ -101,7 +101,6 @@ export function ChatPanel({
 }) {
   const t = useTranslations("chat");
   const account = useTranslations("account");
-  const locale = useLocale();
   const [following, setFollowing] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const list = useRef<HTMLDivElement>(null);
@@ -147,6 +146,7 @@ export function ChatPanel({
     !chat.streaming &&
     !chat.loading &&
     !chat.archived &&
+    Boolean(chat.model) &&
     (!chat.quota ||
       (chat.quota.enabled &&
         chat.quota.remaining > 0 &&
@@ -262,10 +262,10 @@ export function ChatPanel({
               variant="ghost"
               size="sm"
               className="h-10 min-w-0 flex-1 justify-between text-xs"
-              disabled={chat.streaming}
+              disabled={chat.streaming || chat.loading || !chat.modelConfig.models.length}
               aria-label={t("model")}
             >
-              <span className="truncate">{agentModelName(chat.model)}</span>
+              <span className="truncate">{chat.model ? agentModelName(chat.model, chat.modelConfig.models) : t("notReported")}</span>
               <ChevronDown />
             </Button>
           </DropdownMenuTrigger>
@@ -273,7 +273,7 @@ export function ChatPanel({
             align="end"
             className="max-w-[calc(100vw-2rem)] min-w-64"
           >
-            {AGENT_MODELS.map((m) => (
+            {chat.modelConfig.models.map((m) => (
               <DropdownMenuItem
                 key={m.id}
                 className="min-h-10"
@@ -282,7 +282,7 @@ export function ChatPanel({
                 <span className="flex-1">
                   {m.name}
                   <span className="block text-xs text-muted-foreground">
-                    {m.hint[locale === "zh" ? "zh" : "en"]}
+                    {t(m.id === chat.modelConfig.defaultModel ? "modelDefault" : "modelAlternative")}
                   </span>
                 </span>
                 {chat.model === m.id && <Check />}
@@ -511,6 +511,7 @@ export function ChatPanel({
                   )}
                 <MessageDetails
                   message={message}
+                  models={chat.modelConfig.models}
                   stage={chat.stage}
                   startedAt={chat.startedAt}
                 />

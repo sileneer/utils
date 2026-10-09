@@ -8,15 +8,17 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { agentModelName } from "@/lib/agent/models";
+import { agentModelName, type AgentModel } from "@/lib/agent/models";
 import { totalTokens } from "@/lib/chat/details";
 import type { ChatMessage } from "@/lib/chat/protocol";
 export function MessageDetails({
   message,
+  models,
   stage,
   startedAt,
 }: {
   message: ChatMessage;
+  models: AgentModel[];
   stage: string;
   startedAt: number;
 }) {
@@ -111,7 +113,7 @@ export function MessageDetails({
           <dd>{sent}</dd>
           <dt>{t("model")}</dt>
           <dd>
-            {details?.model ? agentModelName(details.model) : t("notReported")}
+            {details?.model ? agentModelName(details.model, models) : t("notReported")}
           </dd>
           <dt>{t("durationLabel")}</dt>
           <dd>{duration}</dd>

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 require("./register.cjs");
+require("./ai-fixture.cjs")();
 const test = require("node:test"),
   assert = require("node:assert/strict");
 const fs = require("node:fs/promises"),
@@ -82,7 +83,7 @@ test("book tools accept only bounded sections and literal search; env excludes a
   process.env.BREVO_API_KEY = "test";
   process.env.TURNSTILE_SECRET_KEY = "test";
   process.env.CHAT_PASSCODE = "test";
-  const env = agentEnvironment();
+  const env = agentEnvironment("deepseek-flash");
   for (const name of [
     "BETTER_AUTH_SECRET",
     "BREVO_API_KEY",

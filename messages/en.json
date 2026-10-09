@@ -243,7 +243,9 @@
     "expandChat": "Expand chat",
     "compactChat": "Compact chat",
     "readingSource": "Viewing the answer’s original source",
-    "returnToAnswer": "Return to answer"
+    "returnToAnswer": "Return to answer",
+    "modelDefault": "default for book Q&A",
+    "modelAlternative": "alternative for book Q&A"
   },
   "error": {
     "title": "Something went wrong",

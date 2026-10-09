@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 require("./register.cjs");
+require("./ai-fixture.cjs")();
 const test = require("node:test"),
   assert = require("node:assert/strict"),
   fs = require("node:fs"),

@@ -3,6 +3,11 @@ const Module = require("node:module");
 const fs = require("node:fs");
 const path = require("node:path");
 const ts = require("typescript");
+const load = Module._load;
+Module._load = function (name, ...args) {
+  if (name === "server-only") return {};
+  return load.call(this, name, ...args);
+};
 const resolve = Module._resolveFilename;
 Module._resolveFilename = function (name, ...args) {
   return resolve.call(

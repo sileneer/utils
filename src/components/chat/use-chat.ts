@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DEFAULT_AGENT_MODEL, isAllowedAgentModel } from "@/lib/agent/models";
+import { isAllowedAgentModel, selectAgentModel, type AgentModelConfig } from "@/lib/agent/models";
 import {
   readChatStream,
   type BookContext,
@@ -37,6 +37,7 @@ async function requestStop(turnId: string) {
 }
 type Identity = { id: string; email: string; name: string; isAdmin?: boolean };
 type Snapshot = {
+  modelConfig?: AgentModelConfig;
   user: Identity | null;
   availability?: Availability;
   active?: ActiveTurn;
@@ -54,7 +55,8 @@ export function useChat() {
   const [loading, setLoading] = useState(true),
     [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraftState] = useState(""),
-    [model, setModelState] = useState(DEFAULT_AGENT_MODEL);
+    [model, setModelState] = useState("");
+  const [modelConfig, setModelConfig] = useState<AgentModelConfig>({ defaultModel: "", models: [] });
   const [revision, setRevision] = useState<string>(),
     [context, setContext] = useState<BookContext>();
   const [streaming, setStreaming] = useState(false),
@@ -86,7 +88,7 @@ export function useChat() {
     if (owner.current) store(draftKey(owner.current, sessionId.current), value);
   }, []);
   const setModel = (value: string) => {
-    if (isAllowedAgentModel(value)) {
+    if (isAllowedAgentModel(value, modelConfig.models)) {
       setModelState(value);
       if (owner.current) store(`${MODEL_KEY}:${owner.current}`, value);
     }
@@ -115,7 +117,11 @@ export function useChat() {
   }, []);
   const applySnapshot = useCallback(
     (data: Snapshot, id: string | null, includeMessages = true) => {
-      if (data.user?.id !== owner.current) return;
+      if (!data.user || data.user.id !== owner.current) return;
+      if (data.modelConfig) {
+        setModelConfig(data.modelConfig);
+        setModelState(selectAgentModel(saved(`${MODEL_KEY}:${data.user.id}`), data.modelConfig));
+      }
       setQuota(data.availability);
       remote.current = data.active;
       if (data.active) {
@@ -233,6 +239,9 @@ export function useChat() {
       if (!response.ok) throw new Error("history_failed");
       const identity: Snapshot = await response.json();
       if (generation !== epoch.current) return;
+      const config = identity.modelConfig ?? { defaultModel: "", models: [] };
+      setModelConfig(config);
+      setModelState(selectAgentModel(identity.user?.id ? saved(`${MODEL_KEY}:${identity.user.id}`) : null, config));
       if (owner.current !== (identity.user?.id ?? null)) {
         if (active.current)
           void requestStop(active.current.turnId).catch(() => undefined);
@@ -261,10 +270,6 @@ export function useChat() {
             store(`htlb_chat_draft:${account}`, "");
           }
           setDraftState(saved(key) ?? "");
-          const preference = saved(`${MODEL_KEY}:${account}`);
-          setModelState(
-            isAllowedAgentModel(preference) ? preference : DEFAULT_AGENT_MODEL,
-          );
         } else setDraftState("");
       }
       setUser(identity.user);
@@ -430,7 +435,7 @@ export function useChat() {
       streaming ||
       loading ||
       !authed ||
-      archived
+      archived || !isAllowedAgentModel(model, modelConfig.models)
     )
       return;
     const text = retry?.content ?? draft.trim();
@@ -636,6 +641,7 @@ export function useChat() {
     setDraft,
     model,
     setModel,
+    modelConfig,
     revision,
     context,
     setContext,
