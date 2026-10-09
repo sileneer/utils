@@ -1,10 +1,11 @@
 # Handover
 
-**Written 2026-10-09: A+B recovery/quota and owned conversation history are
-implemented locally; the owner approved publication on 2026-10-09 after review.
-PR acceptance, merge and deployment are now in progress; new real AI calls remain excluded. Local lint, 42 regressions
-and full production build/type checks passed. This handover belongs to the local
-implementation commit. No push, deployment or new provider request was made.**
+**Written 2026-10-09 after feature deployment: approved A+B recovery/quota and
+owned conversation history shipped through PR #2. Acceptance and CI/CD passed;
+production runs feature commit ba733a6, migration 003 is applied, data preservation
+and read-only browser/API checks passed. Zero new real AI requests were submitted.
+This document is the release-record update; functional evidence below identifies
+the exact deployed feature commit and run rather than assuming a later image.**
 
 Runtime contracts: [ARCHITECTURE](ARCHITECTURE.md). Operations:
 [DEPLOYMENT](DEPLOYMENT.md). Debugging: [GOTCHAS](GOTCHAS.md). Design:
@@ -17,26 +18,24 @@ The owner previously approved public verified-email/password accounts, explicitl
 selected their verified administrator, and later enabled AI. Owner-operated
 registration, logout/login and email password reset passed. Do not ask for those
 approvals again. The exact administrator address is private operational input.
-Per-message timing/token/progress details were deployed in the previous release.
+Per-message timing/token/progress details remain deployed from the previous release.
 
 The 2026-10-09 approvals cover PLANNING §12 A+B implementation and publication.
 C/D/E remain proposals. No additional agent-initiated real AI requests are authorized: the
-previous six-request allowance is exhausted. Review a concrete local result
-before publication. Any fresh real-acceptance allowance remains separately bounded.
+previous six-request allowance is exhausted. Publication followed the local review.
+Any fresh real-acceptance allowance remains separately bounded.
 
 ## 2. Working tree and release position
 
-Local branch: `codex/chat-recovery-history`, based on `34013ad`. This local A+B
-commit contains matching code/tests/docs and migration 003. No new dependency,
-secret, key, auth bypass, provider access or pipeline change was introduced.
-The branch has not been pushed. There is no new PR or new Actions run.
-
-Last verified production release was `34013ad`, after the functional message-details
-release `baf43e0`. Their successful Actions runs were
-[functional](https://github.com/sileneer/utils/actions/runs/37851014391) and
-[documentation release](https://github.com/sileneer/utils/actions/runs/37852020811).
-Production was not inspected or modified this turn. Prior activation remains the
-operational baseline; do not present it as a new runtime audit.
+Local checkout: main, fast-forwarded to feature squash commit ba733a6.
+[PR #2](https://github.com/sileneer/utils/pull/2) merged after all checks passed:
+[pre-release acceptance](https://github.com/sileneer/utils/actions/runs/37923973527).
+[CI/CD](https://github.com/sileneer/utils/actions/runs/37924300942) passed test,
+final-image build/acceptance/publication and keyless IAP health-gated deployment.
+The running container's OCI revision was ba733a64a19d8565c33774bfb9fa8a470590d1ae
+and Docker health was healthy. No dependency, secret, pipeline or host configuration
+was added. The matching release record is committed on main; future pushes still
+require their own green pipeline and actual runtime verification.
 
 `.env.example` is the only tracked env file. Ignored `data/investigation/chat-ab/`
 contains disposable QA databases, scripts/logs and planning notes. Do not stage
@@ -51,15 +50,16 @@ registered the project wrappers before use; PLANNING §12 owns scope/decisions.
 DEPLOYMENT §11 owns migration/backup/rollback and preview operation. GOTCHAS owns
 the rollback-column, Windows output-lock and settled-UI audit findings.
 
-Migration 003 has not run on production. No release healthcheck, auth boundary,
+Migration 003 applied successfully on production with a coherent pre-003 backup. No release healthcheck, auth boundary,
 keyless WIF pipeline, paid-call guard, model/tool policy or secret placement was
 weakened. Book content and source-version requirements remain intact.
 
 ## 4. Next work, in order
 
-1. Publication is approved: push the feature branch, open/attach PR, pass full CI
-   including final-image acceptance, merge/deploy and verify actual production.
-   A later real-model acceptance allowance must be explicitly bounded anew.
+1. A+B publication is complete. Do not redeploy or send model requests merely to
+   repeat successful checks. Any future code/document push must pass its normal
+   CI/CD and actual production checks. New real-provider/native-resume acceptance
+   still needs a fresh bounded allowance; the previous six calls are exhausted.
 2. C/D (source previews/retrieval quality and expanded reading) and E (admin/ops)
    remain separate proposals, not unfinished approved A+B work.
 3. Preserve the prior real-acceptance boundary. Six calls covered search/read,
@@ -78,9 +78,9 @@ weakened. Book content and source-version requirements remain intact.
 | --- | --- |
 | Accounts/admin | Previously deployed; owner-operated flows confirmed |
 | Mail/Turnstile | Previously configured; diagnostic reached Gmail inbox and real signup passed |
-| AI/message details | Previously deployed/enabled; no runtime change or real call this turn |
-| Recovery/quota/history | Local A+B implementation reviewed with isolated mocks/regressions; release pending |
-| Migration 003 | Isolated legacy upgrade/backup/rollback-write compatibility passed; production pending |
+| AI/message details | Existing activation/limits retained; saved details still readable; no new model call |
+| Recovery/quota/history | Deployed in ba733a6; mock regressions plus live owned history/quota reads passed |
+| Migration 003 | Applied; production integrity/FKs and original-record preservation passed |
 | Backups | Previous manual backup/isolated restore passed; scheduled-run/off-machine audit still pending |
 | Independent choices | External VM IP, docs-only workflow filtering, local Docker and earlier Tencent meaning remain unresolved |
 
@@ -103,7 +103,7 @@ Fresh screenshots are outside Git under
 `C:\Users\elvis\.codex\visualizations\2026\10\07\01a11742-72fa-7913-b98f-70e25820f214`,
 with the `chat-ab-` prefix. Windows NVM/CUA startup caveats are in GOTCHAS; use the
 installed native agent-browser CLI through the approved host context. No local
-Docker is available; image/Node 22 acceptance remains a later CI gate.
+Docker is available; Linux/Node 22 final-image acceptance passed in CI.
 
 ## 7. Verification state
 
@@ -141,13 +141,41 @@ Docker is available; image/Node 22 acceptance remains a later CI gate.
   GET/PATCH and chat POST 401, auth configuration unavailable. The UI fixture is
   separate from these real fail-closed app endpoints. Zero new provider calls.
 
-**Pending release/external gates:** no new Actions/image acceptance, merge,
-production migration/runtime checks or real provider/native-container-recreation
-acceptance was performed. No physical phone keyboard or comprehensive focus-trap
-traversal was verified. Cross-device reset revocation, mail authentication headers,
-other mailbox providers, naturally scheduled backup and off-machine protection
-remain previous independent gaps. Historical production evidence is not evidence
-that the new local changes are deployed.
+**Passed release evidence (2026-10-09):**
+
+- PR #2 acceptance and feature CI/CD links above are green. Linux Node 22 lint,
+  all 42 tests, complete production image build/type checks, non-root/native SQLite
+  and offline SDK CLI, startup/private gates, restart persistence and coherent
+  backup restoration passed before publication. No mail, challenge or paid AI calls.
+- Created /app/data/backups/release-20261009-chat-ab.sqlite before deployment
+  (mode 600). Automatic pre-003 backup is also mode 600, intact and schema 001/002.
+  Production schema is 001/002/003, integrity_check ok, foreign_key_check empty.
+  Compared to the release backup, all original 4 conversations, 16 message rows,
+  8 usage rows and account identity/verification/role/status fields were preserved.
+  Secret env stays mode 600 owned by utils-deploy; SDK volume persists. AI remains
+  enabled with the existing 100 per-user / 2000 global daily limits.
+- Fresh public health/home/reading/login probes returned 200. Anonymous identity
+  remains authed:false/user:null; history GET/PATCH and chat/Stop POST returned 401.
+  No protected data was returned; identity/history responses are no-store.
+- Owner logged into the isolated release browser. Authenticated session/history
+  reads returned 200, 4 saved conversations, today's personal remaining 100,
+  empty negative search/archived results and 404 for an unknown conversation UUID.
+  One selected owned conversation returned its 2 saved messages, completed answer
+  statistics and revision without SDK identifiers. Usage rows stayed at 8.
+  The history panel displayed the saved rows via an actual DOM-button click.
+- Independent anonymous production Chrome at 360px: native controls, light/dark
+  chat screenshots inspected, no horizontal overflow. Settled dark-chat scoped
+  axe: 21 passes, zero violations/incomplete. Screenshots use chat-release-public-
+  prefix in the same external visualization directory.
+
+**Limitations and independent pending gates:** headed login-window native clicks
+and screenshot/viewport commands had tool timeouts despite a healthy daemon;
+DOM/API reads worked. Do not claim fresh logged-in visual/pointer acceptance from
+those snapshots. Local mock logged-in visual checks above remain the evidence.
+No new real provider/Stop/native-resume query, physical phone keyboard or
+comprehensive focus-trap traversal was run. Cross-device reset revocation, mail
+authentication headers, other mailboxes, naturally scheduled backup and
+off-machine protection remain previous independent gaps.
 
 ## 8. Independent record inconsistencies
 

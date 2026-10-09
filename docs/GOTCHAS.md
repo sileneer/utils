@@ -664,3 +664,16 @@ failures/incomplete checks from animated opacity/backdrop blending. Wait for tha
 overlay's animations to finish, then rerun and inspect computed foreground/background
 and fresh screenshots. Settled audits resolved these transient findings; the
 independent keyboard-scroll/ARIA-name findings were real and were fixed.
+
+### Headed release-browser capture can stall on Windows
+
+**Observed 2026-10-09** a named headed browser remained reachable for DOM/eval
+reads, but native clicks did not update the expected panel and screenshot/viewport
+commands timed out (os error 10060 / invalid EOF response). Doctor reported a
+healthy daemon; the underlying cause was not established. A DOM-button click
+opened the actual history panel, while a separate anonymous headless browser
+completed native clicks, viewport changes and screenshot inspection. Do not
+claim headed visual/pointer acceptance from a snapshot alone. Keep credentials
+in the product; do not export cookies, alter ACLs or kill unrelated processes.
+In PowerShell quote element references such as '@e11'; bare @e11 is splatting
+and can produce a missing-argument error before the browser is called.
