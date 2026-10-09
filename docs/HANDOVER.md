@@ -1,8 +1,8 @@
 # Handover
 
 **Written 2026-10-09: A+B recovery/quota and owned conversation history are
-implemented locally and ready for review. The owner approved this recommended
-scope; publishing and new real AI calls are excluded. Local lint, 42 regressions
+implemented locally; the owner approved publication on 2026-10-09 after review.
+PR acceptance, merge and deployment are now in progress; new real AI calls remain excluded. Local lint, 42 regressions
 and full production build/type checks passed. This handover belongs to the local
 implementation commit. No push, deployment or new provider request was made.**
 
@@ -19,10 +19,10 @@ registration, logout/login and email password reset passed. Do not ask for those
 approvals again. The exact administrator address is private operational input.
 Per-message timing/token/progress details were deployed in the previous release.
 
-The 2026-10-09 approval covers PLANNING §12 A+B local implementation. C/D/E remain
-proposals. No additional agent-initiated real AI requests are authorized: the
+The 2026-10-09 approvals cover PLANNING §12 A+B implementation and publication.
+C/D/E remain proposals. No additional agent-initiated real AI requests are authorized: the
 previous six-request allowance is exhausted. Review a concrete local result
-before seeking publication or a fresh, bounded real-acceptance allowance.
+before publication. Any fresh real-acceptance allowance remains separately bounded.
 
 ## 2. Working tree and release position
 
@@ -57,8 +57,7 @@ weakened. Book content and source-version requirements remain intact.
 
 ## 4. Next work, in order
 
-1. Owner reviews the local diff/explicit mock preview. Publication requires a
-   separate approval: push the feature branch, open/attach PR, pass full CI
+1. Publication is approved: push the feature branch, open/attach PR, pass full CI
    including final-image acceptance, merge/deploy and verify actual production.
    A later real-model acceptance allowance must be explicitly bounded anew.
 2. C/D (source previews/retrieval quality and expanded reading) and E (admin/ops)
