@@ -38,6 +38,8 @@ the browser is a thin client.
 | `/api/book/entry` | handler | `src/app/api/book/entry/route.ts` | public pinned entry title/excerpt, read-only GET (§6) |
 | `/about` | page | `src/app/about/page.tsx` | |
 | `/api/health` | handler | `src/app/api/health/route.ts` | container + deploy healthcheck; `DRILL_FAIL_HEALTH=1` → 503 |
+| `/account` | page | `src/components/auth/account-center.tsx` | verified active account profile/password/login sessions |
+| `/api/account`, `/api/account/[...action]` | handlers | `src/lib/auth/account-handler.ts` | safe site identity and scoped account management (§5) |
 | `/login`, `/register`, `/verify-email`, `/reset-password` | pages | `src/components/auth/account-form.tsx` | shared localized form |
 | `/api/auth/[...all]` | handler | `src/lib/auth/handler.ts` | allowlisted password/OTP/logout POST endpoints only |
 | `/api/auth-config` | handler | `src/app/api/auth-config/route.ts` | public runtime site key and configuration availability, no secrets |
@@ -294,6 +296,63 @@ the login and notifies other tabs while retaining that account's local selection
 and drafts for a later login. Refresh restores saved history/draft and reconciles
 active work; it does not resume the original SSE or send an automatic model turn.
 Rejected pre-stream sends restore their unsent text.
+
+### Site-wide account contract
+
+The root AccountProvider reads GET /api/account independently of agent models,
+quotas or mail availability. Response is {user:null} for anonymous/unverified/
+inactive accounts, or a safe id/name/email/emailVerified/createdAt/isAdmin projection
+from current database rows. Configuration/read failure is 503, not an anonymous
+success. Responses are no-store and vary by Cookie. The same AccountMenu is used
+in SiteHeader, the fullscreen reader toolbar and ChatPanel; HomeAccount provides
+an additional entry. /account is server-gated and client state handles later expiry.
+
+GET /api/account/sessions requires a login created within 24 hours (the explicit
+framework freshAge); it exposes only noncredential row id, current marker, login/
+expiry times and inferred browser/system. It never returns raw UA/IP/session token.
+POST /profile accepts only name; POST /password accepts currentPassword/newPassword
+and always revokes other sessions with current-cookie rotation; POST /sessions/revoke
+accepts password and exactly one of an owned other row id or others:true. Security
+mutations require fresh login plus current-password verification. Origin, JSON,
+bounded bodies, per-account action limits and field allowlists apply. Generic
+Better Auth mutation/session endpoints remain blocked by the public auth facade.
+The wrapper forwards necessary Set-Cookie headers but discards raw library output.
+No schema migration or new credential store is needed.
+
+lifecycle.ts coordinates logout/revocation/password changes per account across route
+bundles. A fence blocks new query registration; a per-owner authorization version
+also rejects requests that authenticated before the fence but register after it.
+The supported single-process query registry aborts only that owner's active query
+and waits up to 30 seconds for release after final persistence. Timeout/busy returns
+409 without claiming a successful account change. Different accounts do not share
+a logout serialization key or attempt bucket. Reset holds the fence across the OTP
+flow; a database password-write hook stops only after the library authorizes the
+OTP. Invalid OTP/current password/foreign target cannot cancel a live query. A
+failed authorized reset may consume its OTP before cancellation timeout; request
+another code. Framework session-revocation and password hashing remain in place.
+
+Login destinations use navigation.ts's site-route allowlist. Login/register/verify/
+reset links preserve safe returnTo, including reading query/hash; direct login
+returns home. External/protocol-relative/encoded separator/control URLs and auth
+loops fall back home. Authenticated visitors can continue or normally reauthenticate.
+Account events synchronize the current window and localStorage peers; credential/
+session changes invalidate private display immediately, profile changes refresh
+identity without cancelling a chat. Focus rechecks expiry. Failure preserves an
+already known identity with a retry state. Chat keeps its own data/controller, uses
+the shared identity and broadcasts 401 expiry; late callbacks remain epoch-scoped.
+
+New module integration:
+- Declare whether its page is public, with private actions, or fully account-gated.
+  Public reading/client-only utilities remain available anonymously.
+- Use currentUser() from lib/auth/server for every private API/page; enforce
+  user.id ownership on every read/write, and independently query admin role/status
+  where needed. Shared UI is not an authorization boundary. Store data by stable
+  user.id, never email or a browser role claim.
+- Reuse useAccount/AccountMenu/accountLink; add any new return route to the explicit
+  allowlist. Keep identity independent of module-specific data/availability.
+- Paid/background actions must join the account fence and cancellation lifecycle;
+  do not register work with an authorization result older than the owner's fence.
+  No client-side provider call, cookie export or module-specific account database.
 
 ### Account and mail lifecycle
 

@@ -730,3 +730,34 @@ The deploy job correctly stayed skipped; the prior healthy image remained active
 in both image workflows. The cache manifest matched the previously accepted base
 image digest at investigation time. Run full image/native/persistence acceptance
 before merging or publishing; do not add long-lived credentials or bypass gates.
+
+### Account-security hooks must follow authorization and precede password writes
+
+**Symptom** moving logout out of chat can revoke its cookie while a paid request
+continues; cancelling at the start of anonymous reset lets a bad OTP interrupt it.
+**Cause** browser chat Stop is not a site-wide lifecycle boundary. **Fix** use the
+per-owner fence and authorized password-write hook (ARCHITECTURE §5). Library reset
+consumes the OTP before the hook; a cancellation timeout requires a new code. Throw
+an APIError for expected refusal rather than a generic hook error, which Better Call
+may print even with the framework logger disabled. Never expose raw list-sessions/
+change-password output: it can contain bearer session tokens.
+
+### Native browser QA waits and first launch on Windows
+
+**Symptom** a wait times out although the control exists, or a first-launch CLI
+called through Node execFileSync times out after starting a browser. **Cause** in
+this investigation, nested selector quotes made the wait expression invalid; the
+second named browser was already running after the launch helper timed out.
+**Fix** pass a valid quote-safe expression and inspect that session before retrying.
+Use snapshot/semantic controls; do not recreate accounts or alter app auth to repair
+an automation failure. Evidence belongs in ignored investigation receipts.
+
+Controlled account confirmation dialogs have no Radix trigger in their tree.
+Without an explicit close-focus target, cancelling can leave keyboard focus on
+the document body. Keep the initiating button ref and restore it through
+`onCloseAutoFocus`; check cancellation after the closing animation.
+
+Controlled account confirmation dialogs have no Radix trigger in their tree.
+Without an explicit close-focus target, cancelling can leave keyboard focus on
+the document body. Keep the initiating button ref and restore it through
+`onCloseAutoFocus`; check cancellation after the closing animation.

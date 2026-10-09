@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations } from "next-intl/server";
 import "./globals.css";
 
+import { AccountProvider } from "@/components/auth/account-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
@@ -50,6 +51,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <ThemeProvider>
+            <AccountProvider>
             <TooltipProvider>
               <SkipLink />
               <SiteHeader />
@@ -62,6 +64,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               <SiteFooter />
               <Toaster position="bottom-right" />
             </TooltipProvider>
+            </AccountProvider>
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

@@ -24,7 +24,7 @@ import { tokenUsage, type MessageDetails } from "@/lib/chat/details";
 import { getBook } from "@/lib/book/source";
 import { isRevision } from "@/lib/chat/citations";
 import { abortable } from "@/lib/agent/abort";
-import { reserveQuery, releaseQuery } from "@/lib/agent/active-query";
+import { reserveQuery, releaseQuery, accountChangeVersion } from "@/lib/agent/active-query";
 export const dynamic = "force-dynamic";
 const QUERY_TIMEOUT_MS = Number(process.env.AGENT_QUERY_TIMEOUT_MS ?? 180_000);
 function errorCode(error: unknown) {
@@ -37,6 +37,7 @@ function errorCode(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  const authorizationVersion = accountChangeVersion();
   const owner = await currentUser();
   if (!owner)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
   const abortController = new AbortController();
   const activeQuery = {
     owner: owner.id,
+    authorizationVersion,
     turn: turnId,
     sessionId,
     startedAt: Date.now(),

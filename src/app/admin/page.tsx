@@ -1,12 +1,13 @@
 import { redirect, notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { currentUser } from "@/lib/agent/auth";
+import { currentUser } from "@/lib/auth/server";
+import { accountLink } from "@/lib/auth/navigation";
 import { isAdministrator } from "@/lib/admin/access";
 import { OperationsDashboard } from "@/components/admin/operations-dashboard";
 export default async function AdminPage() {
     const user = await currentUser();
     if (!user)
-        redirect("/login");
+        redirect(accountLink("login", "/admin"));
     if (!isAdministrator(user.id))
         notFound();
     const t = await getTranslations("operations");

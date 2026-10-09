@@ -1,6 +1,9 @@
 import { getAuth } from "./server";
 import { consumeLimits, privateKey } from "./limits";
 import { withMailOutcome } from "./mail";
+import { accountSession } from "./identity";
+import { withAccountChange, beforePasswordWrite } from "./lifecycle";
+import { db } from "../db";
 
 // Deliberately expose only password login and purpose-scoped verification/reset.
 const postPaths = new Set([
@@ -142,22 +145,38 @@ export async function handleAuth(request: Request) {
     forwarded.set("x-utils-client-ip", ip);
     delete body.turnstileToken;
     body.email = email;
-    return await serial(key, async () => {
+    const logoutIdentity = route === "/sign-out" ? await accountSession(forwarded) : null;
+    const operationKey = logoutIdentity ? privateKey(logoutIdentity.user.id) : key;
+    return await serial(operationKey, async () => {
       const { result, failed } = await withMailOutcome(async () => {
         const buckets = sends
           ? [
               { key: `send:${key}:minute`, max: 1, window: 60_000 },
               { key: `send:${key}:hour`, max: 5, window: 3_600_000 },
             ]
-          : [{ key: `attempt:${key}:${route}`, max: 10, window: 60_000 }];
+          : [{ key: `attempt:${operationKey}:${route}`, max: 10, window: 60_000 }];
         if (!consumeLimits(buckets)) return json("rate_limited", 429);
-        const response = await auth.handler(
+        const call = () => auth.handler(
           new Request(request.url, {
             method: "POST",
             headers: forwarded,
             body: JSON.stringify(body),
           }),
         );
+        let response: Response;
+        if (route === "/sign-out") {
+          const identity = logoutIdentity;
+          response = identity ? await withAccountChange(identity.user.id, async () => {
+            const latest = await accountSession(forwarded);
+            if (latest?.session.id === identity.session.id) await beforePasswordWrite();
+            return await call();
+          }, false) : await call();
+        } else if (route === "/email-otp/reset-password") {
+          const user = db().prepare("SELECT id FROM user WHERE email=?").get(email) as { id: string } | undefined;
+          // Lock before invoking the OTP flow, but cancel only in its authorized
+          // password-write hook. Invalid OTPs must never cancel a live request.
+          response = user ? await withAccountChange(user.id, call, false) : await call();
+        } else response = await call();
         if (route === "/sign-up/email") {
           // Sign-up sends no mail automatically, so sending failure is visible and
           // recoverable using the same resend path (without retaining passwords).
@@ -197,7 +216,9 @@ export async function handleAuth(request: Request) {
       // awaited adapter reports the outcome without exposing mail content.
       return failed ? json("mail_send_failed", 503) : result;
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && ["stop_unconfirmed", "account_busy"].includes(error.message))
+      return json(error.message, 409);
     return json("service_unavailable", 503);
   }
 }
