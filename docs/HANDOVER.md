@@ -3,7 +3,7 @@
 **Written 2026-10-09 for local C+D review.** Pinned-source previews, bounded
 retrieval improvements and expanded/mobile reading are implemented on
 `codex/chat-sources-reading`. This commit contains matching code, tests and docs.
-Publication and new real provider requests remain separate approvals.
+The owner approved C+D publication on 2026-10-09; PR/image acceptance and deployment\nare in progress. New real provider requests remain a separate approval.
 
 Runtime: [ARCHITECTURE](ARCHITECTURE.md). Operations:
 [DEPLOYMENT](DEPLOYMENT.md). Debugging: [GOTCHAS](GOTCHAS.md).
@@ -16,7 +16,7 @@ AI activation were approved previously. The owner confirmed registration,
 logout/login and password reset. Do not request those approvals again.
 
 A+B shipped through [PR #2](https://github.com/sileneer/utils/pull/2).
-The owner then requested the next batch: PLANNING §12 C+D local implementation.
+The owner requested PLANNING §12 C+D local implementation, reviewed the local\nresult, then explicitly approved publication on 2026-10-09.
 E/admin/backup work remains separate. The prior six real AI acceptance calls
 are exhausted; this batch made zero new real provider calls. Mock streams and
 offline source reads are the evidence, not model-quality acceptance.
