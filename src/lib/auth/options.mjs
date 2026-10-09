@@ -48,7 +48,7 @@ export function authOptions(database, secret, sendVerificationOTP) {
         },
       },
     },
-    session: { expiresIn: 60 * 60 * 24 * 14, cookieCache: { enabled: false } },
+    session: { freshAge: 60 * 60 * 24, expiresIn: 60 * 60 * 24 * 14, cookieCache: { enabled: false } },
     rateLimit: {
       enabled: true,
       storage: /** @type {const} */ ("database"),

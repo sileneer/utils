@@ -8,6 +8,9 @@ import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { accountLink, safeReturnTo } from "@/lib/auth/navigation";
+import { notifyAccountChange } from "@/lib/auth/events";
+import { useAccount } from "./account-provider";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,13 +32,6 @@ type TurnstileAPI = {
   reset: (id: string) => void;
   remove: (id: string) => void;
 };
-function notifyAccountChange() {
-  try {
-    localStorage.setItem("utils_auth_changed", String(Date.now()));
-  } catch {
-    /* Optional. */
-  }
-}
 declare global {
   interface Window {
     turnstile?: TurnstileAPI;
@@ -88,7 +84,9 @@ function Challenge({
     </>
   );
 }
-export function AccountForm({ mode }: { mode: Mode }) {
+export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: string }) {
+  const destination = safeReturnTo(returnTo);
+  const { user } = useAccount();
   const t = useTranslations("account"),
     router = useRouter();
   const [config, setConfig] = useState<{
@@ -156,6 +154,7 @@ export function AccountForm({ mode }: { mode: Mode }) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(40_000),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "auth_failed");
@@ -174,6 +173,7 @@ export function AccountForm({ mode }: { mode: Mode }) {
             challenge_failed: "challengeError",
             service_unavailable: "unavailable",
             mail_send_failed: "mailFailed",
+            stop_unconfirmed: "securityFailed", account_busy: "securityFailed",
           } as Record<string, string>
         )[code] || "failed",
       ),
@@ -197,12 +197,12 @@ export function AccountForm({ mode }: { mode: Mode }) {
           turnstileToken: token,
         });
         setValue("password", "");
-        router.push("/verify-email");
+        router.push(accountLink("verify-email", destination));
       } else if (mode === "login") {
         await request("sign-in/email", { email, password: values.password });
         notifyAccountChange();
         setValue("password", "");
-        router.push("/htlb");
+        router.push(destination);
         router.refresh();
       } else if (mode === "verify") {
         await request("email-otp/verify-email", { email, otp: values.otp });
@@ -224,6 +224,7 @@ export function AccountForm({ mode }: { mode: Mode }) {
         });
         setValue("password", "");
         setValue("otp", "");
+        notifyAccountChange();
         setComplete(true);
       }
     } catch (error) {
@@ -300,6 +301,7 @@ export function AccountForm({ mode }: { mode: Mode }) {
         <CardDescription>{t(`${mode}Description`)}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        {user && (mode === "login" || mode === "register") && <div className="space-y-2"><p className="text-sm">{t("signedIn", { name: user.name })}</p><Button variant="outline" asChild><Link href={destination}>{t("continue")}</Link></Button></div>}
         {!config ? (
           <Skeleton className="h-24 w-full" />
         ) : complete ? (
@@ -308,7 +310,7 @@ export function AccountForm({ mode }: { mode: Mode }) {
               {t(mode === "verify" ? "verified" : "resetDone")}
             </p>
             <Button asChild className="h-11 w-full">
-              <Link href="/login">{t("login")}</Link>
+              <Link href={accountLink("login", destination)}>{t("login")}</Link>
             </Button>
           </div>
         ) : (
@@ -428,7 +430,7 @@ export function AccountForm({ mode }: { mode: Mode }) {
               {mode !== "login" && (
                 <Link
                   className="inline-flex min-h-10 items-center underline underline-offset-4"
-                  href="/login"
+                  href={accountLink("login", destination)}
                 >
                   {t("login")}
                 </Link>
@@ -436,7 +438,7 @@ export function AccountForm({ mode }: { mode: Mode }) {
               {mode !== "register" && (
                 <Link
                   className="inline-flex min-h-10 items-center underline underline-offset-4"
-                  href="/register"
+                  href={accountLink("register", destination)}
                 >
                   {t("register")}
                 </Link>
@@ -444,7 +446,7 @@ export function AccountForm({ mode }: { mode: Mode }) {
               {mode === "register" && (
                 <Link
                   className="inline-flex min-h-10 items-center underline underline-offset-4"
-                  href="/verify-email"
+                  href={accountLink("verify-email", destination)}
                 >
                   {t("verify")}
                 </Link>
@@ -453,13 +455,13 @@ export function AccountForm({ mode }: { mode: Mode }) {
                 <>
                   <Link
                     className="inline-flex min-h-10 items-center underline underline-offset-4"
-                    href="/reset-password"
+                    href={accountLink("reset-password", destination)}
                   >
                     {t("forgot")}
                   </Link>
                   <Link
                     className="inline-flex min-h-10 items-center underline underline-offset-4"
-                    href="/verify-email"
+                    href={accountLink("verify-email", destination)}
                   >
                     {t("verify")}
                   </Link>
@@ -469,7 +471,7 @@ export function AccountForm({ mode }: { mode: Mode }) {
           </>
         )}
         <Link
-          href="/htlb"
+          href={destination}
           className="inline-flex min-h-10 items-center text-sm text-muted-foreground underline underline-offset-4"
         >
           {t("back")}

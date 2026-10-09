@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAccount } from "@/components/auth/account-provider";
+import { ACCOUNT_EVENT, ACCOUNT_STORAGE, storageChangeKind, notifyAccountChange } from "@/lib/auth/events";
 import { isAllowedAgentModel, selectAgentModel, type AgentModelConfig } from "@/lib/agent/models";
 import {
   readChatStream,
@@ -50,8 +52,9 @@ type Snapshot = {
   };
 };
 export function useChat() {
-  const [authed, setAuthed] = useState<boolean | null>(null),
-    [user, setUser] = useState<Identity | null>(null);
+  const account = useAccount();
+  const user = account.user ?? null;
+  const authed = account.user === undefined ? null : Boolean(account.user);
   const [loading, setLoading] = useState(true),
     [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraftState] = useState(""),
@@ -100,8 +103,6 @@ export function useChat() {
     remote.current = undefined;
     owner.current = null;
     sessionId.current = null;
-    setAuthed(false);
-    setUser(null);
     setMessages([]);
     setDraftState("");
     setContext(undefined);
@@ -177,7 +178,7 @@ export function useChat() {
           );
           if (!alive()) return false;
           if (response.status === 401) {
-            expire();
+            expire(); notifyAccountChange();
             return false;
           }
           if (response.status === 404) {
@@ -272,8 +273,6 @@ export function useChat() {
           setDraftState(saved(key) ?? "");
         } else setDraftState("");
       }
-      setUser(identity.user);
-      setAuthed(Boolean(identity.user));
       if (!identity.user) {
         setQuota(undefined);
         setError(undefined);
@@ -288,7 +287,7 @@ export function useChat() {
         );
         if (generation !== epoch.current) return;
         if (history.status === 401) {
-          expire();
+          expire(); notifyAccountChange();
           return;
         }
         if (history.status === 404) {
@@ -322,13 +321,22 @@ export function useChat() {
       if (!active.current) void restore();
     };
     const changed = (event: StorageEvent) => {
-      if (event.key === "utils_auth_changed") void restore();
+      if (event.key === ACCOUNT_STORAGE) {
+        if (storageChangeKind(event.newValue) !== "profile") expire();
+        void restore();
+      }
     };
+    const localChange = (event: Event) => {
+      if ((event as CustomEvent).detail !== "profile") expire();
+      void restore();
+    };
+    window.addEventListener(ACCOUNT_EVENT, localChange);
     window.addEventListener("focus", focus);
     window.addEventListener("storage", changed);
     const controller = active,
       generation = epoch;
     return () => {
+      window.removeEventListener(ACCOUNT_EVENT, localChange);
       window.removeEventListener("focus", focus);
       window.removeEventListener("storage", changed);
       generation.current++;
@@ -336,7 +344,13 @@ export function useChat() {
         void requestStop(controller.current.turnId).catch(() => undefined);
       controller.current?.abort.abort();
     };
-  }, [restore]);
+  }, [restore, expire]);
+  useEffect(() => {
+    if (account.user === undefined) return;
+    if ((account.user?.id ?? null) !== owner.current) {
+      queueMicrotask(() => { expire(); void restore(); });
+    }
+  }, [account.user, expire, restore]);
   async function stop(): Promise<boolean> {
     const query = active.current ?? remote.current;
     if (!query) return true;
@@ -518,7 +532,7 @@ export function useChat() {
       });
       if (generation !== epoch.current) return;
       if (response.status === 401) {
-        expire();
+        expire(); notifyAccountChange();
         return;
       }
       if (!response.ok || !response.body) {
@@ -599,35 +613,6 @@ export function useChat() {
       }
     }
   }
-  async function logout() {
-    if (!(await stop())) return;
-    try {
-      const response = await fetch("/api/auth/sign-out", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!response.ok) throw new Error();
-    } catch {
-      setNotice("logout_failed");
-      return;
-    }
-    epoch.current++;
-    owner.current = null;
-    sessionId.current = null;
-    remote.current = undefined;
-    setMessages([]);
-    setDraftState("");
-    setContext(undefined);
-    setRevision(undefined);
-    setUser(null);
-    setAuthed(false);
-    setQuota(undefined);
-    setNotice(undefined);
-    store("utils_auth_changed", String(Date.now()));
-    await restore();
-  }
   const saveScroll = useCallback((position: number) => {
     scrollTop.current = position;
     if (sessionId.current) positions.current.set(sessionId.current, position);
@@ -635,7 +620,7 @@ export function useChat() {
   return {
     authed,
     user,
-    loading,
+    loading: loading || account.loading,
     messages,
     draft,
     setDraft,
@@ -648,16 +633,15 @@ export function useChat() {
     streaming,
     stage: stopping ? "stopping" : stage,
     startedAt,
-    error,
+    error: account.failed ? "history_failed" : error,
     notice,
     quota,
     title,
     archived,
     historyVersion,
-    restore,
+    restore: async () => { await account.refresh(); await restore(); },
     confirmStatus: reconcile,
     refreshAvailability,
-    logout,
     stop,
     newChat,
     openConversation,

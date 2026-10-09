@@ -8,9 +8,6 @@ import {
   History,
   ChevronDown,
   Loader2,
-  LogOut,
-  UserRound,
-  Activity,
   Maximize2,
   Minimize2,
   MessageSquarePlus,
@@ -18,6 +15,8 @@ import {
   X,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { AccountMenu } from "@/components/auth/account-menu";
+import { accountLink } from "@/lib/auth/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Textarea } from "@/components/ui/textarea";
@@ -192,37 +191,7 @@ export function ChatPanel({
           </span>
         </h2>
         <div className="flex">
-          {chat.user && (
-            <DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-10"
-                      aria-label={account("accountMenu")}
-                    >
-                      <UserRound />
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent>{account("accountMenu")}</TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent align="end" className="max-w-[calc(100vw-2rem)]">
-                <p className="max-w-64 break-words px-2 py-2 text-xs">
-                  {chat.user.name} · {chat.user.email}
-                </p>
-                {chat.user.isAdmin && <DropdownMenuItem asChild className="min-h-10"><Link href="/admin"><Activity />{account("operations")}</Link></DropdownMenuItem>}
-                <DropdownMenuItem
-                  className="min-h-10"
-                  onClick={() => void chat.logout()}
-                >
-                  <LogOut />{account("logout")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <AccountMenu onlyAuthenticated />
           {onExpand && (
             <IconButton
               label={t(expanded ? "compactChat" : "expandChat")}
@@ -360,10 +329,10 @@ export function ChatPanel({
             {account("loginPrompt")}
           </p>
           <Button asChild className="h-10">
-            <Link href="/login">{account("login")}</Link>
+            <Link href={accountLink("login", "/htlb")}>{account("login")}</Link>
           </Button>
           <Button asChild variant="outline" className="h-10">
-            <Link href="/register">{account("register")}</Link>
+            <Link href={accountLink("register", "/htlb")}>{account("register")}</Link>
           </Button>
         </div>
       ) : (

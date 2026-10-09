@@ -1,5 +1,6 @@
 import { useTranslations } from "next-intl";
 
+import { HomeAccount } from "@/components/auth/home-account";
 import { ToolCard } from "@/components/tool-card";
 import { tools } from "@/lib/tools";
 
@@ -27,6 +28,7 @@ export default function HomePage() {
           })}
         </p>
       </section>
+      <HomeAccount />
       <section aria-label={t("title")} className="mt-10">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {tools.map((tool) => (

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import type { SourceDisclosure } from "@/components/chat/citation-preview";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { useChat } from "@/components/chat/use-chat";
+import { AccountMenu } from "@/components/auth/account-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Button } from "@/components/ui/button";
@@ -245,6 +246,7 @@ export function ReadingShell() {
           <ThemeToggle />
           <LanguageSwitcher />
         </div>
+        <AccountMenu />
         <Popover>
           <Tooltip>
             <TooltipTrigger asChild>

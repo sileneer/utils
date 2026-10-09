@@ -422,3 +422,23 @@ Tooling: Prettier + `prettier-plugin-tailwindcss` (class order is enforced, not 
 - lucide-react — https://lucide.dev
 - next-themes — https://github.com/pacocoursey/next-themes
 - React UI library landscape 2026 (decision context) — see docs/PLANNING.md §9
+
+### 5.9 Site-wide account UI — owner approved A+B+C, 2026-10-09
+
+- Register AccountProvider (shared identity state), AccountMenu (one dropdown used
+  in ordinary header, reader toolbar and chat), HomeAccount (compact home entry),
+  and AccountCenter (profile/password/login sessions) before implementation.
+- Reuse existing Card, Button, Input, Label, Alert, Skeleton, DropdownMenu and
+  AlertDialog primitives, react-hook-form/Zod and lucide icons; no new dependency,
+  upload service, base component or color token.
+- Header uses a compact account icon at narrow widths and hides the redundant
+  header GitHub shortcut below sm (the footer retains it). Tools/About remain visible.
+- Account center uses stacked cards at 360px, labeled fields, password-manager
+  autocomplete, inline validation and pending controls. Sensitive session removal
+  uses AlertDialog confirmation and current-password input; show the account-wide
+  AI cancellation effect before security actions. Nickname is editable; email is read-only.
+- Session list shows inferred browser/system, login and expiry times, current
+  marker, safe row IDs only. Loading uses Skeleton; retry/reauthentication/empty
+  states are localized. Never label inferred sessions as exact physical devices.
+- Login and related forms retain validated site-local returnTo throughout the flow.
+  Global login/account menus work while AI is disabled and reader chat is closed.
