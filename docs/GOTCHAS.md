@@ -719,3 +719,14 @@ The single-file book HTML need not contain literal `id="e-X-Y"` strings. Its
 runtime creates numbered cards/anchors. Raw-string absence is not a missing
 source finding: inspect the trusted ready anchors or rendered card. Markdown
 and HTML still must belong to the same verified revision (ARCHITECTURE §6).
+
+### Docker Hub shared-runner limits can block a valid release
+
+**Symptom** PR #5 passed Linux image acceptance, but both main deployment attempts
+failed on a node:22-slim manifest HEAD with Docker Hub HTTP 429, before image build.
+The deploy job correctly stayed skipped; the prior healthy image remained active.
+**Cause** upstream shared-runner registry throttling, not application validation.
+**Fix** use the documented BuildKit registry-cache configuration (DEPLOYMENT §2)
+in both image workflows. The cache manifest matched the previously accepted base
+image digest at investigation time. Run full image/native/persistence acceptance
+before merging or publishing; do not add long-lived credentials or bypass gates.

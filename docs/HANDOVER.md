@@ -2,7 +2,9 @@
 
 **Written 2026-10-09 during runtime AI environment configuration.**
 PR #4 is published at verified production OCI revision `860157b`.
-The configuration work is on `codex/ai-env-config`; it is not published.
+PR #5 is merged at `69904b6`, but Docker Hub 429 prevented image publication.
+Production remains `860157b`; the registry-cache release repair is on
+`codex/registry-mirror`. Compatible host env changes are staged.
 
 Runtime: [ARCHITECTURE](ARCHITECTURE.md). Operations and backup procedures:
 [DEPLOYMENT](DEPLOYMENT.md). Binding UI: [DESIGN](DESIGN.md).
@@ -18,7 +20,8 @@ those settled approvals again.
 
 The owner now requests central runtime .env configuration of the AI endpoint,
 token, default and picker catalog. Implementation and draft PR preparation are
-authorized; publication follows the separate checkpoint in PLANNING §12.10.
+authorized. The owner subsequently approved merging PR #5 and completing online
+configuration; its release and necessary registry-cache repair are in progress.
 The owner also requested generic API-key naming; AI_API_KEY is now preferred,
 with existing aliases retained and the SDK child token mapped server-side.
 
@@ -42,11 +45,22 @@ Matching documentation `860157b2a3af06ff55f080a2de45720e4d709f78` passed CI/CD
 runtime revision matched and was healthy. Fresh private backup matched all eight
 live account/auth/chat/usage tables. Original records remain preserved.
 
-The runtime-config implementation and matching docs are committed/pushed through
-[draft PR #5](https://github.com/sileneer/utils/pull/5). Inspect its exact-head
-Linux/image checks before publication; its
-receipt lives in ignored `data/investigation/ai-env/`. No dependency/migration,
-production env edit, quota change, deployment or paid request occurred in this work.
+[PR #5](https://github.com/sileneer/utils/pull/5) passed all exact-head checks at
+`5de4f4a`, Linux image run [37987342058](https://github.com/sileneer/utils/actions/runs/37987342058),
+and squash-merged to `69904b614de5d7088c07ebeff89b6460f649f15a`. Main CI/CD
+[37989673754](https://github.com/sileneer/utils/actions/runs/37989673754) passed
+test/build checks but both image-build attempts hit Docker Hub 429 before building;
+deploy was skipped. The release repair configures a shared public registry cache;
+full image acceptance must pass before merging/publishing it.
+
+Fresh private release backup `release-20261009-ai-env.sqlite` passed integrity/FKs;
+active requests were zero, with 1 user, 1 account, 5 conversations, 18 messages and
+9 usage rows. Host env now stages AI_API_KEY and the five-model catalog from the
+commented template, retaining old aliases for the existing image. Internal checks
+confirmed the same key value, unchanged other settings and mode 600/utils-deploy.
+After the new accepted image is running, remove old aliases and health-check a
+container recreation under the deploy lock. No paid call or quota change occurred.
+Sanitized receipts/scripts remain in ignored `data/investigation/ai-env/`.
 
 Keep `data/investigation/chat-e/` and earlier investigation folders, cached book
 files, disposable databases, browser receipts and `.zcode/` out of Git. Only
@@ -71,11 +85,11 @@ revocation; Linux final-image backup-status/restore acceptance.
 
 ## 4. Next work, in order
 
-1. Inspect the runtime-config draft PR and its Linux/image gate. On approved
-   publication preserve the server key/base/default and auxiliary overrides;
-   add the commented AI_MODELS catalog to the host .env to retain the existing
-   five choices. Use DEPLOYMENT §12 rollout; no provider credentials are needed
-   in Git/local QA, and no paid acceptance is implicit.
+1. Complete registry-cache Linux/image acceptance, merge the focused repair and
+   verify normal CI/CD/exact healthy production OCI. Normalize host key aliases
+   using the prepared lock/rollback/health workflow, then verify original data,
+   anonymous boundaries and authenticated catalog/history/availability. The owner
+   logged in the new independent `utils-env-release` Chrome session. No paid query.
 2. Diagnose model continuation after successful search results before spending
    any of the five remaining acceptance turns. Keep the existing deadline,
    authentication boundary, provider environment allowlist and no-retry budget.
@@ -147,7 +161,8 @@ persistence and removed-ID fallback in English light/Chinese dark at 360px and
 1280px desktop. One canned stream verified displayed per-message model metadata,
 not real AI quality. Mobile dark axe had zero violations, with one manual check
 for the existing modal focus guards; this is not a zero-incomplete full audit.
-Production checks below belong to the already published PR #4, not this branch.
+Current release runtime/authenticated checks remain pending behind registry
+image build. The production checks below belong to previously published PR #4.
 Coverage includes current active/verified/admin role isolation, bounded aggregates
 and missing metrics, percentile thresholds, truncation, malformed/stale/interrupted
 backup status, coherent restoration, two independent local sessions revoked on

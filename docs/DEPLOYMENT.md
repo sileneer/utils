@@ -61,6 +61,12 @@ mid-flight.
 | **build-push** | buildx multi-stage build → load final image → isolated image smoke check → publish the same image to `ghcr.io/sileneer/utils:<sha>` (+ `:latest` on the default branch), GHA layer cache | needs test and image acceptance |
 | **deploy** | keyless GCP auth → ephemeral SSH key → IAP SSH → `/opt/utils/deploy.sh` | needs build-push |
 
+Both image workflows load `.github/buildkitd.toml`: BuildKit checks the public
+Google Docker Hub cache before the upstream registry, reducing shared-runner
+pull limits without registry credentials or a different Dockerfile base image.
+Cache misses still fall back to Docker Hub. Keep full-image acceptance before
+publication; an upstream 429 must never bypass that gate.
+
 `build-push` logs in to GHCR with the built-in `GITHUB_TOKEN`
 (`permissions: packages: write`).
 
