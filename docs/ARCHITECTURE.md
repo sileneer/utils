@@ -3,7 +3,7 @@
 How the running application is put together — routes, data flow, the agent
 runtime, the on-disk state, and the environment contract.
 
-**Runtime contract, 2026-10-08:** verified email/password accounts replace the
+**Runtime contract, 2026-10-09 (includes local A+B pending release):** verified email/password accounts replace the
 shared passcode. Current release and acceptance evidence: HANDOVER §1/§7.
 
 - Ops, deploys, rollback, server access: **[DEPLOYMENT.md](DEPLOYMENT.md)**
@@ -41,7 +41,9 @@ the browser is a thin client.
 | `/api/auth/[...all]` | handler | `src/lib/auth/handler.ts` | allowlisted password/OTP/logout POST endpoints only |
 | `/api/auth-config` | handler | `src/app/api/auth-config/route.ts` | public runtime site key and configuration availability, no secrets |
 | `/api/agent/auth` | handler | `src/app/api/agent/auth/route.ts` | retired: always 410 |
-| `/api/agent/session` | handler | `src/app/api/agent/session/route.ts` | GET auth status / one authorized UUID transcript (§5) |
+| `/api/agent/session` | handler | `src/app/api/agent/session/route.ts` | GET identity, personal availability, active turn / one owned transcript (§5) |
+| `/api/agent/conversations` | handler | `src/app/api/agent/conversations/route.ts` | GET owned title search/history; PATCH rename/archive (§5) |
+| `/api/agent/stop` | handler | `src/app/api/agent/stop/route.ts` | POST owner-scoped cancellation (§3) |
 | `/api/agent/chat` | handler | `src/app/api/agent/chat/route.ts` | POST → SSE stream (§3) |
 
 Repository layout beyond this: `src/components/` (`ui/` = shadcn registry,
@@ -74,8 +76,9 @@ before any asynchronous source/session preparation. Another user receives HTTP
 AbortController. The 180-second wall clock starts before preparation; an
 abortable wait releases the query slot even while shared source preparation
 continues for other readers. Thirty-second SSE comment keepalives remain.
-Timers and the slot are released in finally. A client request epoch invalidates
-late callbacks on Stop/New chat; there is no automatic retry.
+Timers and the slot are released in finally. Client request epochs invalidate
+late callbacks after confirmed termination, conversation/account changes or
+unmount; there is no automatic paid retry.
 
 Stop also posts the active turn UUID to `/api/agent/stop`, independently of the
 stream's abort signal. The handler requires a verified active user and the exact
@@ -84,7 +87,14 @@ one process-wide query registry across route bundles; a bounded, 30-second stop
 intent handles Stop arriving before chat registration. The SDK controller stops
 the upstream process, persists `stopped`, discards native resume state, and
 releases the slot in finally. Post-upstream stopped usage remains counted.
-Logout waits for the stop request before revoking its login session. Transport
+Stop acknowledgement/queued intent is not terminal proof. The client keeps the
+transport open, then reconciles the matching owned turn through read-only GET:
+at most 15 reads started within 30 seconds, spaced two seconds apart, each with
+a five-second timeout. Disconnect/reopen uses the same bounded reconciliation.
+Unconfirmed state offers manual checking and keeps switching blocked; no query
+is resubmitted. Final history repairs timings/content. New-chat, open, archive
+of the active conversation and logout await confirmation before proceeding.
+Logout revokes its login session only after that confirmation. Transport
 abort remains an additional signal, but proxy forwarding is not its sole gate.
 
 **SSE contract** (src/lib/chat/protocol.ts):
@@ -147,9 +157,10 @@ can recover reported token counts; missing old timings/model are not invented.
 Server elapsed time runs from reservation through query completion/abort cleanup.
 First-text time records the first visible nonempty text, not hidden reasoning.
 Observed search/read tool IDs are deduplicated across partial/full SDK events;
-only counts are exposed. Progress comes from actual SDK events. Local Stop or
-connection loss freezes approximate frontend timing; reloaded history supplies
-final server timing. Completed responses and usage are otherwise unchanged.
+only counts are exposed. Progress comes from actual SDK events. While terminal
+confirmation is unavailable the UI retains an explicit recovery state, not a
+fabricated stopped/complete result. Reconciliation supplies final server timing.
+A rejected pre-stream send may retain labeled approximate frontend timing.
 
 Tokens come from result.usage for this main-loop turn, including repeated tool
 rounds/context. They exclude unreported auxiliary calls; result.modelUsage and
@@ -161,7 +172,12 @@ Missing values remain unavailable, including stopped/failed queries without a
 usage result. Counts of zero are preserved when actually reported.
 Limits apply to admin accounts too. AI fails closed
 unless enabled with positive integer limits. This is a turn cap, not a precise
-currency spending cap; provider limits still apply.
+currency spending cap; provider limits still apply. Identity/status reads expose
+only personal used/limit/remaining and next UTC midnight as resetAt, plus
+ready/busy/quota/disabled availability. The UI formats resetAt in the browser
+timezone. Global counts and other readers' identifiers are omitted. Availability
+is a snapshot of app guards, not an upstream health/latency promise. Reads do
+not reserve usage; the existing atomic send-time guard remains authoritative.
 
 ### Model allowlist
 
@@ -201,9 +217,15 @@ Management and consistent backup/restore operations are in DEPLOYMENT §11.
 Better Auth's generated schema is versioned in `migrations/001-auth.sql`:
 `user`, `account`, `session`, `verification`, `rateLimit`. Product schema is in
 `002-product.sql`: `conversations`, `messages`, `limits`, `mail_requests`,
-`ai_usage`. User role/status are server-only fields. No first-user admin rule.
-Messages persist at preparation/termination, not every token; pending/streaming
-restores as stopped. Conversation/message replacement is one transaction.
+`ai_usage`. `003-chat-history.sql` adds optional `conversation_meta`
+(title/archived_at) and owner/time/usage indexes. Legacy conversation
+columns stay unchanged so old-image positional writes remain compatible. A
+missing title override falls back to the first user question (100 characters);
+no model is called to name conversations. User role/status are server-only
+fields. No first-user admin rule. Messages persist at preparation/termination,
+not every token. Pending/streaming remains live only while the registry matches
+owner, conversation and turn; otherwise history reports failed/interrupted, not
+a user-requested Stop. Conversation/message replacement is one transaction.
 Old JSON files are left untouched and never imported or claimed by UUID.
 
 All paths are relative to AGENT_DATA_DIR (default cwd/data/agent):
@@ -225,13 +247,32 @@ transcripts are never served to the browser. SQLite backups do not include them;
 on database-only restoration invalidate saved SDK IDs and rebuild from completed
 visible history rather than resuming an unavailable transcript.
 
-GET /api/agent/session without id returns authed and a minimal user identity;
-with id it returns only that user's visible transcript/revision, never SDK IDs
-or login tokens. Unknown and foreign UUIDs return 404. No listing UI yet.
-Responses are no-store. Browser draft/session/model keys are partitioned by
-user ID; identity changes abort stale requests and clear private UI. Logout
-revokes the session, clears its draft/session selection and notifies other tabs.
-Refresh restores history/draft, not a stream. Rejected sends restore drafts.
+GET /api/agent/session without id returns identity, personal availability and
+that owner's active turn when present; with id it returns their visible messages,
+source revision, title and archive state. It never returns native IDs or login
+tokens. Unknown/foreign UUIDs return 404; an owned active request before its first
+persisted exchange can return an empty provisional transcript. An existing
+foreign row never qualifies for that exception. All private reads are no-store.
+
+GET /api/agent/conversations accepts q (literal title substring, max 100),
+archived=0|1 and an opaque cursor. Pages contain at most 20 safe summaries
+(id/title/updatedAt/archived), sorted updated_at DESC then UUID DESC with keyset
+pagination. Ownership is checked in SQL. PATCH accepts an owned UUID and title
+(1–100 normalized characters) and/or boolean archived, with exact trusted Origin.
+Archive is reversible and never deletes messages/usage/native context. Archived
+conversations are readable but new chat requests reject before quota reservation.
+Active archive/restore is rejected; final session saves cannot overwrite rename
+or archive. Renaming does not change last-message activity time.
+
+Current conversation/model preferences are local and account-scoped. Draft keys
+are htlb_chat_draft:<user-id>:<conversation-id|new>; the old account-wide draft
+migrates once to the selected scope. New-chat and switching preserve each draft.
+Only saved conversations are cross-browser; drafts and scroll are local.
+Identity changes clear private UI and invalidate stale callbacks. Logout revokes
+the login and notifies other tabs while retaining that account's local selection
+and drafts for a later login. Refresh restores saved history/draft and reconciles
+active work; it does not resume the original SSE or send an automatic model turn.
+Rejected pre-stream sends restore their unsent text.
 
 ### Account and mail lifecycle
 
@@ -332,7 +373,7 @@ set in the Dockerfile; the app runs as the non-root `nextjs` user (uid 1001).
 ## 9. Known limits (do not rediscover these)
 
 - **One query at a time**, globally. Family use is fine; a second concurrent user gets "busy". A RAM upgrade or a sidecar agent process is the fix if concurrency ever matters.
-- SQLite/conversation growth has no automatic retention policy or listing UI yet.
+- SQLite/conversation growth has no automatic retention policy; archive is reversible, with no deletion/cleanup job.
 - Same-email serialization and global query busy state assume one Next process;
   multi-replica deployment needs a shared lock/coordinator and database migration.
 - 1 GB VM: no builds on the VM (OOM), agent subprocess is the biggest memory consumer.

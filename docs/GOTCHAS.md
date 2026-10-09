@@ -637,3 +637,30 @@ worked. **Workaround** invoke the installed agent-browser native binary directly
 with normal PowerShell argument quoting. Do not change PATH/ACL policy globally.
 For the local mock preview, first wait for the upstream app to return HTTP 200;
 starting the fixture before the app listens causes a connection-refused exit.
+
+
+### Additive columns can still break image rollback
+
+**Finding** the prior session writer uses positional INSERT with six conversation
+columns. Adding title/archive columns makes that older image unable to save chat
+after rollback, although health can remain green. The unreleased A+B migration
+was changed to a separate metadata table with unchanged legacy columns. Regression
+checks execute old-style inserts after migration and read those rows through the
+new code. Never infer backward compatibility from an additive ALTER alone.
+
+### Windows standalone preview locks the next build output
+
+**Symptom** next build fails EBUSY while replacing .next/standalone. **Cause**
+the locally created standalone QA server is still running from that directory.
+Stop only that recorded, command-line-verified process before rebuilding, then
+restart it with the explicit isolated/AI-disabled QA environment. Wait for its
+HTTP readiness before reopening the fixture page; early reload can show its 502
+placeholder rather than the application.
+
+### Audit overlays after their animation settles
+
+Axe run immediately after opening a Radix overlay can report transient contrast
+failures/incomplete checks from animated opacity/backdrop blending. Wait for that
+overlay's animations to finish, then rerun and inspect computed foreground/background
+and fresh screenshots. Settled audits resolved these transient findings; the
+independent keyboard-scroll/ARIA-name findings were real and were fixed.

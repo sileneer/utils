@@ -6,22 +6,15 @@ import {
   type BookContext,
   type ChatMessage,
 } from "@/lib/chat/protocol";
+import type { ActiveTurn, Availability } from "@/lib/chat/history";
+import { confirmTerminal, draftKey } from "@/lib/chat/recovery";
 const SESSION_KEY = "htlb_chat_session_id";
-const DRAFT_KEY = "htlb_chat_draft";
 const MODEL_KEY = "htlb_chat_model";
-function requestStop(turnId: string) {
-  return fetch("/api/agent/stop", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ turnId }),
-    keepalive: true,
-  }).catch(() => undefined);
-}
 function store(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
   } catch {
-    /* Private/restricted storage still permits chat. */
+    /* Restricted storage still permits chat. */
   }
 }
 function saved(key: string) {
@@ -31,34 +24,66 @@ function saved(key: string) {
     return null;
   }
 }
-
-export function useChat() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
-  const [user, setUser] = useState<{
+async function requestStop(turnId: string) {
+  const response = await fetch("/api/agent/stop", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ turnId }),
+    keepalive: true,
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error("stop_unconfirmed");
+  // Accepted/queued cancellation is not proof of terminal SDK state.
+}
+type Identity = { id: string; email: string; name: string };
+type Snapshot = {
+  user: Identity | null;
+  availability?: Availability;
+  active?: ActiveTurn;
+  session?: {
     id: string;
-    email: string;
-    name: string;
+    messages: ChatMessage[];
+    revision?: string;
+    title: string;
+    archived: boolean;
+  };
+};
+export function useChat() {
+  const [authed, setAuthed] = useState<boolean | null>(null),
+    [user, setUser] = useState<Identity | null>(null);
+  const [loading, setLoading] = useState(true),
+    [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [draft, setDraftState] = useState(""),
+    [model, setModelState] = useState(DEFAULT_AGENT_MODEL);
+  const [revision, setRevision] = useState<string>(),
+    [context, setContext] = useState<BookContext>();
+  const [streaming, setStreaming] = useState(false),
+    [stage, setStage] = useState("preparing"),
+    [startedAt, setStartedAt] = useState(0);
+  const [error, setError] = useState<string>(),
+    [notice, setNotice] = useState<string>();
+  const [stopping, setStopping] = useState(false),
+    [quota, setQuota] = useState<Availability>();
+  const [title, setTitle] = useState(""),
+    [archived, setArchived] = useState(false),
+    [historyVersion, setHistoryVersion] = useState(0);
+  const owner = useRef<string | null>(null),
+    sessionId = useRef<string | null>(null),
+    epoch = useRef(0);
+  const active = useRef<{
+    abort: AbortController;
+    turnId: string;
+    sessionId: string;
   } | null>(null);
-  const owner = useRef<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [draft, setDraftState] = useState("");
-  const [model, setModelState] = useState(DEFAULT_AGENT_MODEL);
-  const [revision, setRevision] = useState<string>();
-  const [context, setContext] = useState<BookContext>();
-  const [streaming, setStreaming] = useState(false);
-  const [stage, setStage] = useState("preparing");
-  const [startedAt, setStartedAt] = useState(0);
-  const [error, setError] = useState<string>();
-  const sessionId = useRef<string | null>(null);
-  const epoch = useRef(0);
-  const active = useRef<{ abort: AbortController; turnId: string } | null>(
-    null,
-  );
-  const scrollTop = useRef(0);
+  const remote = useRef<ActiveTurn | undefined>(undefined),
+    synchronization = useRef<{ key: string; task: Promise<boolean> } | null>(
+      null,
+    );
+  const scrollTop = useRef(0),
+    positions = useRef(new Map<string, number>());
   const setDraft = useCallback((value: string) => {
     setDraftState(value);
-    if (owner.current) store(`${DRAFT_KEY}:${owner.current}`, value);
+    if (owner.current) store(draftKey(owner.current, sessionId.current), value);
   }, []);
   const setModel = (value: string) => {
     if (isAllowedAgentModel(value)) {
@@ -66,172 +91,377 @@ export function useChat() {
       if (owner.current) store(`${MODEL_KEY}:${owner.current}`, value);
     }
   };
+  const expire = useCallback(() => {
+    epoch.current++;
+    active.current?.abort.abort();
+    active.current = null;
+    remote.current = undefined;
+    owner.current = null;
+    sessionId.current = null;
+    setAuthed(false);
+    setUser(null);
+    setMessages([]);
+    setDraftState("");
+    setContext(undefined);
+    setRevision(undefined);
+    setQuota(undefined);
+    setTitle("");
+    setArchived(false);
+    setStreaming(false);
+    setStopping(false);
+    setLoading(false);
+    setNotice(undefined);
+    setError(undefined);
+  }, []);
+  const applySnapshot = useCallback(
+    (data: Snapshot, id: string | null, includeMessages = true) => {
+      if (data.user?.id !== owner.current) return;
+      setQuota(data.availability);
+      remote.current = data.active;
+      if (data.active) {
+        setStreaming(true);
+        setStartedAt(data.active.startedAt);
+        if (!active.current) setStage("recovering");
+        setStopping(data.active.state === "stopping");
+      } else if (!active.current) {
+        setStreaming(false);
+        setStopping(false);
+      }
+      if (includeMessages && id === sessionId.current && data.session) {
+        setMessages((items) =>
+          data.session!.messages.map((m) => {
+            const previous = items.find((p) => p.id === m.id);
+            return previous &&
+              (m.status === "pending" || m.status === "streaming")
+              ? {
+                  ...m,
+                  content: previous.content || m.content,
+                  details: m.details ?? previous.details,
+                }
+              : m;
+          }),
+        );
+        setRevision(data.session.revision);
+        setTitle(data.session.title);
+        setArchived(data.session.archived);
+      }
+    },
+    [],
+  );
+  const reconcile = useCallback(
+    async (target?: {
+      sessionId: string;
+      turnId: string;
+    }): Promise<boolean> => {
+      const query = target ?? active.current ?? remote.current;
+      if (!query || !owner.current) return true;
+      const account = owner.current,
+        generation = epoch.current;
+      const key = `${account}:${query.sessionId}:${query.turnId}:${generation}`;
+      if (synchronization.current?.key === key)
+        return synchronization.current.task;
+      const alive = () =>
+        owner.current === account && epoch.current === generation;
+      const task = (async () => {
+        setNotice("confirming");
+        const confirmed = await confirmTerminal(async () => {
+          const response = await fetch(
+            `/api/agent/session?id=${encodeURIComponent(query.sessionId)}`,
+            { cache: "no-store", signal: AbortSignal.timeout(5000) },
+          );
+          if (!alive()) return false;
+          if (response.status === 401) {
+            expire();
+            return false;
+          }
+          if (response.status === 404) {
+            // A rejected send may never have reached persistence. Wait until its
+            // local transport has settled so an early Stop cannot be false proof.
+            return !active.current;
+          }
+          if (!response.ok) throw new Error("history_failed");
+          const data: Snapshot = await response.json();
+          if (!alive() || data.user?.id !== account) return false;
+          applySnapshot(data, query.sessionId);
+          const message = data.session?.messages.find(
+            (m) => m.turnId === query.turnId && m.role === "assistant",
+          );
+          return (
+            data.active?.turnId !== query.turnId &&
+            Boolean(
+              message && !["pending", "streaming"].includes(message.status),
+            )
+          );
+        }, alive);
+        if (alive()) {
+          if (confirmed) {
+            const transport = active.current;
+            if (transport?.turnId === query.turnId) {
+              epoch.current++;
+              active.current = null;
+              transport.abort.abort();
+            }
+            remote.current = undefined;
+            setStreaming(false);
+            setStopping(false);
+            setNotice(undefined);
+            setHistoryVersion((v) => v + 1);
+          } else {
+            setNotice("stop_unconfirmed");
+          }
+        }
+        return confirmed;
+      })();
+      synchronization.current = { key, task };
+      try {
+        return await task;
+      } finally {
+        if (synchronization.current?.task === task)
+          synchronization.current = null;
+      }
+    },
+    [applySnapshot, expire],
+  );
   const restore = useCallback(async () => {
-    let token = epoch.current;
+    let generation = epoch.current;
     setLoading(true);
     try {
-      const identity = await fetch("/api/agent/session", { cache: "no-store" });
-      if (!identity.ok) throw new Error("history_failed");
-      const account = await identity.json();
-      if (token !== epoch.current) return;
-      if (owner.current !== (account.user?.id ?? null)) {
-        if (active.current) void requestStop(active.current.turnId);
+      const response = await fetch("/api/agent/session", {
+        cache: "no-store",
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) throw new Error("history_failed");
+      const identity: Snapshot = await response.json();
+      if (generation !== epoch.current) return;
+      if (owner.current !== (identity.user?.id ?? null)) {
+        if (active.current)
+          void requestStop(active.current.turnId).catch(() => undefined);
         active.current?.abort.abort();
         active.current = null;
-        token = ++epoch.current;
-        setStreaming(false);
+        remote.current = undefined;
+        synchronization.current = null;
+        generation = ++epoch.current;
+        owner.current = identity.user?.id ?? null;
         setMessages([]);
         setRevision(undefined);
         setContext(undefined);
-        owner.current = account.user?.id ?? null;
+        setTitle("");
+        setArchived(false);
+        setNotice(undefined);
+        setStreaming(false);
         sessionId.current = owner.current
           ? saved(`${SESSION_KEY}:${owner.current}`)
           : null;
-        setDraftState(
-          owner.current ? (saved(`${DRAFT_KEY}:${owner.current}`) ?? "") : "",
-        );
-        const preference = owner.current
-          ? saved(`${MODEL_KEY}:${owner.current}`)
-          : null;
-        setModelState(
-          isAllowedAgentModel(preference) ? preference : DEFAULT_AGENT_MODEL,
-        );
+        const account = owner.current;
+        if (account) {
+          const key = draftKey(account, sessionId.current);
+          const legacy = saved(`htlb_chat_draft:${account}`);
+          if (saved(key) === null && legacy !== null) {
+            store(key, legacy);
+            store(`htlb_chat_draft:${account}`, "");
+          }
+          setDraftState(saved(key) ?? "");
+          const preference = saved(`${MODEL_KEY}:${account}`);
+          setModelState(
+            isAllowedAgentModel(preference) ? preference : DEFAULT_AGENT_MODEL,
+          );
+        } else setDraftState("");
       }
-      setUser(account.user ?? null);
-      setAuthed(Boolean(account.user));
-      if (!account.user) {
+      setUser(identity.user);
+      setAuthed(Boolean(identity.user));
+      if (!identity.user) {
+        setQuota(undefined);
         setError(undefined);
         return;
       }
+      applySnapshot(identity, null, false);
       const id = sessionId.current;
-      if (!id) {
-        setError(undefined);
-        return;
-      }
-      const response = await fetch(
-        `/api/agent/session${id ? `?id=${encodeURIComponent(id)}` : ""}`,
-        { cache: "no-store" },
-      );
-      if (token !== epoch.current) return;
-      if (response.status === 401) {
-        setAuthed(false);
-        setUser(null);
-        setMessages([]);
-        setDraftState("");
-        setContext(undefined);
-        setRevision(undefined);
-        owner.current = null;
-        sessionId.current = null;
-        return;
-      }
-      if (response.status === 404) {
-        sessionId.current = null;
-        store(`${SESSION_KEY}:${owner.current}`, "");
-        setMessages([]);
-        setRevision(undefined);
-        setError(undefined);
-        return;
-      }
-      if (!response.ok) throw new Error("history_failed");
-      const data = await response.json();
-      if (token !== epoch.current) return;
-      setAuthed(Boolean(data.authed));
-      if (data.session) {
-        setMessages(data.session.messages);
-        setRevision(data.session.revision);
+      if (id) {
+        const history = await fetch(
+          `/api/agent/session?id=${encodeURIComponent(id)}`,
+          { cache: "no-store", signal: AbortSignal.timeout(5000) },
+        );
+        if (generation !== epoch.current) return;
+        if (history.status === 401) {
+          expire();
+          return;
+        }
+        if (history.status === 404) {
+          const text = saved(draftKey(identity.user.id, id)) ?? "";
+          sessionId.current = null;
+          store(`${SESSION_KEY}:${identity.user.id}`, "");
+          if (text) store(draftKey(identity.user.id, null), text);
+          setMessages([]);
+          setRevision(undefined);
+          setTitle("");
+          setArchived(false);
+          setDraftState(saved(draftKey(identity.user.id, null)) ?? "");
+        } else {
+          if (!history.ok) throw new Error("history_failed");
+          const data: Snapshot = await history.json();
+          if (generation !== epoch.current) return;
+          applySnapshot(data, id, !active.current);
+        }
       }
       setError(undefined);
+      if (remote.current && !active.current) void reconcile(remote.current);
     } catch {
-      if (token === epoch.current) setError("history_failed");
+      if (generation === epoch.current) setError("history_failed");
     } finally {
-      if (token === epoch.current) setLoading(false);
+      if (generation === epoch.current) setLoading(false);
     }
-  }, []);
+  }, [applySnapshot, reconcile, expire]);
   useEffect(() => {
-    queueMicrotask(() => {
-      void restore();
-    });
-    const changed = () => {
-      void restore();
-    };
+    queueMicrotask(() => void restore());
     const focus = () => {
       if (!active.current) void restore();
     };
-    const storage = (e: StorageEvent) => {
-      if (e.key === "utils_auth_changed") changed();
+    const changed = (event: StorageEvent) => {
+      if (event.key === "utils_auth_changed") void restore();
     };
     window.addEventListener("focus", focus);
-    window.addEventListener("storage", storage);
-    const requestEpoch = epoch;
-    const requestState = active;
+    window.addEventListener("storage", changed);
+    const controller = active,
+      generation = epoch;
     return () => {
       window.removeEventListener("focus", focus);
-      window.removeEventListener("storage", storage);
-      requestEpoch.current++;
-      if (requestState.current) void requestStop(requestState.current.turnId);
-      requestState.current?.abort.abort();
+      window.removeEventListener("storage", changed);
+      generation.current++;
+      if (controller.current)
+        void requestStop(controller.current.turnId).catch(() => undefined);
+      controller.current?.abort.abort();
     };
   }, [restore]);
-  function stop() {
-    const running = active.current;
-    if (!running) return;
-    const cancellation = requestStop(running.turnId);
-    epoch.current++;
-    running.abort.abort();
-    active.current = null;
-    setMessages((items) =>
-      items.map((m) =>
-        m.turnId === running.turnId && m.role === "assistant"
-          ? {
-              ...m,
-              status: "stopped",
-              error: "stopped",
-              details: {
-                ...m.details,
-                durationMs: m.details?.durationMs ?? Date.now() - startedAt,
-                timingEstimated: m.details?.durationMs === undefined,
-              },
-            }
-          : m,
-      ),
-    );
-    setStreaming(false);
-    return cancellation;
+  async function stop(): Promise<boolean> {
+    const query = active.current ?? remote.current;
+    if (!query) return true;
+    setStopping(true);
+    setNotice("confirming");
+    try {
+      await requestStop(query.turnId);
+    } catch {
+      setNotice("stop_unconfirmed");
+    }
+    return reconcile(query);
   }
-  function newChat() {
-    stop();
+  async function newChat() {
+    const account = owner.current;
+    if (!(await stop()) || account !== owner.current) return false;
     epoch.current++;
     sessionId.current = null;
     if (owner.current) store(`${SESSION_KEY}:${owner.current}`, "");
     setMessages([]);
     setRevision(undefined);
     setContext(undefined);
-    setDraft("");
+    setTitle("");
+    setArchived(false);
     setError(undefined);
+    setNotice(undefined);
     setLoading(false);
+    setDraftState(
+      owner.current ? (saved(draftKey(owner.current, null)) ?? "") : "",
+    );
     scrollTop.current = 0;
+    return true;
   }
-  async function send(bookRevision: string, retry?: ChatMessage) {
-    if (active.current || loading || !authed) return;
-    const text = retry?.content ?? draft.trim();
-    if (!text || text.length > 4000) return;
-    const turnId = retry?.turnId ?? crypto.randomUUID();
-    const quote = retry?.context ?? context;
-    const pinned = revision ?? bookRevision;
-    const token = ++epoch.current;
-    const abort = new AbortController();
-    active.current = { abort, turnId };
-    const id = sessionId.current ?? crypto.randomUUID();
+  async function openConversation(id: string) {
+    const account = owner.current;
+    if (!(await stop()) || !account || account !== owner.current) return false;
+    epoch.current++;
     sessionId.current = id;
     store(`${SESSION_KEY}:${owner.current}`, id);
-    const turnStartedAt = Date.now();
-    const user: ChatMessage = {
+    setMessages([]);
+    setContext(undefined);
+    setRevision(undefined);
+    setNotice(undefined);
+    setDraftState(saved(draftKey(owner.current, id)) ?? "");
+    scrollTop.current = positions.current.get(id) ?? 0;
+    await restore();
+    return true;
+  }
+  async function updateConversation(
+    id: string,
+    changes: { title?: string; archived?: boolean },
+  ) {
+    if (
+      changes.archived !== undefined &&
+      (active.current?.sessionId ?? remote.current?.sessionId) === id &&
+      !(await stop())
+    )
+      throw new Error("stop_unconfirmed");
+    const account = owner.current;
+    const response = await fetch("/api/agent/conversations", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, ...changes }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      const failure = await response.json().catch(() => ({}));
+      throw new Error(failure.error ?? "history_failed");
+    }
+    if (account !== owner.current) return;
+    if (id === sessionId.current) {
+      if (changes.title !== undefined) setTitle(changes.title);
+      if (changes.archived !== undefined) setArchived(changes.archived);
+    }
+    setHistoryVersion((v) => v + 1);
+  }
+  async function refreshAvailability() {
+    const account = owner.current,
+      generation = epoch.current;
+    try {
+      const response = await fetch("/api/agent/session", {
+        cache: "no-store",
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) return;
+      const data: Snapshot = await response.json();
+      if (account === owner.current && generation === epoch.current)
+        applySnapshot(data, null, false);
+    } catch {
+      /* Explicit refresh/restore remains available. */
+    }
+  }
+  async function send(bookRevision: string, retry?: ChatMessage) {
+    if (
+      active.current ||
+      remote.current ||
+      streaming ||
+      loading ||
+      !authed ||
+      archived
+    )
+      return;
+    const text = retry?.content ?? draft.trim();
+    if (!text || text.length > 4000) return;
+    const turnId = retry?.turnId ?? crypto.randomUUID(),
+      id = sessionId.current ?? crypto.randomUUID();
+    const quote = retry?.context ?? context,
+      pinned = revision ?? bookRevision,
+      generation = ++epoch.current,
+      abort = new AbortController(),
+      turnStartedAt = Date.now();
+    if (!sessionId.current && owner.current)
+      store(draftKey(owner.current, null), "");
+    if (!sessionId.current)
+      setTitle(text.replace(/\s+/g, " ").trim().slice(0, 100).trim());
+    sessionId.current = id;
+    if (owner.current) store(`${SESSION_KEY}:${owner.current}`, id);
+    active.current = { abort, turnId, sessionId: id };
+    remote.current = {
+      turnId,
+      sessionId: id,
+      startedAt: turnStartedAt,
+      state: "running",
+    };
+    const userMessage: ChatMessage = {
       id: `${turnId}-user`,
       turnId,
       role: "user",
       revision: pinned,
       content: text,
-      at: Date.now(),
+      at: turnStartedAt,
       status: "complete",
       ...(quote ? { context: quote } : {}),
     };
@@ -241,13 +471,13 @@ export function useChat() {
       role: "assistant",
       revision: pinned,
       content: "",
-      at: Date.now(),
+      at: turnStartedAt,
       status: "streaming",
       details: { model },
     };
     setMessages((items) => [
       ...items.filter((m) => m.turnId !== turnId),
-      user,
+      userMessage,
       assistant,
     ]);
     if (!retry) {
@@ -257,12 +487,16 @@ export function useChat() {
     setStreaming(true);
     setStartedAt(turnStartedAt);
     setStage("preparing");
+    setStopping(false);
+    setNotice(undefined);
     setError(undefined);
     const update = (change: Partial<ChatMessage>) =>
       setMessages((items) =>
         items.map((m) => (m.id === assistant.id ? { ...m, ...change } : m)),
       );
-    let textSoFar = "";
+    let textSoFar = "",
+      terminal = false,
+      accepted = false;
     try {
       const response = await fetch("/api/agent/chat", {
         method: "POST",
@@ -277,31 +511,24 @@ export function useChat() {
           ...(quote ? { context: quote } : {}),
         }),
       });
-      if (token !== epoch.current) return;
+      if (generation !== epoch.current) return;
       if (response.status === 401) {
-        setAuthed(false);
-        setUser(null);
-        setMessages([]);
-        setDraftState("");
-        setContext(undefined);
-        setRevision(undefined);
-        owner.current = null;
-        sessionId.current = null;
-        epoch.current++;
-        active.current = null;
-        setStreaming(false);
+        expire();
         return;
       }
       if (!response.ok || !response.body) {
         const failure = await response.json().catch(() => ({}));
-        throw new Error(failure.error || "agent_failed");
+        throw new Error(failure.error ?? "agent_failed");
       }
+      accepted = true;
+      void refreshAvailability();
       await readChatStream(response.body, (event) => {
-        if (token !== epoch.current) return;
+        if (generation !== epoch.current) return;
         if (event.type === "start") {
           setRevision(event.revision);
-          store(`${SESSION_KEY}:${owner.current}`, event.sessionId);
           sessionId.current = event.sessionId;
+          if (owner.current)
+            store(`${SESSION_KEY}:${owner.current}`, event.sessionId);
         }
         if (event.type === "status") setStage(event.stage);
         if (event.type === "details") update({ details: event.details });
@@ -310,16 +537,23 @@ export function useChat() {
             event.type === "delta" ? textSoFar + event.text : event.text;
           update({ content: textSoFar });
         }
-        if (event.type === "done")
+        if (event.type === "done") {
+          terminal = true;
           update({ status: "complete", error: undefined });
-        if (event.type === "error")
+        }
+        if (event.type === "error") {
+          terminal = true;
           update({
             status: event.code === "stopped" ? "stopped" : "failed",
             error: event.code,
           });
+        }
       });
     } catch (failure) {
-      if (token === epoch.current) {
+      if (generation === epoch.current && accepted) {
+        setStage("recovering");
+        setNotice("confirming");
+      } else if (generation === epoch.current) {
         const code =
           failure instanceof Error ? failure.message : "agent_failed";
         setMessages((items) =>
@@ -339,50 +573,59 @@ export function useChat() {
               : m,
           ),
         );
-        // Draft typed during the request wins; otherwise restore a rejected send.
         if (!textSoFar && !retry)
           setDraftState((value) => {
             const next = value || text;
-            if (owner.current) store(`${DRAFT_KEY}:${owner.current}`, next);
+            if (owner.current) store(draftKey(owner.current, id), next);
             return next;
           });
       }
     } finally {
-      if (token === epoch.current) {
+      if (generation === epoch.current) {
         active.current = null;
-        setStreaming(false);
+        if (terminal || !accepted) {
+          remote.current = undefined;
+          setStreaming(false);
+          setStopping(false);
+          setNotice(undefined);
+          setHistoryVersion((v) => v + 1);
+          void refreshAvailability();
+        } else void reconcile({ sessionId: id, turnId });
       }
     }
   }
   async function logout() {
-    await stop();
-    const response = await fetch("/api/auth/sign-out", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    if (!response.ok) {
-      setError("history_failed");
+    if (!(await stop())) return;
+    try {
+      const response = await fetch("/api/auth/sign-out", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) throw new Error();
+    } catch {
+      setNotice("logout_failed");
       return;
-    }
-    if (owner.current) {
-      store(`${SESSION_KEY}:${owner.current}`, "");
-      store(`${DRAFT_KEY}:${owner.current}`, "");
     }
     epoch.current++;
     owner.current = null;
     sessionId.current = null;
+    remote.current = undefined;
     setMessages([]);
     setDraftState("");
     setContext(undefined);
     setRevision(undefined);
     setUser(null);
     setAuthed(false);
+    setQuota(undefined);
+    setNotice(undefined);
     store("utils_auth_changed", String(Date.now()));
     await restore();
   }
   const saveScroll = useCallback((position: number) => {
     scrollTop.current = position;
+    if (sessionId.current) positions.current.set(sessionId.current, position);
   }, []);
   return {
     authed,
@@ -397,13 +640,22 @@ export function useChat() {
     context,
     setContext,
     streaming,
-    stage,
+    stage: stopping ? "stopping" : stage,
     startedAt,
     error,
+    notice,
+    quota,
+    title,
+    archived,
+    historyVersion,
     restore,
+    confirmStatus: reconcile,
+    refreshAvailability,
     logout,
     stop,
     newChat,
+    openConversation,
+    updateConversation,
     send,
     scrollTop,
     saveScroll,

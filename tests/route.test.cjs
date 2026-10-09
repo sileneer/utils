@@ -16,6 +16,7 @@ process.env.DATABASE_PATH = path.join(
   process.env.AGENT_DATA_DIR,
   "utils.sqlite",
 );
+process.env.APP_URL = "http://localhost";
 process.env.AI_ENABLED = "1";
 process.env.AI_USER_DAILY_LIMIT = "100";
 process.env.AI_GLOBAL_DAILY_LIMIT = "100";
@@ -50,7 +51,11 @@ Module._load = function (name, ...args) {
     return {
       currentUser: async () =>
         authorized
-          ? { id: authenticatedOwner, name: "Owner", email: "owner@example.test" }
+          ? {
+              id: authenticatedOwner,
+              name: "Owner",
+              email: "owner@example.test",
+            }
           : null,
     };
   if (name === "@/lib/agent/book-tools")
@@ -90,7 +95,7 @@ async function events(response) {
   await readChatStream(response.body, (e) => result.push(e));
   return result;
 }
-test("auth and UUID guards apply to chat and history; history has no listing", async () => {
+test("auth and UUID guards apply to chat and history; identity exposes only personal availability", async () => {
   authorized = false;
   assert.equal((await POST(request())).status, 401);
   assert.equal(
@@ -108,13 +113,18 @@ test("auth and UUID guards apply to chat and history; history has no listing", a
       .status,
     400,
   );
-  assert.deepEqual(
-    await (await GET(new Request("http://localhost/api/agent/session"))).json(),
-    {
-      authed: true,
-      user: { id: "owner", name: "Owner", email: "owner@example.test" },
-    },
-  );
+  const identity = await (
+    await GET(new Request("http://localhost/api/agent/session"))
+  ).json();
+  assert.equal(identity.authed, true);
+  assert.deepEqual(identity.user, {
+    id: "owner",
+    name: "Owner",
+    email: "owner@example.test",
+  });
+  assert.equal(identity.availability.remaining, 100);
+  assert.equal(identity.availability.service, "ready");
+  assert.equal(identity.active, undefined);
 });
 test("successful partials plus final answer persist one complete exchange", async () => {
   const id = randomUUID();
@@ -346,16 +356,31 @@ test("explicit stop requires owner and origin, cancels without transport abort a
 });
 test("stop arriving before chat registration prevents upstream execution", async () => {
   const turn = randomUUID();
-  await stop(new Request("http://localhost/api/agent/stop", {
-    method: "POST", headers: { origin: "http://localhost", "content-type": "application/json" },
-    body: JSON.stringify({ turnId: turn }),
-  }));
+  await stop(
+    new Request("http://localhost/api/agent/stop", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ turnId: turn }),
+    }),
+  );
   let calls = 0;
-  queryImpl = async function* () { calls++; yield { type: "result", subtype: "success", result: "unexpected" }; };
+  queryImpl = async function* () {
+    calls++;
+    yield { type: "result", subtype: "success", result: "unexpected" };
+  };
   const result = await events(await POST(request({ turnId: turn })));
   assert.equal(result.at(-1).code, "stopped");
   assert.equal(calls, 0);
-  assert.equal(database.getDatabase().prepare("SELECT status FROM ai_usage WHERE turn_id=?").get(turn).status, "released");
+  assert.equal(
+    database
+      .getDatabase()
+      .prepare("SELECT status FROM ai_usage WHERE turn_id=?")
+      .get(turn).status,
+    "released",
+  );
 });
 test("source preparation failures persist an incomplete turn without invoking the SDK", async () => {
   const id = randomUUID();
@@ -371,6 +396,41 @@ test("source preparation failures persist an incomplete turn without invoking th
   assert.equal(calls, 0);
   assert.equal((await loadSession(id, "owner")).messages[1].status, "failed");
 });
+
+test("selected native session resumes explicitly; archived chats reject before quota or SDK work", async () => {
+  const id = randomUUID();
+  queryImpl = async function* () {
+    yield { type: "system", subtype: "init", session_id: "selected-native-qa" };
+    yield { type: "result", subtype: "success", result: "first" };
+  };
+  await events(await POST(request({ sessionId: id })));
+  queryImpl = async function* (input) {
+    assert.equal(input.options.resume, "selected-native-qa");
+    yield { type: "result", subtype: "success", result: "continued" };
+  };
+  await events(await POST(request({ sessionId: id })));
+  const db = database.getDatabase(),
+    before = db.prepare("SELECT count(*) n FROM ai_usage").get().n;
+  db.prepare(
+    "UPDATE conversation_meta SET archived_at=? WHERE conversation_id=?",
+  ).run(Date.now(), id);
+  let calls = 0;
+  queryImpl = async function* () {
+    calls++;
+    yield { type: "result", subtype: "success", result: "unexpected" };
+  };
+  const rejected = await POST(request({ sessionId: id }));
+  assert.equal(rejected.status, 409);
+  assert.equal((await rejected.json()).error, "conversation_archived");
+  assert.equal(calls, 0);
+  assert.equal(db.prepare("SELECT count(*) n FROM ai_usage").get().n, before);
+  const snapshot = await (
+    await GET(new Request("http://localhost/api/agent/session?id=" + id))
+  ).json();
+  assert.equal(snapshot.session.archived, true);
+  assert.equal(snapshot.active, undefined);
+  assert.equal(snapshot.session.messages.at(-1).content, "continued");
+});
 test("cross-user history and writes rejected; quota guard prevents upstream invocation", async () => {
   const db = database.getDatabase();
   db.prepare("INSERT INTO user VALUES (?,?,?,?,?,?,?,?,?)").run(
@@ -385,14 +445,9 @@ test("cross-user history and writes rejected; quota guard prevents upstream invo
     "active",
   );
   const id = randomUUID();
-  db.prepare("INSERT INTO conversations VALUES (?,?,?,?,?,?)").run(
-    id,
-    "other",
-    revision,
-    null,
-    1,
-    Date.now(),
-  );
+  db.prepare(
+    "INSERT INTO conversations (id,owner_user_id,revision,sdk_session_id,needs_rebuild,updated_at) VALUES (?,?,?,?,?,?)",
+  ).run(id, "other", revision, null, 1, Date.now());
   assert.equal(
     (await GET(new Request("http://localhost/api/agent/session?id=" + id)))
       .status,

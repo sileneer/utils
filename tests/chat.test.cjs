@@ -150,7 +150,8 @@ test("legacy files are ignored; private ownership, interrupted restore and atomi
     ],
   };
   await saveSession(session);
-  assert.equal((await loadSession(id, "owner")).messages[0].status, "stopped");
+  assert.equal((await loadSession(id, "owner")).messages[0].status, "failed");
+  assert.equal((await loadSession(id, "owner")).messages[0].error, "interrupted");
   assert.equal(await loadSession(id, "stranger"), null);
   await assert.rejects(
     saveSession({ ...session, ownerUserId: "stranger" }),

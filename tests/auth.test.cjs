@@ -382,7 +382,7 @@ test("versioned migration is repeatable; backup API restores integrity and user 
   await database.migrate(db);
   assert.equal(
     db.prepare("SELECT count(*) n FROM schema_migrations").get().n,
-    2,
+    3,
   );
   const backup = path.join(directory, "restore.sqlite");
   await db.backup(backup);

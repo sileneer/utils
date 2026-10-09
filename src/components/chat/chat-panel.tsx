@@ -5,6 +5,7 @@ import {
   ArrowUp,
   BookOpen,
   Check,
+  History,
   ChevronDown,
   Loader2,
   LogOut,
@@ -31,6 +32,8 @@ import { AGENT_MODELS, agentModelName } from "@/lib/agent/models";
 import { cn } from "@/lib/utils";
 import { Answer } from "./answer";
 import { MessageDetails } from "./message-details";
+import { ConversationHistory } from "./conversation-history";
+import { ChatAvailability } from "./chat-availability";
 import type { ChatController } from "./use-chat";
 import { shouldSubmitKey } from "@/lib/chat/composer";
 
@@ -83,6 +86,7 @@ export function ChatPanel({
   const account = useTranslations("account");
   const locale = useLocale();
   const [following, setFollowing] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const followRef = useRef(true);
@@ -111,7 +115,12 @@ export function ChatPanel({
     !mismatch &&
     chat.draft.trim() &&
     !chat.streaming &&
-    !chat.loading,
+    !chat.loading &&
+    !chat.archived &&
+    (!chat.quota ||
+      (chat.quota.enabled &&
+        chat.quota.remaining > 0 &&
+        chat.quota.service !== "quota")),
   );
   function errorText(code?: string) {
     if (code === "quota_exceeded") return account("quota");
@@ -127,6 +136,8 @@ export function ChatPanel({
           book_unavailable: "bookUnavailable",
           history_failed: "historyFailed",
           unauthorized: "sessionExpired",
+          interrupted: "interrupted",
+          conversation_archived: "archivedNotice",
         } as Record<string, string>
       )[code ?? ""] ?? "error";
     return t(key);
@@ -146,7 +157,9 @@ export function ChatPanel({
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
         <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
           <BookOpen className="size-4 shrink-0 text-primary" />
-          <span className="truncate">{t("title")}</span>
+          <span className="truncate" title={chat.title || t("title")}>
+            {historyOpen ? t("history") : chat.title || t("title")}
+          </span>
         </h2>
         <div className="flex">
           {chat.user && (
@@ -157,7 +170,22 @@ export function ChatPanel({
               <LogOut />
             </IconButton>
           )}
-          <IconButton label={t("newChat")} onClick={chat.newChat}>
+          {chat.user && (
+            <IconButton
+              label={t(historyOpen ? "backToChat" : "history")}
+              onClick={() => setHistoryOpen((value) => !value)}
+            >
+              <History />
+            </IconButton>
+          )}
+          <IconButton
+            label={t("newChat")}
+            onClick={() => {
+              void chat.newChat().then((opened) => {
+                if (opened) setHistoryOpen(false);
+              });
+            }}
+          >
             <MessageSquarePlus />
           </IconButton>
           <IconButton label={t("close")} onClick={onClose}>
@@ -210,7 +238,46 @@ export function ChatPanel({
           {chat.user.name} · {chat.user.email}
         </p>
       )}
-      {chat.loading ? (
+      {chat.user && (
+        <ChatAvailability
+          quota={chat.quota}
+          onRefresh={() => void chat.refreshAvailability()}
+        />
+      )}
+      {chat.notice && (
+        <div className="shrink-0 space-y-1 border-b px-3 py-2 text-xs text-muted-foreground">
+          <p role="status">{t(chat.notice)}</p>
+          {chat.notice === "stop_unconfirmed" && (
+            <Button
+              variant="outline"
+              className="h-10 text-xs"
+              onClick={() => void chat.confirmStatus()}
+            >
+              {t("checkStatus")}
+            </Button>
+          )}
+        </div>
+      )}
+      {chat.archived && !historyOpen && (
+        <p
+          role="status"
+          className="shrink-0 border-b px-3 py-2 text-xs text-muted-foreground"
+        >
+          {t("archivedNotice")}
+        </p>
+      )}
+      {historyOpen && chat.user ? (
+        <ConversationHistory
+          key={chat.user.id}
+          version={chat.historyVersion}
+          onOpen={async (id) => {
+            const opened = await chat.openConversation(id);
+            if (opened) setHistoryOpen(false);
+            return opened;
+          }}
+          onUpdate={chat.updateConversation}
+        />
+      ) : chat.loading ? (
         <div
           className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"
           role="status"
@@ -328,6 +395,7 @@ export function ChatPanel({
                 ) : (
                   <Answer
                     text={message.content}
+                    incomplete={message.status !== "complete"}
                     revision={
                       message.revision === bookRevision
                         ? message.revision
@@ -348,7 +416,19 @@ export function ChatPanel({
                         <Button
                           variant="outline"
                           className="mt-2 h-10 text-xs"
-                          disabled={chat.streaming || !bookRevision || mismatch}
+                          disabled={
+                            chat.streaming ||
+                            chat.loading ||
+                            chat.archived ||
+                            !bookRevision ||
+                            mismatch ||
+                            Boolean(
+                              chat.quota &&
+                              (!chat.quota.enabled ||
+                                chat.quota.remaining < 1 ||
+                                chat.quota.service === "quota"),
+                            )
+                          }
                           onClick={() =>
                             void chat.send(
                               bookRevision!,
@@ -443,7 +523,7 @@ export function ChatPanel({
                 }}
               />
               {chat.streaming ? (
-                <IconButton label={t("stop")} onClick={chat.stop}>
+                <IconButton label={t("stop")} onClick={() => void chat.stop()}>
                   <Square />
                 </IconButton>
               ) : (

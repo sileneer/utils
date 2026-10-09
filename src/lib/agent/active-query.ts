@@ -1,5 +1,7 @@
 type ActiveQuery = {
   owner: string;
+  sessionId?: string;
+  startedAt?: number;
   turn: string;
   abort: AbortController;
 };
@@ -40,4 +42,33 @@ export function stopQuery(owner: string, turn: string) {
     state.pendingStops.delete(state.pendingStops.keys().next().value!);
   state.pendingStops.set(key(owner, turn), now + 30_000);
   return false;
+}
+
+export function activeTurn(owner: string, sessionId?: string) {
+  const query = state.active;
+  if (
+    !query ||
+    query.owner !== owner ||
+    !query.sessionId ||
+    (sessionId && query.sessionId !== sessionId)
+  )
+    return;
+  return {
+    sessionId: query.sessionId,
+    turnId: query.turn,
+    startedAt: query.startedAt ?? 0,
+    state: query.abort.signal.aborted
+      ? ("stopping" as const)
+      : ("running" as const),
+  };
+}
+export function isTurnActive(owner: string, turn: string, sessionId?: string) {
+  return (
+    state.active?.owner === owner &&
+    state.active.turn === turn &&
+    (!sessionId || state.active.sessionId === sessionId)
+  );
+}
+export function serviceBusy() {
+  return Boolean(state.active);
 }
