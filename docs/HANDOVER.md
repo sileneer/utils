@@ -3,7 +3,8 @@
 **Written 2026-10-09 for local C+D review.** Pinned-source previews, bounded
 retrieval improvements and expanded/mobile reading are implemented on
 `codex/chat-sources-reading`. This commit contains matching code, tests and docs.
-The owner approved C+D publication on 2026-10-09; PR/image acceptance and deployment\nare in progress. New real provider requests remain a separate approval.
+The owner approved C+D publication on 2026-10-09; PR/image acceptance and deployment
+are in progress. New real provider requests remain a separate approval.
 
 Runtime: [ARCHITECTURE](ARCHITECTURE.md). Operations:
 [DEPLOYMENT](DEPLOYMENT.md). Debugging: [GOTCHAS](GOTCHAS.md).
@@ -16,7 +17,8 @@ AI activation were approved previously. The owner confirmed registration,
 logout/login and password reset. Do not request those approvals again.
 
 A+B shipped through [PR #2](https://github.com/sileneer/utils/pull/2).
-The owner requested PLANNING §12 C+D local implementation, reviewed the local\nresult, then explicitly approved publication on 2026-10-09.
+The owner requested PLANNING §12 C+D local implementation, reviewed the local
+result, then explicitly approved publication on 2026-10-09.
 E/admin/backup work remains separate. The prior six real AI acceptance calls
 are exhausted; this batch made zero new real provider calls. Mock streams and
 offline source reads are the evidence, not model-quality acceptance.
@@ -24,8 +26,8 @@ offline source reads are the evidence, not model-quality acceptance.
 ## 2. Working tree and release position
 
 Branch `codex/chat-sources-reading` starts at `0ef6b53`. The focused local commit
-includes the C+D implementation and documentation; no push, PR, merge or deployment
-was performed for this batch. Ignore `data/investigation/chat-cd/`, cached books,
+includes the C+D implementation and documentation (33ca90a). Publication is
+approved; exact-head acceptance, merge and deployment are pending verification. Ignore `data/investigation/chat-cd/`, cached books,
 disposable databases, local helper scripts and user-owned `.zcode/`.
 `.env.example` remains the only tracked environment file.
 
@@ -47,9 +49,9 @@ PLANNING §12 records the fixed retrieval comparison, residual miss and quality 
 
 ## 4. Next work, in order
 
-1. Owner review of the local preview, then explicit publication approval. Publish
-   through a focused PR, normal acceptance/CI, merge and actual production checks.
-   Local C+D is implemented; publication is the remaining release gate.
+1. Execute the approved C+D release through a focused PR, exact-head image
+   acceptance, merge, CI/CD and actual production checks. Approval is granted;
+   no new real provider acceptance call is included.
 2. Real answer fidelity, unsupported-condition checks, long-context growth and
    SDK resume/performance measurement require a fresh bounded provider allowance.
    Offline retrieval scores and canned responses do not establish those results.
