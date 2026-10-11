@@ -1,7 +1,8 @@
 # Handover
 
-**Updated 2026-10-11 for documentation maintenance.** Production acceptance below
-is dated **2026-10-09**, not a new live inspection. Runtime contracts:
+**Updated 2026-10-11 for the owner-approved documentation publication.** The full
+account/UI acceptance below is dated **2026-10-09**; the documentation release
+uses normal CI/CD and read-only revision/health checks, with separate evidence. Runtime contracts:
 [ARCHITECTURE](ARCHITECTURE.md); operations: [DEPLOYMENT](DEPLOYMENT.md);
 UI: [DESIGN](DESIGN.md); decisions: [PLANNING](PLANNING.md) §11–13.
 
@@ -9,16 +10,22 @@ UI: [DESIGN](DESIGN.md); decisions: [PLANNING](PLANNING.md) §11–13.
 
 The owner approved and completed account/chat improvements, runtime AI config
 publication and site-wide accounts (PR #7 A+B+C plus D). Those approvals remain
-settled. This task authorizes documentation/instruction updates, not another
-production rollout, provider call or new feature. Off-machine backup uploads and
+settled. The owner subsequently approved merging the documentation into main
+on 2026-10-11, including its normal push-to-main CI/CD rollout. This does not
+authorize provider calls or new features. Off-machine backup uploads and
 pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
 
 ## 2. Checkout and release position
 
-Local branch: `codex/docs-maintenance`, based on `main` at `70f5a78`. This branch
-updates AGENTS/Claude entrypoints, README and living docs only; no app, dependency,
-schema or env changes. It is not pushed or deployed. The mistaken-task investigation is excluded from
-this documentation; private QA evidence remains ignored.
+[Documentation PR #8](https://github.com/sileneer/utils/pull/8) publishes the
+shared agent instructions and living-doc refresh, based on `70f5a78`, to `main`.
+Only documentation changes: no application, dependency, schema or env changes.
+The owner approved publication after reviewing the local commit `ded6a1d`.
+The exact accepted PR head, merge/deploy run and actual running revision/health
+are recorded in ignored `data/investigation/docs-maintenance-20261011/release-receipt.json`.
+Verify that receipt and GitHub status before treating the release as complete;
+a merge alone is not deployment evidence. Private QA files remain ignored;
+the owner-deleted mistaken-task investigation is excluded.
 
 [PR #7](https://github.com/sileneer/utils/pull/7) passed exact-head gates at
 `15e43fd` and squash-merged as `98f6149`. Feature deployment run
@@ -46,8 +53,9 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 ## 4. Next actions
 
-No feature publication decision remains pending for PR #7/D. This documentation
-branch remains local; do not push to main merely to synchronize docs.
+No publication decision remains pending for PR #7/D or the documentation PR #8.
+Use PR #8 and its release receipt (§2) for the documentation release outcome.
+Do not trigger further main pushes merely to copy private acceptance evidence.
 Independent follow-ups remain:
 
 - Diagnose model continuation timeout before using the **five unused turns** from
@@ -109,4 +117,8 @@ build/typecheck/standalone sanitization passed. Default `npm run lint` failed on
 18 CommonJS import errors in existing ignored private QA helpers; the application
 source lint with `data/**` excluded passed (GOTCHAS §F). This is not a claim that
 the default local scan passed. Feature tests were not rerun for docs-only changes.
-No live host/browser/provider QA or deployment occurred.
+Those local checks preceded the publication approval. PR #8 clean-checkout
+lint/tests/image gates and the normal deployment must pass; dated release
+results and read-only runtime/health checks live in the private receipt (§2).
+No new full account/browser acceptance, credential mutation or paid AI QA is
+part of this documentation publication.
