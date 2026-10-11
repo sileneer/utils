@@ -1,113 +1,112 @@
 # Handover
 
-**Written 2026-10-09 after the approved PR #7 publication and D acceptance.**
-Runtime contracts: [ARCHITECTURE](ARCHITECTURE.md) §5. Operations:
-[DEPLOYMENT](DEPLOYMENT.md). UI: [DESIGN](DESIGN.md) §5.9. Approved scope:
-[PLANNING](PLANNING.md) §13.
+**Updated 2026-10-11 for documentation maintenance.** Production acceptance below
+is dated **2026-10-09**, not a new live inspection. Runtime contracts:
+[ARCHITECTURE](ARCHITECTURE.md); operations: [DEPLOYMENT](DEPLOYMENT.md);
+UI: [DESIGN](DESIGN.md); decisions: [PLANNING](PLANNING.md) §11–13.
 
 ## 1. Authorization
 
-The owner approved A+B+C, then explicitly approved merging/publishing PR #7
-and completing D. The feature is deployed and production account acceptance has
-passed. This matching documentation update uses the same normal CI/CD; final
-exact-head/runtime evidence is stored in the private release receipt below.
-Previously settled account/admin/AI and env-release approvals remain settled.
-Never mint/export production sessions or bypass normal authentication. Off-machine
-backup uploads and pruning remain unapproved.
+The owner approved and completed account/chat improvements, runtime AI config
+publication and site-wide accounts (PR #7 A+B+C plus D). Those approvals remain
+settled. This task authorizes documentation/instruction updates, not another
+production rollout, provider call or new feature. Off-machine backup uploads and
+pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
 
 ## 2. Checkout and release position
 
-Checkout: `main`. [PR #7](https://github.com/sileneer/utils/pull/7) passed all
-exact-head checks at `15e43fd` in
-[37997563313](https://github.com/sileneer/utils/actions/runs/37997563313), with
-GitGuardian and qlty green. It squash-merged as `98f6149`; normal CI/CD
-[37998131093](https://github.com/sileneer/utils/actions/runs/37998131093) passed
-test, accepted-image publication and deploy. The running OCI revision matched
-that merge and was healthy. No dependency, schema or production env change.
+Local branch: `codex/docs-maintenance`, based on `main` at `70f5a78`. This branch
+updates AGENTS/Claude entrypoints, README and living docs only; no app, dependency,
+schema or env changes. It is not pushed or deployed. The mistaken-task investigation is excluded from
+this documentation; private QA evidence remains ignored.
 
-Feature proof is in ignored `data/investigation/site-account/review-receipt.json`.
-Final documentation revision/run, actual runtime and sanitized D acceptance live
-in `data/investigation/site-account/release-receipt.json`. Check that receipt for
-the final deployed revision; do not infer it from the feature merge alone.
-Keep fixtures, databases, book cache, browser
-receipts, screenshots, `.env` and `.zcode/` out of Git.
+[PR #7](https://github.com/sileneer/utils/pull/7) passed exact-head gates at
+`15e43fd` and squash-merged as `98f6149`. Feature deployment run
+[37998131093](https://github.com/sileneer/utils/actions/runs/37998131093) passed.
+The final acceptance-doc revision `70f5a78` passed test/image/deploy in
+[37999098351](https://github.com/sileneer/utils/actions/runs/37999098351).
+This run/PR status was rechecked on 2026-10-11; actual runtime/data/UI acceptance
+was last performed on 2026-10-09. Do not infer today's host state from CI alone.
 
-## 3. Implementation map
+Private dated proofs: ignored `data/investigation/site-account/review-receipt.json`
+and `release-receipt.json`. This maintenance's plan/checks live in ignored
+`data/investigation/docs-maintenance-20261011/`. Never commit databases, book cache,
+browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
-ARCHITECTURE §5 owns the identity projection, account APIs, safe return paths,
-shared events and future-module integration recipe. DESIGN §5.9 registers the
-shared entry and account center. PLANNING §13 owns scope and deferred features.
-GOTCHAS owns authorized password-write cancellation and controlled-dialog focus.
-All modules reuse the existing authentication/SQLite identity; UI state grants no
-server access. Logout, password/reset and session revocation wait for account-wide
-query release, and stale authenticated requests cannot reserve a paid turn later.
+## 3. Canonical implementation map
+
+- ARCHITECTURE §3 owns agent tools/SSE/message details; §5 owns public accounts,
+  ownership, safe return paths, security lifecycle and future-module integration;
+  §8 owns runtime provider/env config; §10 owns administrator aggregates.
+- DESIGN §5.6–5.9 owns chat/source/account/admin patterns. Account forms use
+  registered primitives; there is no adopted `ui/form` component.
+- DEPLOYMENT §8/§11–12 owns release checks, service setup and backup operations.
+- PLANNING §11–13 owns decisions and deferred account features. GOTCHAS owns
+  debugging lessons. AGENTS is the shared rulebook; CLAUDE imports it.
 
 ## 4. Next actions
 
-PR #7 and D are complete; no feature publication decision remains pending.
-Independent earlier follow-ups remain: continuation timeout diagnosis before
-   spending five unused real acceptance turns; physical phone keyboard/IME/source
-   return; off-machine backup destination/ownership; next natural backup execution;
-   cross-device production reset and long-context/mail-header acceptance.
+No feature publication decision remains pending for PR #7/D. This documentation
+branch remains local; do not push to main merely to synchronize docs.
+Independent follow-ups remain:
 
-## 5. Production data and backup
+- Diagnose model continuation timeout before using the **five unused turns** from
+  the later, separately authorized six-turn real QA allowance. Its first attempt
+  timed out. The earlier original allowance was exhausted; do not mix the budgets,
+  retry automatically, change models or extend limits to manufacture a pass.
+- Physical phone keyboard/IME/source-return, cross-device production reset,
+  long-context/source-faithfulness and mail-header acceptance remain distinct.
+- Observe the next natural scheduled backup execution. Off-machine destination,
+  ownership, upload and retention/pruning need separate decisions (DEPLOYMENT §12).
 
-A coherent pre-release backup was created with zero active requests at
-`/app/data/backups/release-20261009-site-account.sqlite` (600). Post-deploy integrity
-and FK checks passed; all baseline rows in user/account/session/verification and
-chat/message/usage/metadata tables were compared internally and exactly preserved.
-Owner verification/admin status, five histories and 18 messages, quota use,
-model catalog, retained source versions and persistent SDK mount remain present.
-The private env is still 600/owned by utils-deploy. No DB replacement, off-machine
-copy or pruning. Existing backup script/schedule remain installed. Operations:
-DEPLOYMENT §11–12.
+## 5. Last accepted production data and backup (2026-10-09)
 
-## 6. Isolated preview
+Coherent pre-release backup: `/app/data/backups/release-20261009-site-account.sqlite`
+(mode 600), created with zero active requests. Integrity/FK checks passed and all
+baseline account/session/chat/message/usage/metadata rows were internally compared
+and exactly preserved. Owner verification/admin role, histories, quota, model
+catalog, retained source versions and persistent SDK mount were retained; private
+env remained mode 600 and owned by `utils-deploy`. Existing backup script/schedule
+were preserved. No DB replacement, off-machine upload or pruning occurred.
+These are dated acceptance results, not current row-count/health guarantees.
 
-Disposable preview artifacts/fixtures remain ignored under
-`data/investigation/site-account/`. Its standalone launcher/PID are recorded there;
-verify command lines before stopping owned processes and stop before Windows
-rebuilds. QA browsers were isolated; the production release browser
-`utils-account-release-20261009` was normally logged in by the owner. No cookies
-were exported, captured or minted. Anonymous acceptance used a separate browser.
-Release screenshots are outside Git in the permitted visualization folder.
-Temporary browsers/preview are cleaned up at completion; production is the
-review target. Never expose the loopback fake outbox or its disposable fixtures.
+## 6. QA cleanup and private evidence
+
+The disposable port-3001 preview and both owned QA browsers were stopped/closed
+at release completion. Old preview URLs/PIDs are not proof of an active preview;
+verify command lines before stopping any process. Fixtures/outbox remain local,
+ignored and unavailable in production. Screenshots are outside Git. The owner
+logged in normally; no production cookies were exported, captured or minted.
 
 ## 7. Verification and limits
 
-75 regressions pass, including 12 new real-library/SQLite account integration
-checks. Local lint and complete production build/typecheck pass. No provider
-secret env names occur in client chunks. Security tests cover safe projection,
-origin/field policy, foreign session IDs, wrong passwords/OTPs, account isolation,
-password policy/rotation, cancellation timeout and concurrent/stale authorization.
+**Previous feature/release acceptance (2026-10-09):** 75 regressions, including
+12 new real-library/SQLite account checks, local lint/full build/typecheck and
+exact-head PR image/security gates passed. Safe identity/session projection,
+wrong password/OTP and foreign-session rejection, account isolation, rotation,
+cancellation timeout and stale authorization were covered.
 
-Isolated browser acceptance passed registration/verification/login return path,
-profile propagation, password confirmation/change, second-browser revocation,
-reader logout with chat closed, other-tab invalidation and full return query.
-Shared reader/chat menus were checked; English/Chinese, light/dark and 360px plus
-desktop layout have no page overflow. Fresh account screenshots were inspected.
-All account-page buttons are at least 40px. Account axe checks report zero
-violations/incomplete; modal axe has zero violations and two manual checks.
-Manual checks pass Tab containment, both cancel-focus targets and modal description
-contrast (6.26:1). This is browser emulation, not physical-device acceptance.
+Disposable UI QA covered registration/verification/login return path, profile,
+password change, second-browser revocation, closed-reader logout, other-tab
+invalidation and query preservation. Production D checked public/protected routes,
+normal owner/admin account/session access, retained history/quota/model config
+and home/reader/About account entries. Both locales/themes at 360px and desktop
+were inspected without page overflow; live account axe reported zero violations
+or incomplete checks. Local modal manual focus/keyboard/contrast checks passed.
+This is browser emulation, not physical-device acceptance.
 
-Production D acceptance passed public home/about/reading/health, safe anonymous
-account/catalog projection, protected account/admin redirects, private API 401s
-and retained pinned-source behavior. The normally authenticated owner/admin
-account and session display APIs passed safe/no-store checks; history count,
-model catalog and quota availability matched the pre-release browser baseline.
+No production account mutation, real mail or paid AI call was made for PR #7/D.
+Account publication does not close independent model-quality acceptance: the later
+real QA attempt timed out after successful retrieval before final answer/token
+result. Source fidelity, unsupported-condition and long-context checks remain
+unpassed; continuation cause is unresolved (GOTCHAS §C).
 
-Live home-to-account, closed-reader-to-account, reader/chat shared menus,
-About entry and admin access passed. English/Chinese, light/dark 360px and desktop
-screenshots were freshly inspected without horizontal overflow. Live account axe
-reported zero violations/incomplete. Preferences were restored after inspection.
-No production profile/password/session mutation, real mail or paid AI call was
-performed for this release; destructive/sensitive workflows were exercised with
-disposable credentials locally. No production cookies were exported.
-
-Earlier real source-answer QA used one turn that timed out before final answer/
-token data. Source fidelity, unsupported-condition and long-context acceptance
-remain unpassed; continuation cause remains unknown (GOTCHAS §C). Five real
-acceptance turns remain. D's account release completion does not close those
-independent AI/physical-device/off-machine backup follow-ups.
+**Current documentation maintenance (2026-10-11):** source/package contracts and
+GitHub release status reconciled; obsolete provider/form/activation instructions
+and duplicate documentation corrected. All 50 relative links, 13 anchors and
+20 route source paths passed checks; `git diff --check` and the full production
+build/typecheck/standalone sanitization passed. Default `npm run lint` failed on
+18 CommonJS import errors in existing ignored private QA helpers; the application
+source lint with `data/**` excluded passed (GOTCHAS §F). This is not a claim that
+the default local scan passed. Feature tests were not rerun for docs-only changes.
+No live host/browser/provider QA or deployment occurred.

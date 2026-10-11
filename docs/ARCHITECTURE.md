@@ -3,8 +3,9 @@
 How the running application is put together — routes, data flow, the agent
 runtime, the on-disk state, and the environment contract.
 
-**Runtime contract, 2026-10-09 (C+D released):** verified email/password accounts replace the
-shared passcode. Current release and acceptance evidence: HANDOVER §1/§7.
+**Runtime contract reviewed 2026-10-11:** site-wide verified email/password
+accounts and server-configured AI. Current release and dated acceptance evidence:
+[HANDOVER](HANDOVER.md) §2/§7; this document does not certify current live health.
 
 - Ops, deploys, rollback, server access: **[DEPLOYMENT.md](DEPLOYMENT.md)**
 - Things that broke and why: **[GOTCHAS.md](GOTCHAS.md)**
@@ -32,15 +33,17 @@ the browser is a thin client.
 
 | Path | Type | Source | Notes |
 |------|------|--------|-------|
-| `/` | page | `src/app/page.tsx` | tool index from the registry (`src/lib/tools.ts`) |
+| `/` | page | `src/app/page.tsx` | tool index and shared home account entry (`src/lib/tools.ts`, `HomeAccount`) |
 | `/htlb` | page | `src/app/htlb/page.tsx` | reading shell + chat sidebar |
 | `/htlb/book` | handler | `src/app/htlb/book/route.ts` | book HTML proxy, GET + POST (§6) |
 | `/api/book/entry` | handler | `src/app/api/book/entry/route.ts` | public pinned entry title/excerpt, read-only GET (§6) |
 | `/about` | page | `src/app/about/page.tsx` | |
 | `/api/health` | handler | `src/app/api/health/route.ts` | container + deploy healthcheck; `DRILL_FAIL_HEALTH=1` → 503 |
-| `/account` | page | `src/components/auth/account-center.tsx` | verified active account profile/password/login sessions |
+| `/account` | page | `src/app/account/page.tsx` | verified active account center (`src/components/auth/account-center.tsx`) |
+| `/admin` | page | `src/app/admin/page.tsx` | current administrator role required (§10) |
+| `/api/admin/operations` | handler | `src/app/api/admin/operations/route.ts` | bounded read-only administrator aggregates (§10) |
 | `/api/account`, `/api/account/[...action]` | handlers | `src/lib/auth/account-handler.ts` | safe site identity and scoped account management (§5) |
-| `/login`, `/register`, `/verify-email`, `/reset-password` | pages | `src/components/auth/account-form.tsx` | shared localized form |
+| `/login`, `/register`, `/verify-email`, `/reset-password` | pages | `src/components/auth/account-form.tsx` | shared localized form with validated site-local return path (§5) |
 | `/api/auth/[...all]` | handler | `src/lib/auth/handler.ts` | allowlisted password/OTP/logout POST endpoints only |
 | `/api/auth-config` | handler | `src/app/api/auth-config/route.ts` | public runtime site key and configuration availability, no secrets |
 | `/api/agent/auth` | handler | `src/app/api/agent/auth/route.ts` | retired: always 410 |
@@ -50,7 +53,8 @@ the browser is a thin client.
 | `/api/agent/chat` | handler | `src/app/api/agent/chat/route.ts` | POST → SSE stream (§3) |
 
 Repository layout beyond this: `src/components/` (`ui/` = shadcn registry,
-`chat/`, `htlb/`, `layout/`, `icons/`), `src/lib/agent/`, `src/i18n/`,
+`auth/`, `chat/`, `htlb/`, `layout/`, `icons/`), `src/lib/auth/`,
+`src/lib/agent/`, `src/i18n/`,
 `messages/{en,zh}.json`, `deploy/`, `.github/workflows/`.
 
 ## 3. Agent runtime
@@ -60,7 +64,7 @@ the same transcript, draft, selected model, request and scroll position.
 
     POST /api/agent/chat
     { message, sessionId, turnId, model, revision, context? }
-        -> authenticated server route -> SDK subprocess -> SenseNova
+        -> authenticated server route -> SDK subprocess -> configured compatible endpoint
         -> SSE -> one stable assistant message for that turn
 
 **Gate and validation.** A verified, active user with a revocable Better Auth
@@ -96,9 +100,10 @@ at most 15 reads started within 30 seconds, spaced two seconds apart, each with
 a five-second timeout. Disconnect/reopen uses the same bounded reconciliation.
 Unconfirmed state offers manual checking and keeps switching blocked; no query
 is resubmitted. Final history repairs timings/content. New-chat, open, archive
-of the active conversation and logout await confirmation before proceeding.
-Logout revokes its login session only after that confirmation. Transport
-abort remains an additional signal, but proxy forwarding is not its sole gate.
+of the active conversation await confirmation before proceeding. Logout and
+other account-security actions additionally use the server-side account fence
+(§5), waiting for owner-wide query release before session/credential changes.
+Transport abort remains an additional signal, not the sole cancellation gate.
 
 **SSE contract** (src/lib/chat/protocol.ts):
 
@@ -149,8 +154,9 @@ The prompt directs the model to read relevant fragments using those locators,
 try specific keywords when needed and explicitly say when the book has no basis
 for an answer. It may not fabricate book positions from general knowledge. `maxTurns: 40`, partial
 messages and the existing model remain. The child gets an explicit runtime/
-provider env allowlist, never auth/mail/Turnstile secrets. Real SDK acceptance
-of this new tool boundary remains an AI activation gate.
+provider env allowlist, never auth/mail/Turnstile secrets. Tool-boundary
+regressions and real answer-quality acceptance are distinct; outstanding
+provider/source-quality checks and authorization are tracked in HANDOVER §4/§7.
 The prompt distinguishes conditions explicitly stated in the book from the
 assistant's labeled inferences; correct citation navigation alone does not prove
 that every statement is supported by that entry.

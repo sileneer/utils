@@ -1,7 +1,7 @@
 # lzhdev.com/utils — 项目规划文档
 
-> 版本 v0.12 · 2026-10-07 · 维护者：Zihao Liu ([lzhdev.com](https://lzhdev.com))
-> 状态：M1–M4 已交付（M4 于 2026-10-07 线上验证通过），M5 开源打磨待做。本文档是项目的决策记录与规划总纲，随里程碑推进更新；**系统运行现状**见 [ARCHITECTURE.md](ARCHITECTURE.md)，**部署与运维**见 [DEPLOYMENT.md](DEPLOYMENT.md)，**踩坑清单**见 [GOTCHAS.md](GOTCHAS.md)。
+> 版本 v0.13 · 2026-10-11 · 维护者：Zihao Liu ([lzhdev.com](https://lzhdev.com))
+> 本文保留带日期的决策与里程碑历史；M4 之后的公开账号、聊天改进、运行时 AI 配置和全站账号决策见 §11–13。**当前交接与验收边界**只放 [HANDOVER.md](HANDOVER.md)，**运行契约**见 [ARCHITECTURE.md](ARCHITECTURE.md)，**部署操作**见 [DEPLOYMENT.md](DEPLOYMENT.md)，**踩坑清单**见 [GOTCHAS.md](GOTCHAS.md)。历史草案不作为当前部署指令。
 
 ---
 
@@ -18,11 +18,11 @@
 | 方向 | 说明 |
 |------|------|
 | AI tools | 前端工具通过后端代理调用 AI API；API key 只存服务端 |
-| Skills 加载 | 动态加载的资源/技能模块（具体形态待定，架构上按"可动态加载内容"预留） |
+| Skills 加载 | 初期预留动态资源能力；读书助手后来采用受限书籍工具与固定来源版本，具体边界见 ARCHITECTURE §3–6 |
 | 动态 API | AI 之外的服务端接口：数据持久化、文件处理等 |
 | 纯前端小工具 | 计算器、格式化、转换器等，无需后端 |
 
-线上地址（规划）：**https://utils.lzhdev.com**
+站点地址：**https://utils.lzhdev.com**
 
 **核心目的（2026-10-04 明确）**：引入 Docker 与自建服务器的根本原因，是要在后台服务器上运行 **Claude Code 这类 AI agent**；utils webapp 本质是套在 agent 外面的 **UI 壳**——用户在浏览器里直接与服务器上的 agent 对话。其余工具（AI 代理、纯前端小工具）围绕这一核心展开。对 M4 架构的含义：① agent 会话管理（Claude Code Agent SDK / 进程级管理，运行在应用容器内或独立 sidecar 容器）；② SSE/流式输出；③ 会话持久化（SQLite on volume）；④ 家人鉴权前置到 agent 会话之上。
 
@@ -39,6 +39,8 @@
 ---
 
 ## 3. 域名与路由方案
+
+以下保留原方案与 M2 决策的演进顺序；实际拓扑和 SSH 操作以 DEPLOYMENT 为准。
 
 ### 决策：`utils.lzhdev.com` 子域名 ✅
 
@@ -103,56 +105,19 @@ SSH 管理/部署：gcloud compute ssh --tunnel-through-iap（IAP 网段 35.235.
 | 5 | **并发竞争**：连续 push 触发并行重建，互相踩踏 | Actions `concurrency: deploy-prod` 串行化 + 服务器端 `flock` 双保险 |
 | 6 | **无回滚设计**：重建部署下回滚 = revert + 重新全量部署 | 镜像按 git SHA 打 tag 并保留最近若干个；回滚 = compose 指回旧 tag 一条命令 |
 
-### 4.2 最终设计
+### 4.2 已采用的设计与被替代草案
 
-```
-push main
-  └─ GitHub Actions
-       ├─ job: test      → lint + test
-       ├─ job: build     → 多阶段构建 → ghcr.io/<owner>/utils:<git-sha> + :latest
-       └─ job: deploy    → concurrency 串行
-            ├─ 方案 A（默认）：SSH 执行服务器 /opt/utils/deploy.sh <sha>
-            │     flock 串行 → docker compose pull → up -d → healthcheck 通过才算成功
-            │     → 失败自动回指旧镜像 tag
-            └─ 方案 B（可选，贴合"服务器收到请求自行部署"形态）：
-                  HTTPS 调用服务器上 ~50 行 Node webhook receiver
-                  （Bearer secret 常数时间比较 + 仅 POST /deploy + flock + 同步返回结果）
-```
+选择 CI 构建镜像、服务器拉取运行，避免小 VM 上构建导致 OOM；按提交标记镜像，
+串行部署、健康门禁及回滚提供可核对的发布结果。实际流水线只记录在 DEPLOYMENT §2–3。
 
-**镜像与构建**
+原草案的 alpine runner、长期 SSH key/GitHub Secrets、webhook、80/443 入站反代和
+共享口令/middleware 均不作为现行方案：后续分别改用 SDK 兼容的 slim 镜像、
+WIF + 临时 SSH key/IAP、Cloudflare Tunnel 及 Better Auth/SQLite 账号。
+共享口令由公开邮箱账号替代（§11），再提升为全站账号系统（§13）。
+Secrets 只在服务端运行时注入，镜像和浏览器不能包含私有配置。
 
-- 多阶段 Dockerfile：`deps → builder（next build，standalone 输出）→ runner（alpine，仅含 .next/standalone + .next/static + public）`，镜像预期 ~150–200MB
-- tag 规范：`<git-sha>` + `latest`；服务器保留最近 N 个 tag 供回滚
-- GHCR 公共镜像：服务器匿名拉取，零 registry 凭证
-
-**部署通道方案 A（推荐）**
-
-- `appleboy/ssh-action`（或原生 ssh）→ 执行 `/opt/utils/deploy.sh <sha>`
-- `deploy.sh` 要点：`flock /run/utils-deploy.lock` 串行 → 记录当前 tag → `docker compose pull && up -d --remove-orphans` → curl `/api/health` 通过 → `docker image prune -f`
-- compose 文件由 Actions 每次部署时 scp 上传；服务器只需 Docker + 手工维护的 `.env`（chmod 600）
-- SSH key 用 GitHub Secrets（`DEPLOY_SSH_KEY` / `DEPLOY_HOST` / `DEPLOY_USER`）
-
-**方案 B（可选）**：webhook receiver 进仓库（`deploy/receiver.mjs`），挂反代内网路径或 localhost 端口 + Cloudflare WAF 限速规则。
-
-**观测性**
-
-- 应用暴露 `/api/health`（容器 healthcheck 也走它；支持 `DRILL_FAIL_HEALTH=1` 演练开关，运行时返回 503）
-- **healthchecks.io 死信开关已上线（2026-10-04）**：检查项 `utils-deploy`（周期 7 天 + 宽限 1 天）——deploy.sh 成功后 ping 重置计时器，健康检查门禁失败时 ping `/fail` 立即告警（邮件 → 15061477522@163.com）。即：部署静默停摆超过 7 天、或任何一次部署失败，都会收到邮件。API key 与 ping URL 存 `.env.monitoring`（本地，gitignored）与服务器 `.env`
-- 回滚演练已完成（2026-10-04）：`DRILL_FAIL_HEALTH=1` 触发健康检查 503 → deploy.sh 60 秒门禁失败 → 回滚分支执行 → exit 1 → `/fail` 告警 → 移除开关后恢复 healthy。CI 中部署失败红叉已在同日实际故障中验证（.env 权限事件）
-- 可选：Uptime Kuma 监控 uptime
-
-**数据持久化**
-
-- 需要 state 的功能数据放 Docker volume（`./data`），容器重建不丢
-- 数据库初版用 SQLite（单机、低并发、零运维），挂在 volume 上
-
-**安全设计**
-
-- AI API key、部署 secret 只存在于：服务器 `.env`（chmod 600）与 GitHub Secrets；仓库只带 `.env.example`
-- `.env` 永不 commit（.gitignore + 评审把关）
-- 家人鉴权（M4）：单实例共享口令/邀请码 + HttpOnly 签名 cookie（简单 session），middleware 保护私有路由；公开工具不设墙；不引入重型 IdP
-- 反代只暴露 80/443；SSH 密钥登录；可选 fail2ban / CF Tunnel
-- GHCR 镜像公开 = 镜像与代码同源公开（开源本意）；**任何私有配置只在运行时通过 env 注入，绝不烘进镜像**
+数据库和书籍状态放持久卷，账号/会话归属、版本与备份不可因镜像回滚被替换或清理。
+数据契约见 ARCHITECTURE §4–6；监控、部署锁、镜像保留和恢复演练见 DEPLOYMENT。
 
 ### 4.3 补充：为什么不用轮询式自动更新
 
@@ -166,7 +131,7 @@ containrrr/watchtower 原版已停止维护且存在 Docker 29+ 兼容问题；�
 
 **依据**：
 
-- **需求匹配**：Route Handlers 做 AI 代理与动态 API；middleware 做家人鉴权；Server Components 减少前端样板
+- **需求匹配**：Route Handlers 做 AI 代理与动态 API；Server Components 减少前端样板。早期 middleware 鉴权草案后来由服务端账号/资源归属验证替代（ARCHITECTURE §5）。
 - **自托管一等公民**：`output: 'standalone'` 官方支持，镜像可控；basePath/rewrites 原生（子域名方案下暂用不上，保留灵活性）
 - **开源协作友好**：生态最大、贡献者上手成本最低、AI 编码工具对 Next.js 先验最强
 - **备选对比**：
@@ -179,27 +144,10 @@ containrrr/watchtower 原版已停止维护且存在 Docker 29+ 兼容问题；�
 
 **i18n（2026-10-05 落地）**：utils 站点双语——英文（默认回退）+ 简体中文，next-intl cookie 模式（无 URL 前缀）；默认跟随访客系统语言（Accept-Language），页头语言切换器写 `NEXT_LOCALE` cookie 覆盖。所有可见文案集中在 `messages/{en,zh}.json`。仅 utils 站点配置，不涉及主站。页脚版权行按所有者要求移除。
 
-### 目录结构（2026-10-07 更新）
+### 文档与目录导航
 
-```
-AGENTS.md                  # 只做「规则 + 文档索引」，不放事实副本
-CLAUDE.md                  # 指向 AGENTS.md
-Dockerfile                 # 仓库根（构建上下文=仓库根）：多阶段 standalone
-deploy/                    # docker-compose.yml（本地，含 build）、docker-compose.prod.yml、deploy.sh
-src/app/                   # 页面与 Route Handlers（/api/agent/{auth,session,chat}、/htlb/book、/api/health）
-src/lib/ · src/lib/agent/  # 共享逻辑 · agent 运行时（auth/models/sessions/workspace）
-src/components/            # ui/（shadcn 注册表）、chat/、htlb/、layout/、icons/
-messages/                  # en.json / zh.json：全部可见文案（含 tools.<slug> 名称与描述）
-data/                      # volume：agent 会话、读者工作区、书籍缓存（gitignored）
-docs/
-  PLANNING.md              # 本文档：决策记录 + 规划 + 里程碑（中文）
-  DESIGN.md                # UI 设计系统（BINDING，英文）
-  ARCHITECTURE.md          # 运行态结构：路由、agent/SSE 契约、数据布局、env 契约（英文）
-  DEPLOYMENT.md            # 部署与运维手册（英文）
-  GOTCHAS.md               # 踩坑清单：症状 → 原因 → 修复（英文）
-  HANDOVER.md              # 交接：现在到哪了 / 下一步 / 等 owner 决策（英文，每次交接重写）
-.github/workflows/         # CI/CD
-```
+Agent 规则和文档归属表只维护在 AGENTS.md；CLAUDE.md 导入同一份规则。
+实际路由、模块和数据布局只维护在 ARCHITECTURE，避免目录副本落后于实现。
 
 **2026-10-07 文档重构（决策）**：AGENTS.md 原先混入了运维细节与过期副本（仍写
 M3、仍称部署管线使用 GitHub Secrets、仍写"仅 lucide-react 图标"，且目录清单缺
@@ -211,31 +159,26 @@ M3、仍称部署管线使用 GitHub Secrets、仍写"仅 lucide-react 图标"�
 下一步做什么、哪些在等 owner 拍板）。它与其余文档的区别是**允许快速过期**——每次交接
 整体重写，不做追加；事实仍归各自文档，交接文件只做链接与排序。
 
+**2026-10-11 文档维护决策**：保留历史方案的日期，明确其替代关系；规则入口共用 AGENTS，
+不另建 LLM 专属事实副本。文档维护与发布授权分开，历史验收、当前核查和未完成边界分别记录。
+
 **注意**：CI 只执行服务器上的 `/opt/utils/deploy.sh`，**不会**把 `deploy/` 下的
 脚本与 compose 同步上去；改了这两个文件必须手工投递（见 DEPLOYMENT.md §7）。
 
 ---
 
-## 6. CI/CD 流水线设计（M3 落地）
+## 6. CI/CD 流水线设计（M3 落地；操作归属 DEPLOYMENT）
 
-```yaml
-# .github/workflows/deploy.yml 草图
-on:
-  push: { branches: [main] }
-concurrency:
-  group: deploy-prod
-  cancel-in-progress: false
-jobs:
-  test:        # npm ci → lint → test
-  build-push:  # needs: test → docker/build-push-action → ghcr.io/<owner>/utils:${{ github.sha }}
-  deploy:      # needs: build-push → SSH → bash /opt/utils/deploy.sh <sha>
-```
-
-GitHub Secrets 清单：`DEPLOY_SSH_KEY`、`DEPLOY_HOST`、`DEPLOY_USER`、`HEALTHCHECK_URL`（可选）。
+选择 push-to-main 自动部署，因此 main 的文档提交也会触发上线；文档维护本身
+不代表批准另一次部署。采用检查分支、精确 PR 提交验收后按明确发布授权合并。
+实际工作流、WIF 身份和环境配置只放 DEPLOYMENT；不再维护旧 GitHub Secrets 草图。
 
 ---
 
 ## 7. 里程碑
+
+表中 M0–M4 是对应日期的交付历史，包含后来被替代的口令、JSON 会话和固定提供商；
+不可据此恢复旧配置。后续决策见 §11–13，当前完成度与独立待验项见 HANDOVER。
 
 | 里程碑 | 内容 | 验收标准 |
 |--------|------|----------|
@@ -250,11 +193,16 @@ GitHub Secrets 清单：`DEPLOY_SSH_KEY`、`DEPLOY_HOST`、`DEPLOY_USER`、`HEAL
 
 ## 8. 风险与未决问题
 
-- **服务器规格未知**：构建已移出服务器，OOM 风险大幅降低；剩余为内存余量与磁盘镜像积累（deploy.sh 已含 prune）
-- **"skills 加载"具体形态未定**：agent skills 文件托管？插件式前端模块？M4 前细化
-- **AI API 成本控制**：代理端按用户/工具做限额与用量记录（M4 设计）
-- **双托管一致性**：lzhdev.com 同时在 GH Pages 与 CF Pages，`_redirects` 需两处同步（以 CF Pages 为准）
-- **公开仓库纪律**：从第一天起仓库历史公开，任何秘密入库都将成为永久历史——以 `.env.example` + 评审红线约束
+- **小 VM 容量**：构建已移到 CI；单并发、内存和保留来源版本的磁盘需求仍需观测。
+  较高日配额不能证明吞吐量足够，不能擅自清理来源或备份以释放磁盘。
+- **AI 质量与调用成本**：受限书籍工具、用户/全站 turn 上限与真实用量展示已实现；
+  turn 上限不是货币预算，定位有效不代表回答忠实。实际剩余验收与续答超时见 HANDOVER/GOTCHAS。
+- **实机与备份验收**：浏览器模拟不能替代手机键盘/IME；异地备份须先明确归属、费用、
+  保留和恢复方案。当前待配合项只列在 HANDOVER，操作方案只放 DEPLOYMENT。
+- **主站与 utils 的边界**：主站静态托管与本仓库的容器应用是不同项目；不要把主站
+  的分支、模板或路由迁移当作 utils 的实现事实。
+- **公开仓库纪律**：秘密永不入库；测试使用运行时生成的临时凭证，误报示例不能当作真实泄密，
+  也不能未经核查把告警直接忽略。具体排查教训见 GOTCHAS。
 
 ---
 
@@ -283,6 +231,8 @@ GitHub Secrets 清单：`DEPLOY_SSH_KEY`、`DEPLOY_HOST`、`DEPLOY_USER`、`HEAL
 ---
 
 ## 10. AI Chat 优化实施计划（2026-10-07）
+
+这是当时的实施计划；旧口令与会话形式随后被 §11–13 替代。当前验收不从历史清单推定。
 
 **状态：owner 已于 2026-10-07 批准完整三批计划；本地实现已落地，验收状态见 HANDOVER §7。** 问题证据统一见
 [GOTCHAS §I](GOTCHAS.md#i-chat-ui-investigation-2026-10-07)，这里仅记录
@@ -417,9 +367,12 @@ HTML，不引入新 UI 框架、样式系统或语法高亮库。
 
 ---
 
-## 11. 公开邮箱账号：调查与拟实施方案（2026-10-07）
+## 11. 公开邮箱账号：调查、决策与实施历史（2026-10-07 起）
 
-**状态：Owner 于 2026-10-07 批准本地实施；Brevo key 已创建，服务配置与真实验收待完成。** Owner 已明确：任何人可以
+以下服务比较、额度准备和分批授权保留其当时日期；后续全站账号见 §13。
+当前服务设置以 ARCHITECTURE/DEPLOYMENT 为准，已验收及尚未覆盖的边界只放 HANDOVER。
+
+**当时状态（2026-10-07）：Owner 批准本地实施；Brevo key 已创建，服务配置与真实验收待完成。** Owner 已明确：任何人可以
 注册，注册需要邮箱验证码，日常使用邮箱＋密码登录。本节是方案唯一归档处；
 本地已安装账号/数据库依赖并完成框架与模拟服务回归；尚未发布或发送真实测试邮件。
 Owner 于 2026-10-08 报告 BREVO_API_KEY 已保存到服务器；域名认证正在配置。
@@ -665,7 +618,8 @@ Brevo 只有在事务激活/域名/实际送达验收失败或额度不合适时
 PR 运行只读 CI，及在 Tunnel/loopback 入口前提下保存 Cloudflare IP 信任配置。
 随后 owner 明确批准“合并 PR #1 并部署，先不启用 AI”。按此执行账号版本上线，
 保持 `AI_ENABLED=0`；不等待真实 Agent 验收来发布账号功能，也不因此视为 Agent
-验收通过。真实注册/Turnstile/邮件全流程在上线后由 owner 操作验证，记录见 HANDOVER。
+验收通过。这是初次账号发布时的关闭策略，后续“启用+验收”授权见本节前文；
+不得据此在后续维护时重置 AI 开关。真实注册/登录/重置流程后来由 owner 确认通过。
 
 Owner 随后要求新密码最低 8 字符，最低组合要求仅为英文字母加数字，不要求特殊
 字符或大小写混合。注册和重置统一执行，现有账号登录不增加格式限制；实际契约见 ARCHITECTURE。
@@ -675,7 +629,7 @@ Owner 随后要求新密码最低 8 字符，最低组合要求仅为英文字�
 A–C 的本地账号/数据库/会话归属/配额守门与窄化书籍 MCP 工具已实现。
 27 项回归、lint/type-check 与生产构建通过；完整 Linux 应用镜像验收已在草稿 PR
 CI 通过。owner 已批准账号版本上线、AI 保持关闭；实际部署状态统一见 HANDOVER。
-完整真实注册邮件/Turnstile/SDK 与实体手机键盘仍待验。
+当时完整真实注册邮件/Turnstile/SDK 与实体手机键盘仍待验；此段不是当前待办清单。
 数据库实际 SQLite 为 3.53.4；当前验收证据统一见 HANDOVER §7。
 默认关闭 AI（额度准备见 §11.8）；第一位注册者不自动提权。
 没有为了缺少真实 key 而在产品添加开发邮件或认证绕过入口：测试在独立
@@ -691,17 +645,21 @@ Owner 要求每条消息下显示耗时、token，以及及时的执行细节。
 SDK 的会话累计用量与兼容服务的费用估算不适合直接当作单条消息的账单；因此
 只展示本轮返回的主对话 token，清楚区分缓存与未提供字段。停止/断线的本地
 耗时注明估算，恢复后的服务器时间覆盖估算。实际契约见 ARCHITECTURE §3，
-设计见 DESIGN §5.6.1，验收与发布状态统一见 HANDOVER；不追加已用完的真实
-六轮验收额度，不为了显示数据而发送隐藏的提供商请求。
+设计见 DESIGN §5.6.1；不为了显示数据而发送隐藏的提供商请求。初期六轮真实
+验收预算已耗尽，后续另一次有限授权见 §12.9；当前使用/剩余次数只维护在 HANDOVER。
 
-## 12. AI Chat 后续改进计划（2026-10-08；A+B 已发布；C+D 本地实现 2026-10-09）
+## 12. AI Chat 后续改进决策与实施历史（2026-10-08 起）
 
-### 12.1 目标与调查范围
+A+B、C+D、E 及运行时配置均已分批发布；不等于所有模型质量、实机或异地备份验收完成。
+精确发布与待验状态只维护在 HANDOVER；以下保留调查、审批和实现的演进记录。
+
+### 12.1 目标与最初调查范围（历史快照）
 
 目标是让当前读书助手更适合持续使用：能找回多条对话，知道任务是否真正结束，
 更容易核对原文，且能观察服务表现。当前实现契约见 ARCHITECTURE §3–8，已通过
 的验收与未覆盖边界见 HANDOVER §7。2026-10-09 owner 已批准推荐范围 A+B 的
-本地实现，随后已审批发布；owner 要求继续下一批，按推荐顺序执行 C+D 本地实现。E 仍是后续提案，新增真实 AI 验收未获授权。
+本地实现，随后已审批发布；当时按推荐顺序进入 C+D，E 和新增 AI 验收仍是提案。
+后续授权与实施分别见 §12.8–10，勿把这一调查时点当成当前状态。
 
 本轮查看当前代码、数据库结构、线上匿名桌面/360px 界面及现有验收记录。
 未重新登录生产账号，未发出真实 AI 请求。当前匿名移动聊天 Sheet 的自动
@@ -760,7 +718,7 @@ AI 次数、不泄露其他读者信息。个人额度与服务端一致，UTC �
 
 **验收**：同一来源版本的标题/预览/跳转一致；错编号、旧版本和缺失来源有明确
 退路。离线检索测试具备可比的基线/变更结果；不存在的依据不可伪装成来源。
-答案质量与性能的真实验收需要新增、有限的 provider 请求，见 §12.7。
+答案质量与性能需独立、有限的真实 provider 验收；后续授权见 §12.9，当前额度见 HANDOVER。
 
 ### 12.5 第四批 D：长答案与移动阅读（P1）
 
@@ -800,8 +758,8 @@ C+D 作为随后一轮，E 是独立运营工作。也可批准完整 A–D 的�
 CI/CD 和线上只读验收执行。新增模型调用仍需明确的有限授权。003 迁移采用独立会话元数据表，保留旧表列数，避免旧镜像回滚后的
 位置式写入失效；默认标题按首条问题读取，不额外请求模型。当前完成度和验收
 证据以 HANDOVER 为准。实现验收先使用独立
-模拟服务和必要自动回归，完成 lint、完整 build/type checks 与 UI 检查。已有
-六轮 agent 验收额度已用完；上线审批时建议申请新增最多六轮，覆盖正常回答、
+模拟服务和必要自动回归，完成 lint、完整 build/type checks 与 UI 检查。
+初期六轮 agent 验收额度当时已用完；当时建议申请新增最多六轮，覆盖正常回答、
 来源核对、停止后追问和部署后的 SDK 恢复。测试集的离线检索结果不能代替真实
 模型质量，少量实测也不能宣称统计可靠的性能排名。不得自动续用旧额度或隐式
 重试；批准开发计划后也不自动上线，交付可审查结果后再申请发布。
@@ -860,9 +818,9 @@ owner 要求完成上述剩余工作。采用已有用量表建立管理员只�
 主机备份脚本已安装并手动验证，既有定时任务保留。具体证据只放 HANDOVER。
 
 通过正常登录完成首轮有限真实验收，但在检索成功返回后模型续答超时。因此
-停止后续验收，保留剩余五轮，不自动重试、不提高时限、不切换模型或改变额度。
+停止后续验收，保留未使用的授权次数；不自动重试、不提高时限、不切换模型或改变额度。
 检索覆盖与运维发布通过不等于回答忠实度/长上下文验收通过；先调查续答超时，
-原因与诊断边界见 GOTCHAS §C，当前结果与待配合事项见 HANDOVER。
+原因与诊断边界见 GOTCHAS §C；当前已用/剩余次数与待配合事项只维护在 HANDOVER。
 
 ### 12.10 AI 配置统一到服务端 .env（2026-10-09）
 
