@@ -265,6 +265,17 @@ anything else persisted) — see `chat-panel.tsx`.
 Covered in §A; listed here because Next's bundler, not Docker, is where you'll
 look first.
 
+### Gitignored QA scripts still enter a default ESLint scan
+
+**Symptom** documentation-only work runs `npm run lint` and receives CommonJS
+import errors from private `data/investigation/` browser helpers, despite no app
+changes. **Cause** ESLint's flat config does not inherit Git's ignore rules.
+**Fix** preserve private evidence and distinguish that default-scan failure from
+the source check. For local source validation use
+`node node_modules/eslint/bin/eslint.js --ignore-pattern 'data/**'`; report the
+scope explicitly. Do not weaken CI rules or delete owner files to make QA green.
+A clean CI checkout does not contain those ignored helpers.
+
 ## G. i18n & icons
 
 ### `getTranslations` import path
@@ -321,6 +332,10 @@ fall back to `curl` against the live site. Prefer `gh run watch` over repeated
 status polls.
 
 ## I. Chat UI investigation (2026-10-07)
+
+Historical pre-public-account baseline: passcode and old history behavior below
+were superseded by the account/chat work. Current contracts are in ARCHITECTURE;
+current acceptance and remaining work are in HANDOVER, not this old checklist.
 
 This section records the historical investigation, not shipped fixes. Runtime source
 was at `6cd9151`. Public live UI was checked in the Codex browser in light/dark,
@@ -752,17 +767,16 @@ second named browser was already running after the launch helper timed out.
 Use snapshot/semantic controls; do not recreate accounts or alter app auth to repair
 an automation failure. Evidence belongs in ignored investigation receipts.
 
-Controlled account confirmation dialogs have no Radix trigger in their tree.
-Without an explicit close-focus target, cancelling can leave keyboard focus on
-the document body. Keep the initiating button ref and restore it through
-`onCloseAutoFocus`; check cancellation after the closing animation.
+### Controlled account dialogs need a close-focus target
 
-Controlled account confirmation dialogs have no Radix trigger in their tree.
-Without an explicit close-focus target, cancelling can leave keyboard focus on
-the document body. Keep the initiating button ref and restore it through
-`onCloseAutoFocus`; check cancellation after the closing animation.
+**Symptom** cancelling an account confirmation leaves focus on the document body.
+**Cause** the controlled dialog has no Radix trigger in its tree. **Fix** keep the
+initiating button ref and restore it through `onCloseAutoFocus`; check cancellation
+after the closing animation.
 
-A headed Windows Chrome can reserve 15px for its vertical scrollbar. Compare
-`scrollWidth <= innerWidth` to assert no horizontal overflow; requiring equality
-mislabels ordinary scrollbars as a layout failure. Keep the selected emulated
-viewport and the actual content width in the receipt.
+### A vertical scrollbar is not horizontal overflow
+
+**Symptom** a headed Windows Chrome layout fails an equality-based width check.
+**Cause** Chrome can reserve 15px for its vertical scrollbar. **Fix** assert
+`scrollWidth <= innerWidth`, not equality. Record the selected emulated viewport
+and actual content width in the private receipt.

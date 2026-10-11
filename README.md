@@ -9,7 +9,9 @@ backed by agents running on your own server.
 
 | | |
 |---|---|
+| **`/` and `/account` — shared accounts** | Home/header account entry and account center for profile, password and login-session management. Present and future modules share the same verified identity; public tools remain public. |
 | **`/htlb` — reading + ask-the-book** | Full-screen reader for [HowToLiveBetter](https://github.com/eternity4719/HowToLiveBetter) (CC BY 4.0), with an AI sidebar. The assistant runs **Claude Code on the server**, searches verified book content using restricted read-only tools, and answers with section/item citations. Verified email/password accounts protect owned history; AI access is controlled by server configuration. |
+| **`/admin` — operations** | Administrator-only request/usage aggregates and backup status; see the [runtime contract](docs/ARCHITECTURE.md#10-administrator-operations). |
 | **Planned tools** | text diff, QR studio, JSON formatter, unit converter — see the registry in `src/lib/tools.ts` |
 
 More tools are on the way; the interesting part is the pattern: heavy AI work
@@ -36,6 +38,7 @@ workspace. Everything else is secondary.
 npm install
 cp .env.example .env    # fill in what you need — see below
 npm run dev             # http://localhost:3000
+npm test
 npm run lint && npm run build
 ```
 
@@ -62,7 +65,8 @@ script, rollback, monitoring — is documented in
 
 | | |
 |---|---|
-| [AGENTS.md](AGENTS.md) | working rules for humans and AI coding agents |
+| [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md) | shared working rules and Claude Code entrypoint |
+| [docs/HANDOVER.md](docs/HANDOVER.md) | start here: checkout, last verified release, remaining work |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | routes, agent runtime, data layout, env contract |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | ops runbook: pipeline, server access, rollback |
 | [docs/GOTCHAS.md](docs/GOTCHAS.md) | everything that broke, and why |

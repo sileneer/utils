@@ -18,7 +18,7 @@
 | Dark mode | **next-themes** (class strategy) | ✅ Decided |
 | Fonts | **Inter** (body/UI) · **Outfit** (display/brand) · **JetBrains Mono** (code/tool output) — via `next/font` | ✅ Decided |
 | Toasts | **sonner** | ✅ Decided |
-| Forms | **react-hook-form + zod** (+ `@hookform/resolvers`) via shadcn `Form` | ✅ Decided |
+| Forms | **react-hook-form + zod** (+ `@hookform/resolvers`) with existing Input/Label primitives and accessible inline errors (§4.2/§5.7) | ✅ Decided |
 | Motion | CSS transitions / `tw-animate-css` by default; `motion` (Framer Motion) only for home/marketing pages | ✅ Decided |
 | Tables / charts | TanStack Table / Recharts **via shadcn wrappers**, only when a tool needs them | ✅ Decided |
 | Client state | React built-ins; URL search params for shareable tool settings; Zustand only with written justification in a PR | ✅ Decided |
@@ -137,12 +137,12 @@ Rules:
 - **Adopted `ui/` component registry** — the source of truth for which base components exist/are approved. The set below was installed at M1 (2026-10-04); every later addition is appended here *before* it is installed:
   button · card · input · textarea · label · select · checkbox · switch · slider · dialog · alert-dialog · dropdown-menu · popover · sheet · tabs · tooltip · collapsible · badge · separator · skeleton · alert · table · sonner (toaster)
 
-  **`form` is NOT in the shadcn 4.x radix registry** (the CLI silently skips it). The react-hook-form + zod wiring wrapper will be hand-written in `src/components/` — its shape gets decided here first when the first real form lands (M4), per the introduction flow above.
+  **`form` is NOT in the adopted shadcn 4.x radix registry** (the CLI skipped it). Account forms use react-hook-form + zod with existing Input/Label primitives and accessible inline errors in project wrappers (§5.7/§5.9). Do not assume a `ui/form` component exists or add one merely to match outdated instructions.
 
 ### 4.2 Usage rules
 
 - **Buttons**: `default` = primary action (one per view) · `secondary` = supporting actions · `outline` = actions on cards/neutral surfaces · `ghost` = icon buttons/toolbar actions · `destructive` = irreversible actions. Size `sm` in dense tool UIs; default elsewhere. All icon-only buttons need `aria-label` + a `Tooltip`.
-- **Forms**: always shadcn `Form` (react-hook-form + zod schema as the single validation source). Every control has a visible `FormLabel`; errors via `FormMessage`; submit button shows a spinner and is `disabled` while pending. Validate on submit, then on change for corrected fields.
+- **Forms**: use react-hook-form + zod with existing Input/Label primitives and project wrappers. Every control has a visible Label; inline errors are associated with `aria-describedby` and invalid controls with `aria-invalid`. Submit shows pending feedback and is disabled while pending. Validate on submit, then revalidate corrected fields. Server validation remains authoritative.
 - **Feedback**: success/error → `sonner` toast (there is exactly one `<Toaster />` in the root layout). Waiting data → `Skeleton`, never spinners-in-cards. Empty states → centered lucide icon + one-line explanation + primary CTA. Errors → route-level `error.tsx` with a retry button; destructive `Alert` for user-fixable problems.
 - **Overlays**: `Dialog` for focused single tasks, `Sheet` for mobile settings panels, `Popover`/`DropdownMenu` for secondary controls. Confirm destructive actions with an `AlertDialog`.
 - **Copy tool output / long values** always in `font-mono` with a copy button.
@@ -155,7 +155,7 @@ Rules:
 
 ```
 Header (sticky, bg-background/80 backdrop-blur, border-b):
-  [logo: "utils" in Outfit + teal dot] [nav: Tools · About] …… [GitHub icon] [ThemeToggle]
+  [logo: "utils" in Outfit + teal dot] [nav: Tools · About] …… [AccountMenu] [GitHub icon] [LanguageSwitcher] [ThemeToggle]
 Main: <main id="main-content" class="mx-auto max-w-6xl …">
 Footer: lzhdev.com · GitHub ("Open source (MIT)") — muted, single row. **No copyright line** (owner decision 2026-10-05 — do not re-add "© …").
 ```
@@ -287,10 +287,11 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 - `/login`, `/register`, `/verify-email`, and `/reset-password` use the existing
   Card, Input, Label, Alert and Button primitives. One pasteable OTP field,
   explicit resend/status, password-manager autocomplete and visible validation.
-- Register `better-auth` + its React client and `better-sqlite3` before installation:
-  self-hosted credential/session/OTP lifecycle and persisted user ownership.
-  Register `react-hook-form`, `zod`, and `@hookform/resolvers` for the first real
-  form; a project wrapper uses existing Label and accessible inline errors
+- Registered `better-auth` (server lifecycle) and `better-sqlite3` for self-hosted
+  credentials/sessions/OTP and persisted ownership. Shared client state uses the
+  project AccountProvider, not an additional Better Auth React client.
+  Registered `react-hook-form`, `zod`, and `@hookform/resolvers` for account forms;
+  project wrappers use existing Label and accessible inline errors
   (shadcn 4 has no Form registry entry). These implement §4.2's form contract.
 - Register Cloudflare's official explicit Turnstile widget for public auth forms;
   no additional CAPTCHA/UI wrapper library. Local QA uses official test keys.
@@ -317,6 +318,28 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   text control is focused; otherwise preserve existing dynamic viewport layout.
   Keep the same controller/draft/disclosure state, respect safe-area padding,
   and never submit Enter during IME composition.
+
+### 5.9 Site-wide account UI — owner approved A+B+C, 2026-10-09
+
+- Registered wrappers: AccountProvider (shared identity state), AccountMenu (one
+  dropdown in ordinary header, reader toolbar and chat), HomeAccount (compact home
+  entry), and AccountCenter (profile/password/login sessions).
+- Reuse existing Card, Button, Input, Label, Alert, Skeleton, DropdownMenu and
+  AlertDialog primitives, react-hook-form/Zod and lucide icons; no new dependency,
+  upload service, base component or color token.
+- Header uses a compact account icon at narrow widths and hides the redundant
+  header GitHub shortcut below sm (the footer retains it). Tools/About remain visible.
+- Account center uses stacked cards at 360px, labeled fields, password-manager
+  autocomplete, inline validation and pending controls. Sensitive session removal
+  uses AlertDialog confirmation and current-password input; show the account-wide
+  AI cancellation effect before security actions. Nickname is editable; email is read-only.
+  Controls meet the 40px target; controlled dialogs restore the initiating button
+  through an explicit close-focus target after cancellation (GOTCHAS).
+- Session list shows inferred browser/system, login and expiry times, current
+  marker, safe row IDs only. Loading uses Skeleton; retry/reauthentication/empty
+  states are localized. Never label inferred sessions as exact physical devices.
+- Login and related forms retain validated site-local returnTo throughout the flow.
+  Global login/account menus work while AI is disabled and reader chat is closed.
 
 ## 6. Motion
 
@@ -389,7 +412,9 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 
 ---
 
-## 12. Version pins (installed at M1, 2026-10-04)
+## 12. Dependency baseline (reviewed 2026-10-11)
+
+Exact installed versions are in `package-lock.json`; later additions are registered above.
 
 | Package | Version / note |
 |---------|----------------|
@@ -401,7 +426,6 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 | morphicons | 1.7.1 — spring morph animations for state-transition icons (§7) |
 | @anthropic-ai/claude-agent-sdk | 0.3.x — server-side Claude Code (chat agent); `serverExternalPackages` in next.config |
 | lucide (vanilla, node data) | 1.52 — data source for MorphIcon |
-| morphicons | 1.7.1 — spring morph animations for state-transition icons (§7) |
 | next-themes | 0.4.6 |
 | react-markdown / remark-gfm | 10.1.0 / 4.0.1 — approved answer rendering (§5.6) |
 | sonner | 2.0.8 |
@@ -410,7 +434,9 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 | better-auth / better-sqlite3 | 1.7.7 / 13.0.3 — self-hosted accounts and owned chat (§5.7) |
 | motion | not installed yet (marketing pages only) |
 
-Tooling: Prettier + `prettier-plugin-tailwindcss` (class order is enforced, not taste) · ESLint `next/core-web-vitals` (flat config, `eslint.config.mjs`).
+Tooling: ESLint Next core-web-vitals and TypeScript flat config in
+`eslint.config.mjs`. Prettier and its Tailwind plugin are not installed; preserve
+existing formatting rather than assuming an enforced formatter.
 
 ---
 
@@ -422,23 +448,3 @@ Tooling: Prettier + `prettier-plugin-tailwindcss` (class order is enforced, not 
 - lucide-react — https://lucide.dev
 - next-themes — https://github.com/pacocoursey/next-themes
 - React UI library landscape 2026 (decision context) — see docs/PLANNING.md §9
-
-### 5.9 Site-wide account UI — owner approved A+B+C, 2026-10-09
-
-- Register AccountProvider (shared identity state), AccountMenu (one dropdown used
-  in ordinary header, reader toolbar and chat), HomeAccount (compact home entry),
-  and AccountCenter (profile/password/login sessions) before implementation.
-- Reuse existing Card, Button, Input, Label, Alert, Skeleton, DropdownMenu and
-  AlertDialog primitives, react-hook-form/Zod and lucide icons; no new dependency,
-  upload service, base component or color token.
-- Header uses a compact account icon at narrow widths and hides the redundant
-  header GitHub shortcut below sm (the footer retains it). Tools/About remain visible.
-- Account center uses stacked cards at 360px, labeled fields, password-manager
-  autocomplete, inline validation and pending controls. Sensitive session removal
-  uses AlertDialog confirmation and current-password input; show the account-wide
-  AI cancellation effect before security actions. Nickname is editable; email is read-only.
-- Session list shows inferred browser/system, login and expiry times, current
-  marker, safe row IDs only. Loading uses Skeleton; retry/reauthentication/empty
-  states are localized. Never label inferred sessions as exact physical devices.
-- Login and related forms retain validated site-local returnTo throughout the flow.
-  Global login/account menus work while AI is disabled and reader chat is closed.

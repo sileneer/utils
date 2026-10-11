@@ -1,92 +1,117 @@
 # AGENTS.md
 
-Rules for AI coding agents working in this repository. This file is deliberately
-short and holds **only rules** — facts live in one place each, here is the map.
+Rules for AI coding agents working in this repository. Claude Code imports this
+same file through [CLAUDE.md](CLAUDE.md); do not maintain a second rulebook.
 
-## Project
+## Start here
 
-**utils** is the utilities webapp for [lzhdev.com](https://lzhdev.com): personal
-and family tools, maintained as an open-source product anyone can self-deploy.
-**Live: https://utils.lzhdev.com** · repo `sileneer/utils` (public, MIT).
+**Start every session at [docs/HANDOVER.md](docs/HANDOVER.md).** Reconcile its
+claims with the checkout and relevant evidence before acting. Prioritize the
+owner's core purpose: a browser UI for server-side agents; other tools are secondary.
+Product scope and decisions: [docs/PLANNING.md](docs/PLANNING.md) §1/§7/§11–13.
 
-**Core purpose (owner, 2026-10-04):** Docker exists so we can run AI agents like
-**Claude Code on our own server**; this webapp is the **UI shell wrapped around
-those agents** — users chat with server-side agents from the browser. The other
-tools are secondary to this goal.
+## Where things get written
 
-**Status:** M1–M4 shipped (M4 = agent chat + `/htlb` reading page, 2026-10-07).
-**Start every session at [docs/HANDOVER.md](docs/HANDOVER.md)** — it says where the
-work actually stands, what is uncommitted, what is next, and which decisions are
-waiting on the owner. Long-term roadmap and milestone acceptance criteria:
-[docs/PLANNING.md](docs/PLANNING.md) §7.
-
-## Where things get written (standing rule from the owner)
-
-All docs here are living, self-maintained. Route new knowledge to **one** home —
-do not copy a fact into a second file, link to its home instead. A stale
-duplicate is worse than a missing one: this file used to claim the deploy
-pipeline uses GitHub Secrets, months after it went keyless.
+All docs are living and self-maintained. Give each fact **one canonical home**;
+other files link to it. Read the relevant doc before changing its area and ship
+matching doc changes in the same commit.
 
 | What you learned | Its home |
 |---|---|
-| A rule or workflow an agent must follow while working here | **this file** |
-| How the running app is assembled — routes, agent/SSE contract, workspace, data layout, env variables | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| How it ships and how to operate/debug production — pipeline, identities, server access, rollback, drills | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
-| Anything that cost a debugging round — symptom → cause → fix | [docs/GOTCHAS.md](docs/GOTCHAS.md) |
-| **Any** new UI component, token, or library — written here **before** it is installed or shipped | [docs/DESIGN.md](docs/DESIGN.md) (BINDING; §4.1 introduction flow, §11 anti-churn checklist) |
-| Why a decision was made, what was rejected, roadmap, risks | [docs/PLANNING.md](docs/PLANNING.md) (decision log, Chinese) |
-| **Where we are right now** — uncommitted work, next actions, blocked-on-owner items | [docs/HANDOVER.md](docs/HANDOVER.md) (rewrite it each handover; never let it accumulate) |
+| Rules or workflows agents must follow | **this file** |
+| Routes, agent/SSE contract, workspace, data layout, env variables | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Pipeline, server access, rollout, rollback, operational drills | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
+| Debugging lessons: symptom → cause → fix | [docs/GOTCHAS.md](docs/GOTCHAS.md) |
+| New UI component, token, pattern or library, **before use** | [docs/DESIGN.md](docs/DESIGN.md) (binding; §4.1/§11) |
+| Rationale, rejected alternatives, roadmap, risks | [docs/PLANNING.md](docs/PLANNING.md) (Chinese) |
+| Current checkout, unfinished work, next actions, owner decisions | [docs/HANDOVER.md](docs/HANDOVER.md) (rewrite at handover) |
 
-Doc updates ship **in the same commit** as the work that produced them. Read the
-relevant doc before touching the area it covers; update it if you change what it
-describes.
+Label historical decisions and superseded contracts explicitly. Keep dated QA
+receipts separate from current facts; a prior green run or screenshot does not
+prove today's runtime. Keep private investigation evidence out of Git.
 
-## Stack (decided — do not re-litigate without updating PLANNING.md first)
+## Implementation rules
 
-Next.js (App Router) + TypeScript, `output: 'standalone'` · Tailwind CSS v4 +
-shadcn/ui + next-themes, **DESIGN.md binding** · `@anthropic-ai/claude-agent-sdk`
-against SenseNova's Anthropic-compatible endpoint · single multi-stage Dockerfile
-→ GHCR → GitHub Actions push-to-main deploy to a 1 GB GCP VM behind a Cloudflare
-Tunnel · SQLite account/chat state plus book files on a Docker volume · secrets only in the
-server `.env`. Details: ARCHITECTURE §1–3, DEPLOYMENT §1–3.
+- Follow the selected stack in ARCHITECTURE §1 and binding DESIGN.md. Changing a
+  stack decision requires rationale in PLANNING.md first; minimize dependencies.
+- Reuse the **site-wide account system** for every present/future module; follow
+  ARCHITECTURE §5's integration recipe. Do not introduce module-specific login,
+  identity stores or client-only authorization. Keep public tools/reading public.
+- Provider key, endpoint, default model and picker catalog are runtime server
+  configuration (ARCHITECTURE §8), not compiled constants. Preserve fail-closed
+  behavior and the separation of account access from AI availability/quotas.
+- Message details must reflect observed events/reported usage. Preserve unavailable
+  fields; do not invent token counts, reasoning, cost or completion, or make extra
+  model calls for titles/metadata. Contract: ARCHITECTURE §3; UI: DESIGN §5.6.1.
+- Preserve source-version ownership, retained book pairs, account/chat data and
+  backups. Cleanup requires reference/retention checks and appropriate authorization;
+  apparent duplication is not evidence that a retained copy is safe to delete.
+
+## Working scope and publication
+
+- Carry out the approved scope without requesting the same approval again.
+  Implementation approval and publication approval are distinct unless the owner
+  authorizes both. Present a concrete reviewable result before a new release request.
+- A push to `main` automatically deploys. Documentation maintenance alone does not
+  authorize another production rollout. Use a `codex/` branch for unpublished work.
+- Before an authorized merge, verify the exact accepted PR head and all required
+  CI/image/security gates. After publication verify the actual running revision,
+  health and relevant routes/data (DEPLOYMENT §8); never infer success from merge.
+- Real paid AI QA needs an explicitly bounded allowance. Track used/remaining calls
+  in HANDOVER, count attempted upstream calls and do not silently retry, renew a
+  spent allowance, switch models or expand timeouts to force a pass.
+- Account/config releases use read-only production acceptance by default; exercise
+  sensitive mutations with disposable local accounts. The owner types production
+  passwords/codes on the website. Never mint/export cookies or sessions for QA.
+- Inspect existing changes first. Preserve owner-owned `.zcode/`, ignored
+  investigations and unrelated files; stage explicit reviewed paths.
+  Stop only owned QA processes after verifying their command lines.
 
 ## Commands
 
 ```bash
 npm install
 npm run dev            # http://localhost:3000
-npm run lint           # eslint — part of the CI gate
-npm run build          # production build; ALSO type-checks (a green "Compiled successfully" is not enough)
-npx shadcn@latest add <component>   # approved registry only (DESIGN.md §4.1)
+npm test               # meaningful route/auth/SQLite/stream regressions
+npm run lint           # ESLint, part of CI
+npm run build          # must exit 0 after typecheck and standalone sanitization
+npx shadcn@latest add <component>   # DESIGN.md registration required first
 ```
 
-No Docker on the dev machine as of 2026-10-07 — images are built by CI only; the
-container check (`docker compose -f deploy/docker-compose.yml up --build`) runs
-wherever Docker exists. Agent chat locally needs `.env` copied from
-`.env.example`; `/htlb` reading works with no env at all.
+Local setup, disposable preview and Docker verification: DEPLOYMENT §8.
+Runtime configuration template: `.env.example`, contract: ARCHITECTURE §8.
 
 ## Definition of done
 
-1. `npm run lint` **and** `npm run build` exit 0 locally.
-2. The Actions run for your push is **green** — deploys happen automatically on merge to `main`; verify the live site afterwards (DEPLOYMENT §8), don't assume.
-3. UI changes checked in **light + dark** themes and at **360 px** width.
-4. New UI component/library already recorded in DESIGN.md (§4.1) before use.
-5. Docs updated in the same commit, in the right home per the table above.
-6. No secret, key, token, or passcode value in any committed file.
-7. If your work changed the picture — something committed or left uncommitted, a
-   next step finished, a new blocker — `docs/HANDOVER.md` §2/§4/§7 reflects it
-   before you end the session. An accurate handover is worth more than a tidy one.
+1. `npm run lint` **and** full `npm run build` exit 0 locally; run tests appropriate
+   to the change. Do not add implementation-mirroring tests for low-impact edits.
+2. For published work, the exact Actions run is green and live acceptance passes.
+   For local-only work, state clearly that no deployment/production QA occurred.
+3. UI changes pass both locales, light/dark themes and 360px plus desktop checks.
+   Distinguish browser emulation from physical-device and real-provider acceptance.
+4. New UI components/libraries/patterns were recorded in DESIGN.md before use.
+5. Docs are updated in the right home in the same commit; no secrets are committed.
+6. HANDOVER §2/§4/§7 accurately records checkout changes, remaining work and actual
+   verification, including any uncommitted/owner-owned material, before ending.
 
 ## Conventions
 
-- Code, comments, README, AGENTS.md, and the new `docs/*` references in **English**; `docs/PLANNING.md` stays Chinese.
-- **Conventional Commits** (`feat:`, `fix:`, `chore:`, `docs:`, …), scoped where useful (`fix(m4): …`).
-- Keep commits small and focused; never mix formatting-only changes with functional ones.
-- Prefer minimal dependency additions; justify any new dependency in the commit message.
+- Code, comments, README, AGENTS.md and docs in English; PLANNING.md in Chinese.
+- Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, …); small focused commits.
+- Branch prefix `codex/`; never mix unrelated formatting or owner changes into work.
 
 ## Security rules (hard constraints)
 
-1. **NEVER commit secrets** — `.env`, API keys, tokens, SSH keys, connection strings. `.env.example` is the only env file allowed in git, with values commented out. **This repo is public and its history is permanent.**
-2. Provider, authentication, mail and Turnstile secret keys live **only** in `/opt/utils/.env` (chmod 600) — never in client code, never in the image, never logged, never echoed into a doc or commit message. Local QA uses explicit mock services and disposable credentials. The retired `CHAT_PASSCODE` must never authorize public accounts.
-3. Every paid upstream call goes through a server-side route handler that injects the key. Nothing in the browser may call an AI provider directly.
-4. Do not weaken or bypass the auth gate, `/api/health`, the deploy healthcheck gate, or the pipeline's guards. The pipeline is deliberately **keyless** (WIF + ephemeral SSH key): do not "simplify" it by adding a long-lived secret.
+1. **NEVER commit secrets**: `.env`, keys, tokens, SSH keys or connection strings.
+   `.env.example`, with values commented out, is the only tracked env file allowed.
+   This repository is public and its history is permanent.
+2. Provider/auth/mail/Turnstile secret keys live only in `/opt/utils/.env`, mode 600:
+   never in client code, images, logs, documentation or commit messages. Local QA
+   uses explicit mocks and disposable, runtime-generated credentials; do not commit
+   password literals that resemble real credentials. Retired `CHAT_PASSCODE` must
+   never authorize public accounts.
+3. Every paid upstream call goes through a server route that injects the key;
+   browsers never call the AI provider directly.
+4. Preserve auth/ownership/origin checks, `/api/health`, deploy health gates and the
+   keyless pipeline (WIF + ephemeral SSH key). Never add long-lived deploy secrets
+   or bypass guards to repair automation or satisfy a test.
