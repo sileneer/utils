@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PasswordField } from "./password-field";
 
 type Mode = "login" | "register" | "verify" | "reset";
 type Values = { email: string; password: string; otp: string; name: string };
@@ -37,6 +38,7 @@ declare global {
     turnstile?: TurnstileAPI;
   }
 }
+type ChallengeState = "loading" | "ready" | "expired" | "failed" | "script";
 function Challenge({
   siteKey,
   onToken,
@@ -44,9 +46,12 @@ function Challenge({
   siteKey: string;
   onToken: (value: string) => void;
 }) {
+  const t = useTranslations("account");
   const node = useRef<HTMLDivElement>(null),
     widget = useRef<string>(undefined);
-  const [ready, setReady] = useState(false);
+  const [state, setState] = useState<ChallengeState>("loading");
+  const [widgetAttempt, setWidgetAttempt] = useState(0);
+  const [scriptAttempt, setScriptAttempt] = useState(0);
   const [compact, setCompact] = useState(true);
   const { resolvedTheme } = useTheme();
   const locale = useLocale();
@@ -59,32 +64,95 @@ function Challenge({
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
-    if (!ready || !node.current || !window.turnstile) return;
+    if (state !== "ready" || !node.current || !window.turnstile) return;
     onToken("");
-    widget.current = window.turnstile.render(node.current, {
-      sitekey: siteKey,
-      size: compact ? "compact" : "flexible",
-      theme: resolvedTheme === "dark" ? "dark" : "light",
-      language: locale === "zh" ? "zh-cn" : "en",
-      callback: onToken,
-      "expired-callback": () => onToken(""),
-      "error-callback": () => onToken(""),
-    });
+    try {
+      widget.current = window.turnstile.render(node.current, {
+        sitekey: siteKey,
+        size: compact ? "compact" : "flexible",
+        theme: resolvedTheme === "dark" ? "dark" : "light",
+        language: locale === "zh" ? "zh-cn" : "en",
+        callback: onToken,
+        "expired-callback": () => {
+          onToken("");
+          setState("expired");
+        },
+        "error-callback": () => {
+          onToken("");
+          setState("failed");
+        },
+      });
+    } catch {
+      // A rejected render must surface as the explicit failed state, not crash the form.
+      queueMicrotask(() => setState("failed"));
+      return;
+    }
     return () => {
-      if (widget.current) window.turnstile?.remove(widget.current);
+      if (widget.current) {
+        window.turnstile?.remove(widget.current);
+        widget.current = undefined;
+      }
     };
-  }, [ready, siteKey, onToken, locale, compact, resolvedTheme]);
+  }, [state, widgetAttempt, siteKey, onToken, locale, compact, resolvedTheme]);
+  // Explicit, user-bounded retry: reload the script only when it never loaded.
+  function retry() {
+    onToken("");
+    setWidgetAttempt((value) => value + 1);
+    if (state === "script" || !window.turnstile) {
+      setScriptAttempt((value) => value + 1);
+      setState("loading");
+    } else setState("ready");
+  }
+  const scriptSrc = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit${scriptAttempt ? `&retry=${scriptAttempt}` : ""}`;
+  const message =
+    state === "expired"
+      ? t("challengeExpired")
+      : state === "failed"
+        ? t("challengeFailed")
+        : state === "script"
+          ? t("challengeScriptFailed")
+          : null;
   return (
     <>
       <Script
-        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
-        onReady={() => setReady(true)}
+        key={scriptAttempt}
+        src={scriptSrc}
+        onReady={() => setState("ready")}
+        onError={() => setState("script")}
       />
       <div ref={node} className="flex min-h-16 w-full justify-center" />
+      {state === "loading" && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {t("challengeLoading")}
+        </p>
+      )}
+      {message && (
+        <div className="space-y-2">
+          <p role="status" className="text-sm text-destructive">
+            {message}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-10"
+            onClick={retry}
+          >
+            {t("challengeRetry")}
+          </Button>
+        </div>
+      )}
     </>
   );
 }
-export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: string }) {
+export function AccountForm({
+  mode,
+  returnTo = "/",
+  reauth = false,
+}: {
+  mode: Mode;
+  returnTo?: string;
+  reauth?: boolean;
+}) {
   const destination = safeReturnTo(returnTo);
   const { user } = useAccount();
   const t = useTranslations("account"),
@@ -101,6 +169,11 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
     [notice, setNotice] = useState("");
   const [wait, setWait] = useState(0),
     [resending, setResending] = useState(false);
+  // Guards against a same-frame repeat click or held Enter key; `disabled` only
+  // applies after a render, and every action here is a security-sensitive write.
+  const pending = useRef(false);
+  // Copy-only variant for a stale (24h) session; it changes no server contract.
+  const reauthMode = mode === "login" && reauth;
   const schema = z.object({
     email: z.email(t("emailInvalid")).max(254, t("emailInvalid")),
     password:
@@ -150,14 +223,29 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
   }, [wait]);
   async function request(path: string, body: object) {
     try {
-      const response = await fetch(`/api/auth/${path}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(40_000),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "auth_failed");
+      let response: Response;
+      try {
+        response = await fetch(`/api/auth/${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(40_000),
+        });
+      } catch {
+        // Offline/timeout/abort: no confirmed server outcome.
+        throw new Error("network_unknown");
+      }
+      let data: { error?: string } = {};
+      try {
+        data = await response.json();
+      } catch {
+        /* Edge/proxy responses may not be JSON. */
+      }
+      if (!response.ok)
+        throw new Error(
+          data.error ||
+            (response.status === 429 ? "rate_limited" : "auth_failed"),
+        );
     } finally {
       setToken("");
       setChallenge((n) => n + 1);
@@ -171,18 +259,22 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
           {
             rate_limited: "limited",
             challenge_failed: "challengeError",
-            service_unavailable: "unavailable",
+            service_unavailable: "serviceFailed",
             mail_send_failed: "mailFailed",
-            stop_unconfirmed: "securityFailed", account_busy: "securityFailed",
+            stop_unconfirmed: "securityFailed",
+            account_busy: "securityFailed",
+            network_unknown: "networkFailed",
           } as Record<string, string>
         )[code] || "failed",
       ),
     );
   }
   async function submit(values: Values) {
+    if (pending.current) return;
     setError("");
     setNotice("");
     const email = values.email.trim().toLowerCase();
+    pending.current = true;
     try {
       try {
         sessionStorage.setItem("utils_verify_email", email);
@@ -228,8 +320,24 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
         setComplete(true);
       }
     } catch (error) {
-      failure(error);
+      // The account exists after sign-up even when the first verification
+      // email fails; point at the verification page instead of a generic error.
+      if (mode === "register" && error instanceof Error && error.message === "mail_send_failed")
+        setError(t("mailFailedRegister"));
+      else failure(error);
+    } finally {
+      pending.current = false;
     }
+  }
+  // Leave the second reset step with the old code and password cleared; the
+  // challenge is re-issued before a new email can receive a code again.
+  function restartReset() {
+    setResetStep(false);
+    setError("");
+    setNotice("");
+    setValue("otp", "");
+    setValue("password", "");
+    setChallenge((n) => n + 1);
   }
   async function resend() {
     const email = getValues("email").trim().toLowerCase();
@@ -245,7 +353,9 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
         mode === "reset"
           ? "email-otp/request-password-reset"
           : "email-otp/send-verification-otp",
-        { email, type: "email-verification", turnstileToken: token },
+        mode === "reset"
+          ? { email, turnstileToken: token }
+          : { email, type: "email-verification", turnstileToken: token },
       );
       setWait(60);
       setNotice(t("sentGeneric"));
@@ -272,13 +382,7 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
           {...register(name)}
           {...props}
           aria-invalid={Boolean(errors[name])}
-          aria-describedby={
-            errors[name]
-              ? `${name}-error`
-              : name === "password" && mode !== "login"
-                ? "password-hint"
-                : undefined
-          }
+          aria-describedby={errors[name] ? `${name}-error` : undefined}
         />
         {errors[name] && (
           <p
@@ -296,12 +400,15 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
     <Card className="mx-auto w-full max-w-md">
       <CardHeader>
         <CardTitle className="text-2xl">
-          <h1>{t(`${mode}Title`)}</h1>
+          <h1>{reauthMode ? t("reauthTitle") : t(`${mode}Title`)}</h1>
         </CardTitle>
-        <CardDescription>{t(`${mode}Description`)}</CardDescription>
+        <CardDescription>
+          {reauthMode ? t("reauthDescription") : t(`${mode}Description`)}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {user && (mode === "login" || mode === "register") && <div className="space-y-2"><p className="text-sm">{t("signedIn", { name: user.name })}</p><Button variant="outline" asChild><Link href={destination}>{t("continue")}</Link></Button></div>}
+        {user && (mode === "login" || mode === "register") && !reauthMode && <div className="space-y-2"><p className="text-sm">{t("signedIn", { name: user.name })}</p><Button variant="outline" asChild><Link href={destination}>{t("continue")}</Link></Button></div>}
+        {user && reauthMode && <p className="text-sm text-muted-foreground">{t("reauthSignedIn", { name: user.name })}</p>}
         {!config ? (
           <Skeleton className="h-24 w-full" />
         ) : complete ? (
@@ -320,7 +427,7 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
                 <AlertDescription>{t("unavailable")}</AlertDescription>
               </Alert>
             )}
-            <form onSubmit={handleSubmit(submit)} className="space-y-4">
+            <form onSubmit={(event) => void handleSubmit(submit)(event)} className="space-y-4">
               {field("email", t("email"), {
                 type: "email",
                 autoComplete: "email",
@@ -336,16 +443,17 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
                 mode === "login" ||
                 (mode === "reset" && resetStep)) && (
                 <>
-                  {field(
-                    "password",
-                    t(mode === "reset" ? "newPassword" : "password"),
-                    {
-                      type: "password",
-                      autoComplete:
-                        mode === "login" ? "current-password" : "new-password",
-                      maxLength: 128,
-                    },
-                  )}
+                  <PasswordField
+                    label={t(mode === "reset" ? "newPassword" : "password")}
+                    id="account-password"
+                    autoComplete={
+                      mode === "login" ? "current-password" : "new-password"
+                    }
+                    maxLength={128}
+                    descriptionId={mode !== "login" ? "password-hint" : undefined}
+                    {...register("password")}
+                    error={errors.password?.message}
+                  />
                   {mode !== "login" && (
                     <p
                       id="password-hint"
@@ -398,15 +506,17 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
                 {isSubmitting && (
                   <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                 )}
-                {t(
-                  mode === "reset" && !resetStep
-                    ? "sendCode"
-                    : mode === "reset"
-                      ? "savePassword"
-                      : mode === "verify"
-                        ? "verify"
-                        : mode,
-                )}
+                {reauthMode
+                  ? t("reauthAction")
+                  : t(
+                      mode === "reset" && !resetStep
+                        ? "sendCode"
+                        : mode === "reset"
+                          ? "savePassword"
+                          : mode === "verify"
+                            ? "verify"
+                            : mode,
+                    )}
               </Button>
               {(mode === "verify" || (mode === "reset" && resetStep)) && (
                 <Button
@@ -423,6 +533,17 @@ export function AccountForm({ mode, returnTo = "/" }: { mode: Mode; returnTo?: s
                   onClick={() => void resend()}
                 >
                   {wait ? t("resendWait", { seconds: wait }) : t("resend")}
+                </Button>
+              )}
+              {mode === "reset" && resetStep && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-11 w-full"
+                  disabled={isSubmitting || resending}
+                  onClick={restartReset}
+                >
+                  {t("resetChangeEmail")}
                 </Button>
               )}
             </form>

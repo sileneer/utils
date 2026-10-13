@@ -1,8 +1,8 @@
 import { AccountForm } from "@/components/auth/account-form";
 import { safeReturnTo } from "@/lib/auth/navigation";
 export default async function Page({ searchParams }: {
-  searchParams: Promise<{ returnTo?: string }>;
+  searchParams: Promise<{ returnTo?: string; reauth?: string }>;
 }) {
-  const { returnTo } = await searchParams;
-  return <AccountForm mode="login" returnTo={safeReturnTo(returnTo)} />;
+  const { returnTo, reauth } = await searchParams;
+  return <AccountForm mode="login" returnTo={safeReturnTo(returnTo)} reauth={reauth === "1"} />;
 }

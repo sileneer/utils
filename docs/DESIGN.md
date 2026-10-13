@@ -341,6 +341,58 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 - Login and related forms retain validated site-local returnTo throughout the flow.
   Global login/account menus work while AI is disabled and reader chat is closed.
 
+### 5.10 Account operations clarity — batch A approved 2026-10-13
+
+- Registered patterns in the account center: a compact summary card (name,
+  verified email, initial avatar) with profile/security/sessions anchor
+  navigation and a back-to-site link. Section wrappers carry the stable ids
+  `#profile` / `#security` / `#sessions` with scroll margins clearing the sticky
+  header; reauthentication returnTo links target those anchors. Reuse Card,
+  Button and Link; mobile stays single-column.
+- Register the password form as a collapsed-by-default disclosure (existing
+  Collapsible): the trigger toggles the form, opening focuses the first field,
+  and pending/success states stay inside the panel. No Tabs/sidebar is added.
+- Register the PasswordField project wrapper (account and auth forms): existing
+  Input/Label/Button/Tooltip around a labeled show/hide toggle rendered through
+  MorphIcon (Eye/EyeOff — a genuine two-state control, §7) with `aria-pressed`,
+  a state-specific accessible name, keyboard operation and a 40px target.
+  The Caps Lock hint appears only while an actual key event reports the
+  modifier and clears on blur; there is no strength meter or password egress.
+  Autocomplete, paste and the existing password rules are preserved.
+- Profile save follows the §4.2 RHF/Zod form contract. The display-name field
+  receives the server-confirmed value through `values` only while it still
+  exactly matches it; an unsaved draft is never overwritten. A rename from
+  another window surfaces a conflict notice offering "keep my edit" (draft
+  retained) or "use the saved name" (form reset); Save/Cancel appear only for a
+  trimmed-value change, pending blocks duplicate submits, and success refreshes
+  the site-wide name and initial avatar. No credential or OTP enters storage.
+- Security errors map per section (src/lib/auth/errors.ts): stale login
+  (re-verify with the 24-hour explanation), invalidated login (log in), wrong
+  password, rate limiting (server-known wording only, no invented countdown),
+  revoked target (list refresh — never a password error), service failure,
+  account busy, unconfirmed stop, and unconfirmed transport outcomes (result
+  unknown; no automatic retry, refresh before retrying). Profile failures never
+  present password copy; service failures are not described as pending setup.
+- The login `reauth=1` variant changes only title/description/primary-label
+  copy and keeps the same password form, safe returnTo and section anchor; it
+  grants nothing server-side and carries no sensitive form content.
+- Sessions: current session first, then most recent login; the section states
+  the active and other-session counts. Single-target confirmation shows the
+  inferred browser/system and login time; batch confirmation states the
+  other-session count and that the current session stays signed in. Per-row
+  controls carry target-specific accessible names (same-browser sessions remain
+  distinguishable). A refresh failure keeps the last loaded list with a stale
+  notice; an invalidated identity clears it. After a confirmed revoke focus
+  moves to the still-present section heading (tabindex=-1); cancel returns to
+  the initiating button. Same-account security changes (revoke/password) refresh
+  identity without unmounting the account UI, so open dialogs and focus survive.
+- The verification challenge renders explicit loading, expired, failed and
+  script-unavailable states with a bounded manual retry; only code-sending
+  actions depend on a fresh token. Reset keeps its own purpose-correct resend
+  and offers "start over with a different email", clearing the old OTP/password
+  and re-running the challenge; sending acceptance is not described as
+  delivery. No new dependency, base component or color token is introduced.
+
 ## 6. Motion
 
 - Micro-interactions (hover, focus, press): CSS transitions, `150ms ease-out`.

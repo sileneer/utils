@@ -10,6 +10,7 @@ const { getAuth } = require("../src/lib/auth/server.ts");
 const { handleAuth } = require("../src/lib/auth/handler.ts");
 const { handleAccount } = require("../src/lib/auth/account-handler.ts");
 const { safeReturnTo, accountLink } = require("../src/lib/auth/navigation.ts");
+const { accountErrorKey } = require("../src/lib/auth/errors.ts");
 const { reserveQuery, releaseQuery, accountChangeVersion, stopOwnerQuery } = require("../src/lib/agent/active-query.ts");
 const { withAccountChange } = require("../src/lib/auth/lifecycle.ts");
 const originalFetch = global.fetch;
@@ -68,6 +69,10 @@ test("return destinations preserve site query/hash and reject redirect attacks a
   assert.equal(safeReturnTo("/account"), "/account");
   for (const value of ["https://evil.test", "//evil.test", "/\\evil.test", "/%2f%2fevil.test", "/%252f%252fevil.test", "/login", "/register", "/api/auth", "/htlb\n", {}, null]) assert.equal(safeReturnTo(value), "/");
   assert.equal(new URL(accountLink("register", "/htlb?release=demo"), process.env.APP_URL).searchParams.get("returnTo"), "/htlb?release=demo");
+  const reauthLink = new URL(accountLink("login", "/account#security", true), process.env.APP_URL);
+  assert.equal(reauthLink.searchParams.get("reauth"), "1");
+  assert.equal(reauthLink.searchParams.get("returnTo"), "/account#security");
+  assert.equal(accountLink("register", "/account", true).includes("reauth"), false);
 });
 test("site identity works with AI disabled, is safe/no-store, and service failure is not anonymous", async () => {
   assert.deepEqual(await (await account("", undefined)).json(), { user: null });
@@ -202,5 +207,73 @@ test("expired freshness and inactive users cannot manage account security", asyn
   assert.deepEqual(await (await account("", undefined, reader.cookie)).json(), { user: null });
   assert.equal((await account("/profile", { name: "Bad" }, reader.cookie)).status, 401);
   database.getDatabase().prepare("UPDATE user SET status='active' WHERE id=?").run(reader.id);
+});
+test("wrapper error codes stay distinct per section and unconfirmed outcomes are never success", () => {
+  assert.equal(accountErrorKey("auth_failed", "password"), "passwordWrong");
+  assert.equal(accountErrorKey("auth_failed", "sessions"), "passwordWrong");
+  assert.equal(accountErrorKey("auth_failed", "profile"), "profileFailed");
+  assert.notEqual(accountErrorKey("auth_failed", "profile"), accountErrorKey("auth_failed", "password"));
+  assert.equal(accountErrorKey("not_found", "sessions"), "sessionGone");
+  assert.equal(accountErrorKey("reauth_required"), "reauth");
+  assert.equal(accountErrorKey("unauthorized"), "sessionExpired");
+  assert.equal(accountErrorKey("stop_unconfirmed"), "securityFailed");
+  assert.equal(accountErrorKey("account_busy"), "securityFailed");
+  assert.equal(accountErrorKey("rate_limited"), "limited");
+  assert.equal(accountErrorKey("network_unknown"), "resultUnknown");
+  assert.equal(accountErrorKey("service_unavailable"), "serviceFailed");
+  assert.equal(accountErrorKey("unexpected_code"), "actionFailed");
+});
+test("revoking an already-revoked session reports a stale target, not a password error", async () => {
+  reader.cookie = await login(reader);
+  const { sessions } = await (await account("/sessions", undefined, reader.cookie)).json();
+  const target = sessions.find((s) => !s.current);
+  assert.ok(target);
+  assert.equal((await account("/sessions/revoke", { id: target.id, password: reader.password }, reader.cookie)).status, 200);
+  const again = await account("/sessions/revoke", { id: target.id, password: reader.password }, reader.cookie);
+  assert.equal(again.status, 404);
+  assert.deepEqual(await again.json(), { error: "not_found" });
+  assert.ok(await getAuth().api.getSession({ headers: new Headers({ cookie: reader.cookie }) }));
+  assert.ok(await getAuth().api.getSession({ headers: new Headers({ cookie: other.cookie }) }));
+});
+test("batch revocation keeps the current session, clears other owned sessions and leaves other users untouched", async () => {
+  reader.cookie = await login(reader);
+  const secondCookie = await login(reader);
+  const response = await account("/sessions/revoke", { others: true, password: reader.password }, reader.cookie);
+  assert.equal(response.status, 200);
+  const { sessions } = await (await account("/sessions", undefined, reader.cookie)).json();
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].current, true);
+  assert.equal(await getAuth().api.getSession({ headers: new Headers({ cookie: secondCookie }) }), null);
+  assert.ok(await getAuth().api.getSession({ headers: new Headers({ cookie: other.cookie }) }));
+});
+test("account writes are rate limited per account and path without touching the account", async () => {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    assert.equal((await account("/profile", { name: `Burst ${attempt}` }, reader.cookie)).status, 200);
+  }
+  const limited = await account("/profile", { name: "Burst 10" }, reader.cookie);
+  assert.equal(limited.status, 429);
+  assert.deepEqual(await limited.json(), { error: "rate_limited" });
+  assert.equal((await account("", undefined, reader.cookie)).status, 200);
+  assert.ok(await getAuth().api.getSession({ headers: new Headers({ cookie: reader.cookie }) }));
+});
+test("email verification and password reset codes are isolated by purpose", async () => {
+  const email = "purpose-" + randomUUID().slice(0, 8) + "@example.test";
+  assert.equal((await auth("sign-up/email", { email, password: password(), name: "Purpose", turnstileToken: "local" })).status, 200);
+  const verificationCode = otp(email);
+  database.getDatabase().prepare("DELETE FROM limits").run();
+  assert.equal((await auth("email-otp/request-password-reset", { email, turnstileToken: "local" })).status, 200);
+  const resetCode = otp(email);
+  assert.notEqual(resetCode, verificationCode);
+  // Each purpose rejects the other's code: a reset code cannot verify an
+  // address and a verification code cannot set a password.
+  assert.notEqual((await auth("email-otp/verify-email", { email, otp: resetCode })).status, 200);
+  assert.notEqual((await auth("email-otp/reset-password", { email, otp: verificationCode, password: password() })).status, 200);
+  assert.equal((await auth("email-otp/verify-email", { email, otp: verificationCode })).status, 200);
+  database.getDatabase().prepare("DELETE FROM limits").run();
+  assert.equal((await auth("email-otp/request-password-reset", { email, turnstileToken: "local" })).status, 200);
+  const freshReset = otp(email);
+  assert.equal((await auth("email-otp/reset-password", { email, otp: freshReset, password: password() })).status, 200);
+  // The consumed reset code cannot be replayed.
+  assert.notEqual((await auth("email-otp/reset-password", { email, otp: freshReset, password: password() })).status, 200);
 });
 test.after(async () => { global.fetch = originalFetch; database.getDatabase().close(); await fs.rm(directory, { recursive: true, force: true }); });

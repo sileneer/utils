@@ -1,6 +1,8 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { AccountUser } from "@/lib/auth/identity";
+import { accountErrorKey, type AccountErrorScope } from "@/lib/auth/errors";
 import { ACCOUNT_EVENT, ACCOUNT_STORAGE, notifyAccountChange, storageChangeKind } from "@/lib/auth/events";
 
 type AccountState = {
@@ -32,8 +34,11 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const generation = version;
     queueMicrotask(() => void refresh());
-    const changed = (event: Event) => void refresh((event as CustomEvent).detail !== "profile");
-    const storage = (event: StorageEvent) => { if (event.key === ACCOUNT_STORAGE) void refresh(storageChangeKind(event.newValue) !== "profile"); };
+    // "security" (logout/reset/expiry) clears the known identity at once; a
+    // same-account "session" change (revoke/password) refreshes it without
+    // unmounting the open account UI, and "profile" never cancels a chat.
+    const changed = (event: Event) => void refresh((event as CustomEvent).detail === "security");
+    const storage = (event: StorageEvent) => { if (event.key === ACCOUNT_STORAGE) void refresh(storageChangeKind(event.newValue) === "security"); };
     const focus = () => void refresh();
     window.addEventListener(ACCOUNT_EVENT, changed);
     window.addEventListener("storage", storage);
@@ -52,17 +57,32 @@ export function useAccount() {
   if (!value) throw new Error("AccountProvider required");
   return value;
 }
+/** Localized copy for a safe wrapper error, scoped to the section that raised it. */
+export function useAccountError(scope: AccountErrorScope = "auth") {
+  const t = useTranslations("account");
+  return (error: unknown) => t(accountErrorKey(error instanceof Error ? error.message : "", scope));
+}
 /** Safe errors only; never persist credentials or forward raw auth responses. */
 export async function accountAction(path: string, body: object) {
-  const response = await fetch(path, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(40_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(40_000),
+    });
+  } catch {
+    // Offline, timeout or abort: the server outcome is unconfirmed, not success.
+    throw new Error("network_unknown");
+  }
   if (!response.ok) {
     let error = "service_unavailable";
     try { error = (await response.json()).error ?? error; } catch { /* Generic failure. */ }
     if (response.status === 401) notifyAccountChange();
     throw new Error(error);
   }
-  notifyAccountChange(path === "/api/account/profile" ? "profile" : "security");
+  notifyAccountChange(
+    path === "/api/account/profile" ? "profile"
+      : path === "/api/account/password" || path === "/api/account/sessions/revoke" ? "session"
+      : "security",
+  );
 }

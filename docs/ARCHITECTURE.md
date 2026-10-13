@@ -341,11 +341,27 @@ Login destinations use navigation.ts's site-route allowlist. Login/register/veri
 reset links preserve safe returnTo, including reading query/hash; direct login
 returns home. External/protocol-relative/encoded separator/control URLs and auth
 loops fall back home. Authenticated visitors can continue or normally reauthenticate.
-Account events synchronize the current window and localStorage peers; credential/
-session changes invalidate private display immediately, profile changes refresh
+A `reauth=1` query variant on the login page only changes the title/description/
+primary-action copy and keeps the same server contract; it is not an authorization
+signal. Account center sections expose stable anchors (`#profile`, `#security`,
+`#sessions`) used by reauthentication returnTo links and focus-independent jumps.
+Account events synchronize the current window and localStorage peers: logout,
+reset and expiry (`security`) invalidate the known identity immediately;
+same-account security mutations such as session revocation or a password
+change (`session`) refresh the identity without unmounting the open account UI,
+so a closing dialog and its focus target survive; profile changes refresh
 identity without cancelling a chat. Focus rechecks expiry. Failure preserves an
 already known identity with a retry state. Chat keeps its own data/controller, uses
 the shared identity and broadcasts 401 expiry; late callbacks remain epoch-scoped.
+
+Wrapper error bodies use safe codes (`reauth_required`, `rate_limited`,
+`not_found`, `unauthorized`, `stop_unconfirmed`, `account_busy`,
+`service_unavailable`, `bad_request`, `invalid_origin`); client code maps them per
+section (src/lib/auth/errors.ts) so a password failure, a profile failure, a
+revoked target and an unconfirmed result stay distinct. A transport timeout or
+disconnect is an unconfirmed outcome: the UI refreshes account/session state and
+never reports success or automatically retries a security write. The wrapper
+returns no retry timestamp, so the UI claims none.
 
 New module integration:
 - Declare whether its page is public, with private actions, or fully account-gated.

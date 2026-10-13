@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -17,90 +17,206 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { accountAction, useAccount } from "./account-provider";
+import { PasswordField } from "./password-field";
+import { accountAction, useAccount, useAccountError } from "./account-provider";
+import { isUnconfirmedError } from "@/lib/auth/errors";
 
 type LoginSession = { id: string; current: boolean; createdAt: string; expiresAt: string; browser: string; system: string };
 function Field({ label, error, id, ...props }: React.ComponentProps<typeof Input> & { label: string; error?: string; id: string }) {
   return <div className="space-y-2"><Label htmlFor={id}>{label}</Label><Input {...props} id={id} className="h-11" aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : props["aria-describedby"]} />{error && <p id={`${id}-error`} role="alert" className="text-sm text-destructive">{error}</p>}</div>;
 }
-function useAccountError() {
+function Summary({ user }: { user: AccountUser }) {
   const t = useTranslations("account");
-  return (error: unknown) => t(({ rate_limited: "limited", reauth_required: "reauth", unauthorized: "sessionExpired", stop_unconfirmed: "securityFailed", account_busy: "securityFailed", auth_failed: "passwordWrong" } as Record<string, string>)[error instanceof Error ? error.message : ""] ?? "actionFailed");
+  const initial = Array.from(user.name.trim())[0]?.toUpperCase() || "U";
+  const sections = [
+    { id: "profile", label: t("profile") },
+    { id: "security", label: t("security") },
+    { id: "sessions", label: t("sessions") },
+  ];
+  return <Card role="region" aria-label={t("summaryLabel")}><CardContent className="space-y-4">
+    <div className="flex flex-wrap items-center gap-3">
+      <span aria-hidden className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-lg font-medium text-primary">{initial}</span>
+      <div className="min-w-0 flex-1 basis-56 space-y-1">
+        <p className="break-words font-medium">{user.name}</p>
+        <p className="break-all text-sm text-muted-foreground">{user.email} <Badge variant="secondary">{t("emailVerified")}</Badge></p>
+      </div>
+    </div>
+    <nav aria-label={t("sectionNav")} className="flex flex-wrap items-center gap-2">
+      {sections.map((section) => <Button key={section.id} variant="outline" className="min-h-10" asChild><a href={`#${section.id}`}>{section.label}</a></Button>)}
+      <Link className="inline-flex min-h-10 items-center text-sm underline underline-offset-4" href="/">{t("back")}</Link>
+    </nav>
+  </CardContent></Card>;
 }
 function Profile({ user }: { user: AccountUser }) {
   const t = useTranslations("account");
   const locale = useLocale();
-  const failure = useAccountError();
+  const { refresh } = useAccount();
+  const failure = useAccountError("profile");
+  const [serverName, setServerName] = useState(user.name);
+  const [adopt, setAdopt] = useState(user.name);
+  const [conflict, setConflict] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  // Disabled state only lands after a render, so a same-frame repeat click or
+  // held Enter key would still reach the handler; guard on the write itself.
+  const pending = useRef(false);
   const schema = z.object({ name: z.string().trim().min(1, t("required")).max(80, t("nameHint")) });
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({ resolver: zodResolver(schema), values: { name: user.name }, reValidateMode: "onChange" });
+  const { register, handleSubmit, reset, getValues, control, formState: { errors, isSubmitting } } = useForm({
+    resolver: zodResolver(schema),
+    defaultValues: { name: user.name },
+    values: { name: adopt },
+    reValidateMode: "onChange",
+  });
+  const draft = useWatch({ control, name: "name" }) ?? "";
+  const dirty = draft.trim() !== user.name;
+  // The confirmed name changed (this window, another tab or another device).
+  // Adjusting during render keeps an unsaved draft: untouched fields follow the
+  // new value, an edited field raises a conflict the user resolves themselves.
+  if (serverName !== user.name) {
+    const previous = serverName;
+    const current = getValues("name") ?? "";
+    setServerName(user.name);
+    if (current === previous) {
+      setAdopt(user.name);
+      setConflict(null);
+      setSaved(false);
+    } else if (current.trim() !== user.name) {
+      setConflict(user.name);
+    } else {
+      setConflict(null);
+    }
+  }
+  const cancel = () => { reset({ name: user.name }); setAdopt(user.name); setConflict(null); setError(""); setSaved(false); };
+  const saveName = async (values: { name: string }) => {
+    if (pending.current) return;
+    const next = values.name.trim();
+    if (!next || next === user.name) return;
+    setError("");
+    setSaved(false);
+    pending.current = true;
+    try {
+      await accountAction("/api/account/profile", { name: next });
+      reset({ name: next });
+      setAdopt(next);
+      setConflict(null);
+      setSaved(true);
+      toast.success(t("profileSaved"));
+    } catch (e) { setError(failure(e)); if (isUnconfirmedError(e)) void refresh(); }
+    finally { pending.current = false; }
+  };
   return <Card><CardHeader><CardTitle><h2>{t("profile")}</h2></CardTitle><CardDescription>{t("profileDescription")}</CardDescription></CardHeader><CardContent className="space-y-5">
     <dl className="space-y-3 text-sm"><div><dt className="text-muted-foreground">{t("email")}</dt><dd className="mt-1 break-all">{user.email} <Badge variant="secondary">{t("emailVerified")}</Badge></dd></div><div><dt className="text-muted-foreground">{t("joined")}</dt><dd className="mt-1">{new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(user.createdAt))}</dd></div></dl>
-    <form className="space-y-4" onSubmit={handleSubmit(async (values) => {
-      setError("");
-      try { await accountAction("/api/account/profile", values); toast.success(t("profileSaved")); }
-      catch (e) { setError(failure(e)); }
-    })}>
-      <Field label={t("displayName")} id="profile-name" autoComplete="nickname" maxLength={80} {...register("name")} error={errors.name?.message} />
+    {conflict && <Alert><AlertDescription><p>{t("profileConflict", { name: conflict })}</p><div className="mt-3 flex flex-wrap gap-2">
+      <Button type="button" variant="outline" className="min-h-10" onClick={() => setConflict(null)}>{t("profileConflictKeep")}</Button>
+      <Button type="button" variant="ghost" className="min-h-10" onClick={cancel}>{t("profileConflictUse")}</Button>
+    </div></AlertDescription></Alert>}
+    <form className="space-y-4" onSubmit={(event) => void handleSubmit(saveName)(event)}>
+      <Field label={t("displayName")} id="profile-name" autoComplete="nickname" maxLength={80} {...register("name", { onChange: () => { setSaved(false); } })} error={errors.name?.message} />
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <Button className="min-h-10" disabled={isSubmitting}>{isSubmitting && <Loader2 className="animate-spin motion-reduce:animate-none" />}{t("saveProfile")}</Button>
+      {dirty && <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" className="min-h-10" disabled={isSubmitting}>{isSubmitting && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}{t("saveProfile")}</Button>
+        <Button type="button" variant="outline" className="min-h-10" disabled={isSubmitting} onClick={cancel}>{t("cancel")}</Button>
+      </div>}
+      {saved && !dirty && <p role="status" className="text-sm text-muted-foreground">{t("profileSaved")}</p>}
     </form>
   </CardContent></Card>;
 }
-function Password() {
+function Password({ reauthNeeded }: { reauthNeeded: boolean }) {
   const t = useTranslations("account");
-  const failure = useAccountError();
-  const [error, setError] = useState("");
+  const { refresh } = useAccount();
+  const failure = useAccountError("password");
+  const [open, setOpen] = useState(false);
+  const [errorCode, setErrorCode] = useState("");
+  const [saved, setSaved] = useState(false);
+  const pending = useRef(false);
+  const reauth = errorCode === "reauth_required" || reauthNeeded;
   const schema = z.object({
     currentPassword: z.string().min(1, t("required")).max(128, t("passwordHint")),
     newPassword: z.string().min(8, t("passwordHint")).max(128, t("passwordHint")).regex(/[A-Za-z]/, t("passwordHint")).regex(/[0-9]/, t("passwordHint")),
     confirm: z.string(),
   }).refine((v) => v.newPassword === v.confirm, { path: ["confirm"], message: t("passwordMismatch") });
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({ resolver: zodResolver(schema), defaultValues: { currentPassword: "", newPassword: "", confirm: "" }, reValidateMode: "onChange" });
-  return <Card><CardHeader><CardTitle><h2>{t("changePassword")}</h2></CardTitle><CardDescription>{t("passwordDescription")}</CardDescription></CardHeader><CardContent>
-    <form className="space-y-4" onSubmit={handleSubmit(async ({ currentPassword, newPassword }) => {
-      setError("");
-      try { await accountAction("/api/account/password", { currentPassword, newPassword }); reset(); toast.success(t("passwordChanged")); }
-      catch (e) { setError(failure(e)); }
-    })}>
-      <Field label={t("currentPassword")} id="current-password" type="password" autoComplete="current-password" maxLength={128} {...register("currentPassword")} error={errors.currentPassword?.message} />
-      <Field label={t("newPassword")} id="new-password" type="password" autoComplete="new-password" maxLength={128} aria-describedby="change-password-hint" {...register("newPassword")} error={errors.newPassword?.message} />
-      <p id="change-password-hint" className="text-xs text-muted-foreground">{t("passwordHint")}</p>
-      <Field label={t("confirmPassword")} id="confirm-password" type="password" autoComplete="new-password" maxLength={128} {...register("confirm")} error={errors.confirm?.message} />
-      <p className="text-sm text-muted-foreground">{t("securityEffect")}</p>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <div className="flex flex-wrap items-center gap-3">
-      <Button className="min-h-10" disabled={isSubmitting}>{isSubmitting && <Loader2 className="animate-spin motion-reduce:animate-none" />}{t("changePassword")}</Button>
-      <Link className="inline-flex min-h-10 items-center text-sm underline underline-offset-4" href={accountLink("reset-password", "/account")}>{t("forgot")}</Link>
-      </div>
-    </form>
+  useEffect(() => { if (open) document.getElementById("current-password")?.focus(); }, [open]);
+  const changePassword = async ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) => {
+    if (pending.current) return;
+    setErrorCode("");
+    setSaved(false);
+    pending.current = true;
+    try { await accountAction("/api/account/password", { currentPassword, newPassword }); reset(); setSaved(true); toast.success(t("passwordChanged")); }
+    catch (e) { setErrorCode(e instanceof Error ? e.message : ""); if (isUnconfirmedError(e)) void refresh(); }
+    finally { pending.current = false; }
+  };
+  return <Card><CardHeader><CardTitle><h2>{t("passwordSection")}</h2></CardTitle><CardDescription>{t("passwordDescription")}</CardDescription></CardHeader><CardContent className="space-y-4">
+    {reauth && <Alert><AlertDescription className="space-y-2"><p>{t("reauth")}</p><Button variant="outline" className="min-h-10" asChild><Link href={accountLink("login", "/account#security", true)}>{t("refreshLogin")}</Link></Button></AlertDescription></Alert>}
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <Button variant="outline" className="min-h-10">{open ? t("collapsePasswordForm") : t("changePassword")}</Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-4">
+        <form className="space-y-4" onSubmit={(event) => void handleSubmit(changePassword)(event)}>
+          <PasswordField label={t("currentPassword")} id="current-password" autoComplete="current-password" maxLength={128} {...register("currentPassword")} error={errors.currentPassword?.message} />
+          <PasswordField label={t("newPassword")} id="new-password" autoComplete="new-password" maxLength={128} descriptionId="change-password-hint" {...register("newPassword")} error={errors.newPassword?.message} />
+          <p id="change-password-hint" className="text-xs text-muted-foreground">{t("passwordHint")}</p>
+          <PasswordField label={t("confirmPassword")} id="confirm-password" autoComplete="new-password" maxLength={128} {...register("confirm")} error={errors.confirm?.message} />
+          <p className="text-sm text-muted-foreground">{t("securityEffect")}</p>
+          {errorCode && errorCode !== "reauth_required" && <p role="alert" className="text-sm text-destructive">{failure(new Error(errorCode))}</p>}
+          {saved && <p role="status" className="text-sm text-muted-foreground">{t("passwordChanged")}</p>}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button className="min-h-10" disabled={isSubmitting}>{isSubmitting && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}{t("changePassword")}</Button>
+            <Link className="inline-flex min-h-10 items-center text-sm underline underline-offset-4" href={accountLink("reset-password", "/account#security")}>{t("forgot")}</Link>
+          </div>
+        </form>
+      </CollapsibleContent>
+    </Collapsible>
   </CardContent></Card>;
 }
-function Sessions({ userId }: { userId: string }) {
+function sortSessions(list: LoginSession[]) {
+  return [...list].sort((a, b) => Number(b.current) - Number(a.current) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+function Sessions({ onFreshness }: { onFreshness: (stale: boolean) => void }) {
   const t = useTranslations("account");
   const locale = useLocale();
-  const failure = useAccountError();
+  const failure = useAccountError("sessions");
   const [sessions, setSessions] = useState<LoginSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [target, setTarget] = useState<{ id: string } | { others: true }>();
+  const [staleCode, setStaleCode] = useState("");
+  const [problem, setProblem] = useState("");
+  const [target, setTarget] = useState<{ kind: "one"; session: LoginSession } | { kind: "others" }>();
   const [mutationError, setMutationError] = useState("");
   const version = useRef(0);
+  const revokePending = useRef(false);
   const revokeTrigger = useRef<HTMLButtonElement | null>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const [closeFocus, setCloseFocus] = useState<"trigger" | "heading">("trigger");
+  const [reloadKey, setReloadKey] = useState(0);
   const schema = z.object({ password: z.string().min(1, t("required")).max(128, t("passwordHint")) });
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({ resolver: zodResolver(schema), defaultValues: { password: "" } });
   const load = useCallback(async () => {
     const generation = ++version.current;
-    setLoading(true); setError("");
+    setLoading(true);
     try {
       const response = await fetch("/api/account/sessions", { cache: "no-store", signal: AbortSignal.timeout(5000) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "service_unavailable");
-      if (generation === version.current) setSessions(data.sessions);
-    } catch (e) { if (generation === version.current) { setSessions([]); setError(e instanceof Error ? e.message : "service_unavailable"); } }
+      let data: { sessions?: LoginSession[]; error?: string } = {};
+      try { data = await response.json(); } catch { /* Non-JSON failure. */ }
+      if (generation !== version.current) return;
+      if (!response.ok) {
+        const code = data.error ?? "service_unavailable";
+        if (code === "reauth_required") { setProblem("reauth_required"); setSessions([]); setStaleCode(""); onFreshness(true); }
+        else if (response.status === 401 || code === "unauthorized") { setProblem("unauthorized"); setSessions([]); setStaleCode(""); onFreshness(false); }
+        else setStaleCode(code);
+        return;
+      }
+      setProblem("");
+      setSessions(sortSessions(Array.isArray(data.sessions) ? data.sessions : []));
+      setStaleCode("");
+      onFreshness(false);
+    } catch {
+      if (generation === version.current) setStaleCode("network_unknown");
+    }
     finally { if (generation === version.current) setLoading(false); }
-  }, []);
+  }, [onFreshness]);
   useEffect(() => {
     const generation = version;
     queueMicrotask(() => void load());
@@ -111,25 +227,66 @@ function Sessions({ userId }: { userId: string }) {
     window.addEventListener("storage", storage);
     return () => { generation.current++; window.removeEventListener("focus", changed); window.removeEventListener(ACCOUNT_EVENT, changed); window.removeEventListener("storage", storage); };
   }, [load]);
-  const revoke = handleSubmit(async ({ password }) => {
-          if (!target) return;
-          setMutationError("");
-          try { await accountAction("/api/account/sessions/revoke", { ...target, password }); choose(undefined); toast.success(t("sessionsRevoked")); }
-          catch (e) { setMutationError(failure(e)); }
-        });
+  useEffect(() => {
+    if (!reloadKey) return;
+    queueMicrotask(() => void load());
+  }, [reloadKey, load]);
   const date = (value: string) => new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-  function choose(value: typeof target) { setMutationError(""); reset(); setTarget(value); }
-  return <Card><CardHeader><CardTitle><h2>{t("sessions")}</h2></CardTitle><CardDescription>{t("sessionsDescription")}</CardDescription></CardHeader><CardContent className="space-y-4">
-    <div className="flex flex-wrap gap-2"><Button className="min-h-10" variant="outline" onClick={() => void load()} disabled={loading || isSubmitting}>{t("refreshSessions")}</Button>{sessions.some((s) => !s.current) && <Button className="min-h-10" variant="outline" onClick={(event) => { revokeTrigger.current = event.currentTarget; choose({ others: true }); }} disabled={loading || isSubmitting}>{t("logoutOthers")}</Button>}</div>
-    {loading ? <Skeleton className="h-24 w-full" /> : error ? <Alert><AlertDescription>{failure(new Error(error))}{error === "reauth_required" && <Link className="mt-2 inline-flex min-h-10 items-center underline" href={accountLink("login", "/account")}>{t("loginAgain")}</Link>}</AlertDescription></Alert> : sessions.length === 0 ? <p className="text-sm text-muted-foreground">{t("noSessions")}</p> : <ul className="divide-y">{sessions.map((s) => <li key={s.id} className="flex flex-wrap items-start gap-3 py-4">
-      <Monitor className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden />
-      <div className="min-w-0 flex-1 basis-40 space-y-1"><p className="font-medium">{s.browser === "unknown" ? t("unknownBrowser") : s.browser} · {s.system === "unknown" ? t("unknownSystem") : s.system}</p>{s.current && <Badge variant="secondary">{t("currentSession")}</Badge>}<p className="text-xs text-muted-foreground">{t("sessionCreated", { date: date(s.createdAt) })}</p><p className="text-xs text-muted-foreground">{t("sessionExpires", { date: date(s.expiresAt) })}</p></div>
-      {!s.current && <Button variant="outline" className="min-h-10" disabled={isSubmitting} onClick={(event) => { revokeTrigger.current = event.currentTarget; choose({ id: s.id }); }}>{t("revokeSession")}</Button>}
-    </li>)}</ul>}
-    <AlertDialog open={Boolean(target)} onOpenChange={(open) => { if (!open && !isSubmitting) choose(undefined); }}>
-      <AlertDialogContent onCloseAutoFocus={(event) => { event.preventDefault(); revokeTrigger.current?.focus(); }}><AlertDialogHeader><AlertDialogTitle>{t("revokeConfirm")}</AlertDialogTitle><AlertDialogDescription>{t("securityEffect")}</AlertDialogDescription></AlertDialogHeader>
-        <form id={`revoke-${userId}`} className="space-y-3" onSubmit={revoke}><Field id="revoke-password" label={t("currentPassword")} type="password" autoComplete="current-password" maxLength={128} {...register("password")} error={errors.password?.message} />{mutationError && <p role="alert" className="text-sm text-destructive">{mutationError}</p>}</form>
-        <AlertDialogFooter><AlertDialogCancel className="min-h-10" disabled={isSubmitting}>{t("cancel")}</AlertDialogCancel><AlertDialogAction className="min-h-10" type="submit" form={`revoke-${userId}`} disabled={isSubmitting} onClick={(e) => { e.preventDefault(); void revoke(); }}>{t("revokeSession")}</AlertDialogAction></AlertDialogFooter>
+  // Accessible names distinguish sessions that share a browser/system and minute.
+  const preciseDate = (value: string) => new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "medium" }).format(new Date(value));
+  const device = (session: LoginSession) => `${session.browser === "unknown" ? t("unknownBrowser") : session.browser} · ${session.system === "unknown" ? t("unknownSystem") : session.system}`;
+  const others = sessions.filter((session) => !session.current).length;
+  function choose(value: typeof target, focusAfter: "trigger" | "heading" = "trigger") { setCloseFocus(focusAfter); setMutationError(""); reset(); setTarget(value); }
+  const revokeSessions = async ({ password }: { password: string }) => {
+    if (!target || revokePending.current) return;
+    setMutationError("");
+    revokePending.current = true;
+    try {
+      await accountAction("/api/account/sessions/revoke", target.kind === "others" ? { others: true, password } : { id: target.session.id, password });
+      choose(undefined, "heading");
+      toast.success(t(target.kind === "others" ? "sessionsRevoked" : "sessionRevoked"));
+      setReloadKey((value) => value + 1);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "";
+      if (code === "not_found") { choose(undefined, "heading"); toast.info(t("sessionGone")); setReloadKey((value) => value + 1); }
+      else if (code === "reauth_required") { choose(undefined); setProblem("reauth_required"); setSessions([]); }
+      else { setMutationError(failure(e)); if (isUnconfirmedError(e)) setReloadKey((value) => value + 1); }
+    } finally { revokePending.current = false; }
+  };
+  return <Card><CardHeader><CardTitle><h2 ref={headingRef} tabIndex={-1}>{t("sessions")}</h2></CardTitle><CardDescription>{t("sessionsDescription")}</CardDescription></CardHeader><CardContent className="space-y-4">
+    <div className="flex flex-wrap gap-2">
+      <Button className="min-h-10" variant="outline" onClick={() => void load()} disabled={loading || isSubmitting}>{t("refreshSessions")}</Button>
+      {others > 0 && <Button className="min-h-10" variant="outline" aria-label={t("revokeOthersNamed", { count: others })} onClick={(event) => { revokeTrigger.current = event.currentTarget; choose({ kind: "others" }); }} disabled={loading || isSubmitting}>{t("logoutOthers")}</Button>}
+    </div>
+    {problem === "reauth_required" ? <Alert><AlertDescription className="space-y-2"><p>{t("reauth")}</p><Button variant="outline" className="min-h-10" asChild><Link href={accountLink("login", "/account#sessions", true)}>{t("refreshLogin")}</Link></Button></AlertDescription></Alert>
+      : problem === "unauthorized" ? <Alert><AlertDescription className="space-y-2"><p>{t("sessionExpired")}</p><Button variant="outline" className="min-h-10" asChild><Link href={accountLink("login", "/account#sessions")}>{t("loginAgain")}</Link></Button></AlertDescription></Alert>
+        : <>
+          {sessions.length > 0 && <p className="text-sm text-muted-foreground" role="status">{t("sessionCount", { total: sessions.length, others })}{loading && ` · ${t("updatingSessions")}`}</p>}
+          {staleCode && sessions.length > 0 && <p role="status" className="text-sm text-muted-foreground">{t("staleSessions")}</p>}
+          {loading && sessions.length === 0 ? <Skeleton className="h-24 w-full" />
+            : sessions.length === 0 ? (staleCode ? <Alert><AlertDescription className="space-y-2"><p>{t("sessionsUnavailable")}</p><Button variant="outline" className="min-h-10" onClick={() => void load()}>{t("refreshSessions")}</Button></AlertDescription></Alert> : <p className="text-sm text-muted-foreground">{t("noSessions")}</p>)
+              : <ul className="divide-y">{sessions.map((session) => <li key={session.id} className="flex flex-wrap items-start gap-3 py-4">
+                <Monitor className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden />
+                <div className="min-w-0 flex-1 basis-40 space-y-1"><p className="font-medium">{device(session)}</p>{session.current && <Badge variant="secondary">{t("currentSession")}</Badge>}<p className="text-xs text-muted-foreground">{t("sessionCreated", { date: date(session.createdAt) })}</p><p className="text-xs text-muted-foreground">{t("sessionExpires", { date: date(session.expiresAt) })}</p></div>
+                {!session.current && <Button variant="outline" className="min-h-10" disabled={isSubmitting} aria-label={t("revokeNamed", { target: device(session), date: preciseDate(session.createdAt) })} onClick={(event) => { revokeTrigger.current = event.currentTarget; choose({ kind: "one", session }); }}>{t("revokeSession")}</Button>}
+              </li>)}</ul>}
+        </>}
+    <AlertDialog open={Boolean(target)} onOpenChange={(open) => { if (!open && !isSubmitting && target) choose(undefined); }}>
+      <AlertDialogContent onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        if (closeFocus === "trigger" && revokeTrigger.current?.isConnected) { revokeTrigger.current.focus(); return; }
+        headingRef.current?.focus();
+      }}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{target?.kind === "others" ? t("revokeOthersConfirm") : t("revokeConfirm")}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {target?.kind === "one" && <span className="mb-3 block">{t("revokeTarget", { target: device(target.session), date: date(target.session.createdAt) })}</span>}
+            {target?.kind === "others" && <span className="mb-3 block">{t("revokeOthersScope", { count: others })}</span>}
+            {t("securityEffect")}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <form id="account-revoke-form" className="space-y-3" onSubmit={(event) => void handleSubmit(revokeSessions)(event)}><PasswordField label={t("currentPassword")} id="revoke-password" autoComplete="current-password" maxLength={128} {...register("password")} error={errors.password?.message} />{mutationError && <p role="alert" className="text-sm text-destructive">{mutationError}</p>}</form>
+        <AlertDialogFooter><AlertDialogCancel className="min-h-10" disabled={isSubmitting}>{t("cancel")}</AlertDialogCancel><AlertDialogAction className="min-h-10" type="submit" form="account-revoke-form" disabled={isSubmitting} onClick={(e) => { e.preventDefault(); void handleSubmit(revokeSessions)(e); }}>{target?.kind === "others" ? t("logoutOthers") : t("revokeSession")}</AlertDialogAction></AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   </CardContent></Card>;
@@ -137,6 +294,8 @@ function Sessions({ userId }: { userId: string }) {
 export function AccountCenter() {
   const { user, loading, failed, refresh } = useAccount();
   const t = useTranslations("account");
+  const [staleSession, setStaleSession] = useState(false);
+  const handleFreshness = useCallback((stale: boolean) => setStaleSession(stale), []);
   if (!user) return <div className="mx-auto max-w-2xl space-y-4"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1>{loading ? <Skeleton className="h-48 w-full" /> : failed ? <><p role="alert">{t("actionFailed")}</p><Button className="min-h-10" onClick={() => void refresh()}>{t("retryAccount")}</Button></> : <><p>{t("sessionExpired")}</p><Button className="min-h-10" asChild><Link href={accountLink("login", "/account")}>{t("login")}</Link></Button></>}</div>;
-  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Profile key={`profile:${user.id}`} user={user} /><Password key={`password:${user.id}`} /><Sessions key={`sessions:${user.id}`} userId={user.id} /></div>;
+  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section></div>;
 }
