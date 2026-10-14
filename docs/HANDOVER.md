@@ -17,10 +17,12 @@ settled. The owner subsequently approved merging the documentation into main
 on 2026-10-11, including its normal push-to-main CI/CD rollout. This does not
 authorize provider calls or new features. On 2026-10-13 the owner authorized
 **local implementation of PLANNING §14 batch A**, and on 2026-10-14
-**local implementation of batch B** — account preferences and the personal usage
-overview. Neither approval covers C1, C2 or D, and none of them covers
-publication. Batches A and B are implemented locally and unmerged; production
-still runs the §13 release. Off-machine backup uploads and
+**local implementation of batch B** (account preferences plus the personal usage
+overview) and **local implementation and isolated verification of C2** (personal
+data export). None of these approvals covers C1 or D, and none covers publication.
+Batches A, B and C2 are implemented locally and unmerged; production still runs the
+§13 release. Exporting production data, account deletion, real mail and paid AI
+calls remain unapproved. Off-machine backup uploads and
 pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
 
 ## 2. Checkout and release position
@@ -37,28 +39,35 @@ Current local branch: `codex/account-improvement-plan-20261013`, based on `e209d
 dependency, schema, migration, env, Docker or CI file, and no server-side auth
 handler, so the ARCHITECTURE §5 server contract was unchanged.
 
-**Batch B is implemented in the working tree, still uncommitted**: new
+**Batch B is committed locally as `1b648ed`**
+(`feat(auth): add account preferences and a personal usage overview`): new
 `migrations/004-account-preferences.sql`, `src/lib/auth/preferences.ts`,
-`src/lib/theme-device.ts`, `src/lib/unsaved.ts`, `tests/preferences.test.cjs`,
-plus edits to `account-center`, `account-provider`, `account-handler`, `errors`,
+`src/lib/theme-device.ts` and `src/lib/unsaved.ts`, plus edits to
+`account-center`, `account-provider`, `account-handler`, `errors`,
 `i18n/locale.ts`, `theme-provider`, `theme-toggle`, `language-switcher`, both
-`messages/*.json`, the four docs, and two existing migration-count assertions in
-`tests/auth.test.cjs` / `tests/history.test.cjs` that the new migration moves from
-3 to 4. Nothing was pushed, merged, deployed or production-tested for either
-batch. Existing ignored `.zcode/`, data and investigations are preserved.
-Planning notes and fixture evidence for both batches (disposable databases,
-generated-credential seeding, fault-injection launchers, screenshots) live under
-ignored `data/investigation/account-plan-20261013/`,
-`data/investigation/account-batch-a-20261013/` and
-`data/investigation/account-batch-b-20261014/`. Generated fixture credentials are
+`messages/*.json`, the docs, and two migration-count assertions.
+
+**Batch C2 is implemented in the working tree, still uncommitted**: new
+`src/lib/auth/export.ts` and `tests/export.test.cjs`, plus edits to
+`src/lib/auth/account-handler.ts`, `src/components/auth/account-center.tsx`,
+both `messages/*.json` and the four docs. It adds no migration, dependency,
+env, Docker or CI change, and touches no server-side auth handler beyond the
+account wrapper's own routing. Nothing was pushed, merged,
+deployed or production-tested for any batch. Existing ignored `.zcode/`, data and investigations
+are preserved. Planning notes and fixture evidence for all three passes (disposable databases,
+generated-credential seeding, fault-injection launchers, generated export artefacts and
+screenshots) live under ignored `data/investigation/account-plan-20261013/`,
+`data/investigation/account-batch-a-20261013/`,
+`data/investigation/account-batch-b-20261014/` and
+`data/investigation/account-c2-20261014/`. Generated fixture credentials are
 deleted after each QA pass.
 
-PLANNING section 14 remains the canonical home for the improvement plan; §14.9 and
-§14.10 record what batches A and B actually changed. ARCHITECTURE §5/§7 and DESIGN
-§5.10–§5.11 describe the implemented client contract (section anchors, the
+PLANNING section 14 remains the canonical home for the improvement plan; §14.9,
+§14.10 and §14.11 record what batches A, B and C2 actually changed. ARCHITECTURE §5/§7 and DESIGN
+§5.10–§5.12 describe the implemented client contract (section anchors, the
 `reauth=1` copy variant, safe error codes and their per-section mapping in
-`src/lib/auth/errors.ts`, the two-layer theme keys, the preference priority and the
-personal usage wrapper).
+`src/lib/auth/errors.ts`, the two-layer theme keys, the preference priority, the
+personal usage wrapper and the export document contract).
 
 [Documentation PR #8](https://github.com/sileneer/utils/pull/8) publishes the
 shared agent instructions and living-doc refresh, based on `70f5a78`, to `main`.
@@ -89,10 +98,11 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
   ownership, safe return paths, security lifecycle, preference/usage wrappers and
   future-module integration; §7 owns locale resolution; §8 owns runtime
   provider/env config; §10 owns administrator aggregates.
-- DESIGN §5.6–5.11 owns chat/source/account/admin patterns, the batch A
-  account-operations clarifications and the batch B preferences/usage-card
-  patterns. Account forms use registered primitives; there is no adopted
-  `ui/form` component, and `ui/select` is now used for the preference choices.
+- DESIGN §5.6–5.12 owns chat/source/account/admin patterns, the batch A
+  account-operations clarifications, the batch B preferences/usage-card
+  patterns and the C2 export card. Account forms use registered primitives; there
+  is no adopted `ui/form` component, and `ui/select` is now used for the preference
+  and export-scope choices.
 - DEPLOYMENT §8/§11–12 owns release checks, service setup and backup operations.
 - PLANNING §11–14 owns decisions, deferred account features and the §14
   improvement plan with its batch A/B implementation results. GOTCHAS owns
@@ -100,17 +110,30 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 ## 4. Next actions
 
-Batches A and B are implemented locally (§2, PLANNING §14.9/§14.10) and await the
-owner's review and a separate publication decision; nothing may be merged or
-deployed on this authorization. Batch B is still uncommitted in the working tree.
-C1, C2 and D remain unapproved proposals in §14. Do not start new features or
-publish A or B without subsequent authorization.
+Batches A, B and C2 are implemented locally (§2, PLANNING §14.9/§14.10/§14.11) and
+await the owner's review and a separate publication decision; nothing may be merged
+or deployed on this authorization. Batches A and B are committed; C2 is still
+uncommitted in the working tree. C1 and D remain unapproved proposals in §14. Do not
+start new features or publish any batch without subsequent authorization.
 
-Batch B verification is **not complete**: the in-app Browser surface was hidden
-during the run, so the required screenshot review and the keyboard operation of the
-new `ui/select` triggers could not be performed. The functional, layout-metric and
-axe checks did run (see §7). Re-open the in-app Browser panel and capture the
-locale × theme × width matrix before treating batch B as accepted.
+The batch B visual gap noted here earlier is now largely closed, and two of its open
+questions were settled during the C2 pass:
+
+- The in-app Browser surface became available again, so the account page — which
+  carries batch B's preferences and usage cards — was measured across all twelve
+  locale × theme × width combinations **with the applied theme class asserted on
+  every run**, and full-page images were captured and read.
+- Keyboard operation of the `ui/select` triggers works: Enter opened the listbox,
+  ArrowDown plus Enter chose an option, the dependent download links updated and a
+  visible focus ring remained. The earlier "could not be opened" result was an
+  artefact of the hidden surface, not a defect.
+- **Correction to the batch B record in §7:** that matrix drove the theme through the
+  `theme` localStorage key, which batch B itself retired in favour of
+  `utils_theme_device`/`utils_theme_applied`. Its light/dark axis therefore did not
+  test what it claimed. It has been re-measured for C2 with per-run class
+  assertions; the batch B numbers should be read from the C2 entry, not the B one.
+  Per-combination image review of batch B's two cards at 768px and in the remaining
+  locale/theme pairs is still open visual QA.
 
 Two batch A follow-ups are recorded rather than silently fixed, because they sit
 outside the approved scope: the registration page still shows the signed-in hint
@@ -162,7 +185,11 @@ reused the same loopback pair (3001 app, 3002 fixture outbox) against its own
 dedicated fixture database under `data/investigation/account-batch-b-20261014/`,
 with AI configured only against a discard loopback base URL and a fixture key so no
 provider is reachable; that preview was stopped and its generated credential file
-deleted the same way, after its command line was read back and confirmed. Screenshots are
+deleted the same way, after its command line was read back and confirmed. Batch C2 QA
+used two further dedicated fixture databases — `data/investigation/account-c2-20261014/fixture/`
+to generate export artefacts without a server, and `.../ui/` for the browser pass —
+and its loopback preview was likewise stopped only after verifying its command line,
+with both ports then confirmed free and its credentials deleted. Screenshots are
 outside Git. The owner
 logged in normally; no production cookies were exported, captured or minted.
 
@@ -342,3 +369,78 @@ itself indicate a defect). Re-run the visual pass with a visible browser surface
 before accepting this batch. Widths remain browser emulation, not a physical device.
 No real mail, no provider call and no production access occurred; both paid AI
 allowances are unchanged. Nothing here is production or deployment acceptance.
+
+**Superseded part of the batch B record:** its twelve-combination matrix set
+`localStorage.theme`, a key batch B itself retired in favour of
+`utils_theme_device`/`utils_theme_applied`, so the light/dark axis of that particular
+run did not exercise what it claimed. The overflow and 40px-target numbers stand (they
+were measured on the actually rendered page), but the theme split should be taken from
+the C2 re-measurement below, which asserts the applied class on every run. The two
+things this entry called unverified — screenshot review and `ui/select` keyboard
+operation — were both completed during the C2 pass and are recorded there.
+
+**Batch C2 local implementation verification (2026-10-14):** 100 regressions pass,
+including 10 new cases in `tests/export.test.cjs` on a dedicated isolated database:
+anonymous export is 401 and a login older than 24 hours is `reauth_required` on both
+endpoints while session listing keeps the same gate; the whole query surface is
+rejected before any SQL for an unknown parameter, a bad format, a non-UUID
+conversation, a malformed or inverted date range, or combining a conversation with a
+range; an account with no conversations still exports its profile; the document
+carries scope, counts, completeness, limits and the explicit exclusion list; a
+conversation owned by somebody else is `not_found` and another account's titles,
+content and address never appear; **the serialized body is checked against the real
+stored values** — the credential hash, the live session token, the current OTP, the
+provider and auth secrets, the native SDK session id and the raw `usage_json` column —
+and none of them appears in either format; a turn left `streaming` with no owning live
+query is reported as `failed`/`interrupted` rather than complete, a genuinely released
+reservation keeps its own status, and a turn with no usage row yields no token figures
+at all; exceeding the conversation ceiling returns 413 with a `too_large` summary and
+**no** `Content-Disposition`, while narrowing to one conversation or one month
+produces a complete document whose stated scope matches exactly what it contains;
+responses are `no-store`, `vary: Cookie` and attachment-named with a date only; and a
+table-by-table snapshot before and after exporting, and again after re-running
+migrations, is unchanged. `npm run build` exits 0 and `npx eslint src` is clean.
+Default `npm run lint` still fails with the same 19 pre-existing CommonJS-import
+errors in six ignored `data/investigation/**` private QA helpers — unchanged in count
+and location, none from this work. Reported as two separate results, not a
+default-lint pass.
+
+Artefacts were generated for a person to read, not only to assert on: three seeded
+accounts (one with a mixed-script conversation, one archived needing rebuild, one
+failed turn with empty content, one released reservation, and a control account whose
+data must not appear) produced a summary, a full JSON export, a full Markdown export,
+a single-conversation Markdown export, a second account's JSON and an empty-account
+JSON under ignored `data/investigation/account-c2-20261014/artifacts/`. The Markdown
+and the JSON structure, counts, ordering, scope statements and exclusion footer were
+read directly. Reading the Markdown found a real defect the assertions had missed: the
+pinned-source-context line failed to close its inline code span and leaked a stray
+quote character; it is fixed and now asserted.
+
+Browser QA used a fresh loopback fixture database with runtime-generated credentials,
+intercepted mail and AI disabled. Verified in the running UI: the export card is
+collapsed by default and loads its summary on first expand, reporting 2 conversations,
+4 messages and 2 usage records with the activity span; narrowing to one conversation
+rewrites both download links to carry that id, disables the date fields through their
+fieldset with an explanatory line, and the fetched document reports
+`scope.kind: conversation` with exactly that conversation; clearing the narrowing and
+choosing a UTC month range instead produces `scope.kind: dateRange` selecting only the
+archived September conversation; the privacy note states the no-store, non-shareable,
+non-storage and exclusion guarantees. Twelve combinations (en/zh × light/dark ×
+360/768/1280px) rendered the expanded card with no horizontal overflow and no
+interactive target below 40px, **with the applied `dark`/`light` class asserted on
+every run** after the batch B key mistake was found; page geometry was identical
+between themes. Three images were captured and read: the en/light/360 expanded card
+(head and lower half) and a full-page zh/dark/1280 of the whole account centre.
+axe-core 4.10.2 reported zero violations and zero incomplete checks on the account page
+and on the export card alone. Keyboard operation of the `ui/select` triggers was
+confirmed with real keys: Enter opened the listbox, ArrowDown and Enter selected an
+option, the download links updated and `:focus-visible` kept a visible outline.
+
+Limits of this C2 record: the over-limit 413 path and the suggested-segment buttons
+were exercised by regression tests, not by rendering an account above the ceiling in
+the browser; the browser pass used a two-conversation fixture. Widths remain
+same-origin-frame browser emulation, not a physical device, and downloads were
+verified by fetching the exact link URLs the card renders rather than by inspecting
+files in the browser's download manager. No production data was exported, no real mail
+was sent and no paid AI call was made; both allowances are unchanged. Nothing here is
+production or deployment acceptance.

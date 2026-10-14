@@ -4,6 +4,7 @@ import { getAuth } from "./server";
 import { consumeLimits, privateKey } from "./limits";
 import { withAccountChange, beforePasswordWrite } from "./lifecycle";
 import { isLanguage, isTheme, readPreferences, writePreferences } from "./preferences";
+import { buildExport, exportSummary, parseScope } from "./export";
 import { availability } from "../agent/usage";
 
 function json(data: unknown, status = 200, cookies?: Headers) {
@@ -21,7 +22,7 @@ function browserInfo(agent: string | null | undefined) {
 export async function handleAccount(request: Request) {
   try {
     const path = new URL(request.url).pathname.slice("/api/account".length);
-    const reads = ["", "/sessions", "/preferences", "/usage"], writes = ["/profile", "/password", "/sessions/revoke", "/preferences"];
+    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary"], writes = ["/profile", "/password", "/sessions/revoke", "/preferences"];
     if (!(request.method === "GET" ? reads : request.method === "POST" ? writes : []).includes(path)) return fail("not_found", 404);
     const headers = new Headers(request.headers);
     headers.set("x-utils-client-ip", process.env.TRUST_CLOUDFLARE_IP === "1" ? request.headers.get("cf-connecting-ip") || "unknown" : "local");
@@ -35,6 +36,33 @@ export async function handleAccount(request: Request) {
       if (path === "/preferences") return json({ preferences: readPreferences(identity.user.id) });
       if (path === "/usage") return json({ usage: availability(identity.user.id) });
       if (Date.now() - new Date(identity.session.createdAt).getTime() >= 86_400_000) return fail("reauth_required", 403);
+      // Reading a whole history is a sensitive read, so it shares session
+      // listing's freshAge gate and re-checks the login after assembly.
+      if (path === "/export" || path === "/export/summary") {
+        const query = parseScope(new URL(request.url).searchParams);
+        if ("error" in query) return fail(query.error, query.error === "not_found" ? 404 : 400);
+        const readBoundary = new Date().toISOString();
+        if (path === "/export/summary")
+          return json({ summary: exportSummary(identity.user.id, query.scope) });
+        const outcome = buildExport(identity.user, query.format, query.scope, readBoundary);
+        if ("error" in outcome) {
+          if (outcome.error === "too_large")
+            return json({ error: "too_large", summary: outcome.summary }, 413);
+          return fail(outcome.error, 404);
+        }
+        // The login that authorized this read must still be the current one, so a
+        // revocation or account switch mid-assembly cannot emit the old data.
+        if ((await accountSession(headers))?.session.id !== identity.session.id)
+          return fail("unauthorized", 401);
+        return new Response(outcome.result.body, {
+          headers: {
+            "cache-control": "no-store",
+            vary: "Cookie",
+            "content-type": outcome.result.contentType,
+            "content-disposition": `attachment; filename="${outcome.result.filename}"`,
+          },
+        });
+      }
       const sessions = await auth.api.listSessions({ headers });
       return json({ sessions: sessions.map((s) => ({
         id: s.id, current: s.id === identity.session.id,

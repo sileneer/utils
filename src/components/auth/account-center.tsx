@@ -27,6 +27,7 @@ import { hasUnsaved, markUnsaved } from "@/lib/unsaved";
 import { readDeviceTheme } from "@/lib/theme-device";
 import type { Availability } from "@/lib/chat/history";
 import type { Preferences as AccountPreferences } from "@/lib/auth/preferences";
+import type { ExportSummary } from "@/lib/auth/export";
 
 type LoginSession = { id: string; current: boolean; createdAt: string; expiresAt: string; browser: string; system: string };
 function Field({ label, error, id, ...props }: React.ComponentProps<typeof Input> & { label: string; error?: string; id: string }) {
@@ -41,6 +42,7 @@ function Summary({ user }: { user: AccountUser }) {
     { id: "security", label: t("security") },
     { id: "sessions", label: t("sessions") },
     { id: "usage", label: t("usage") },
+    { id: "export", label: t("export") },
   ];
   return <Card role="region" aria-label={t("summaryLabel")}><CardContent className="space-y-4">
     <div className="flex flex-wrap items-center gap-3">
@@ -444,11 +446,106 @@ function UsageCard() {
     </Collapsible>
   </CardContent></Card>;
 }
+/** Read-only personal data export (DESIGN §5.12). Nothing here deletes, revokes or
+ * shares anything: the card only links to a private, no-store attachment. */
+function ExportCard({ onFreshness }: { onFreshness: (stale: boolean) => void }) {
+  const t = useTranslations("account");
+  const locale = useLocale();
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "reauth" | "failed">("idle");
+  const [summary, setSummary] = useState<ExportSummary>();
+  const [conversation, setConversation] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const load = useCallback(async () => {
+    setStatus("loading");
+    try {
+      const response = await fetch("/api/account/export/summary", { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+      if (response.status === 403) { setStatus("reauth"); setSummary(undefined); onFreshness(true); return; }
+      if (!response.ok) { setStatus("failed"); onFreshness(false); return; }
+      const data: { summary?: ExportSummary } = await response.json();
+      if (!data.summary) { setStatus("failed"); return; }
+      setSummary(data.summary);
+      setStatus("ready");
+      onFreshness(false);
+    } catch { setStatus("failed"); }
+  }, [onFreshness]);
+  useEffect(() => { if (open && status === "idle") queueMicrotask(() => void load()); }, [open, status, load]);
+  const narrowed = conversation !== "" || from !== "" || to !== "";
+  const scope = new URLSearchParams();
+  if (conversation) scope.set("conversation", conversation);
+  else { if (from) scope.set("from", from); if (to) scope.set("to", to); }
+  const link = (format: "json" | "markdown") => {
+    const params = new URLSearchParams(scope);
+    params.set("format", format);
+    return `/api/account/export?${params.toString()}`;
+  };
+  const stamp = (ms: number | null) => (ms === null ? "—" : new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(ms)));
+  const blocked = status === "ready" && summary ? !summary.complete && !narrowed : false;
+  return <Card><CardHeader><CardTitle><h2>{t("export")}</h2></CardTitle><CardDescription>{t("exportDescription")}</CardDescription></CardHeader><CardContent>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <Button variant="outline" className="min-h-10 w-full justify-between gap-2 text-left">
+          <span>{open ? t("exportCollapse") : t("exportLoad")}</span>
+          {summary && status === "ready" && <span className="text-xs font-normal text-muted-foreground">{t("exportSummaryCounts", { conversations: summary.counts.conversations, messages: summary.counts.messages })}</span>}
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-4 pt-4">
+        {status === "loading" && <Skeleton className="h-24 w-full" />}
+        {status === "failed" && <Alert><AlertDescription className="space-y-2"><p>{t("exportFailed")}</p><Button variant="outline" className="min-h-10" onClick={() => void load()}>{t("exportRetry")}</Button></AlertDescription></Alert>}
+        {status === "reauth" && <Alert><AlertDescription className="space-y-2"><p>{t("reauth")}</p><Button variant="outline" className="min-h-10" asChild><Link href={accountLink("login", "/account#export", true)}>{t("refreshLogin")}</Link></Button></AlertDescription></Alert>}
+        {summary && (status === "ready" || status === "reauth") && <>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <div><dt className="text-muted-foreground">{t("exportConversations")}</dt><dd className="font-medium">{summary.counts.conversations}</dd></div>
+            <div><dt className="text-muted-foreground">{t("exportMessages")}</dt><dd className="font-medium">{summary.counts.messages}</dd></div>
+            <div><dt className="text-muted-foreground">{t("exportUsage")}</dt><dd className="font-medium">{summary.counts.usageRecords}</dd></div>
+            <div><dt className="text-muted-foreground">{t("exportActivity")}</dt><dd className="font-medium">{stamp(summary.counts.oldestAt)} – {stamp(summary.counts.newestAt)}</dd></div>
+          </dl>
+          {summary.counts.conversations === 0 && <p className="text-sm text-muted-foreground">{t("exportEmpty")}</p>}
+          {!summary.complete && !narrowed && <Alert><AlertDescription className="space-y-3">
+            <p>{t("exportOverLimit", { limit: summary.limits.conversations })}</p>
+            <p className="text-xs text-muted-foreground">{t("exportNeverPartial")}</p>
+            <div className="flex flex-wrap gap-2">
+              {summary.suggestedSegments.dateRanges.slice(0, 4).map((range) => <Button key={`${range.from}-${range.to}`} type="button" variant="outline" className="min-h-10" onClick={() => { setConversation(""); setFrom(range.from); setTo(range.to); }}>{t("exportRange", { from: range.from, to: range.to })}</Button>)}
+            </div>
+          </AlertDescription></Alert>}
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="export-conversation">{t("exportScopeConversation")}</Label>
+              <Select value={conversation || "all"} onValueChange={(value) => { setConversation(value === "all" ? "" : value); if (value !== "all") { setFrom(""); setTo(""); } }}>
+                <SelectTrigger id="export-conversation" className="h-11! w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("exportScopeAll")}</SelectItem>
+                  {summary.suggestedSegments.conversations.map((item) => <SelectItem key={item.id} value={item.id}>{item.title || item.id.slice(0, 8)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <fieldset className="space-y-2" disabled={conversation !== ""}>
+              <legend className="text-sm font-medium">{t("exportScopeDates")}</legend>
+              <div className="flex flex-wrap gap-3">
+                <div className="min-w-40 flex-1"><Field label={t("exportFrom")} id="export-from" type="date" max={to || undefined} value={from} onChange={(event) => setFrom(event.target.value)} /></div>
+                <div className="min-w-40 flex-1"><Field label={t("exportTo")} id="export-to" type="date" min={from || undefined} value={to} onChange={(event) => setTo(event.target.value)} /></div>
+              </div>
+              {conversation !== "" && <p className="text-xs text-muted-foreground">{t("exportDatesDisabled")}</p>}
+            </fieldset>
+            {(narrowed || summary.complete) && <div className="flex flex-wrap items-center gap-3">
+              <Button className="min-h-10" variant="outline" asChild><a href={link("json")} download>{t("exportDownloadJson")}</a></Button>
+              <Button className="min-h-10" variant="outline" asChild><a href={link("markdown")} download>{t("exportDownloadMarkdown")}</a></Button>
+              {narrowed && <Button className="min-h-10" variant="ghost" onClick={() => { setConversation(""); setFrom(""); setTo(""); }}>{t("exportClearScope")}</Button>}
+            </div>}
+            <p className="text-xs leading-relaxed text-muted-foreground">{t("exportPrivacy")}</p>
+            {blocked && <p role="status" className="text-sm text-destructive">{t("exportBlocked")}</p>}
+          </div>
+        </>}
+      </CollapsibleContent>
+    </Collapsible>
+  </CardContent></Card>;
+}
 export function AccountCenter() {
   const { user, loading, failed, refresh, preferences } = useAccount();
   const t = useTranslations("account");
   const [staleSession, setStaleSession] = useState(false);
   const handleFreshness = useCallback((stale: boolean) => setStaleSession(stale), []);
   if (!user) return <div className="mx-auto max-w-2xl space-y-4"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1>{loading ? <Skeleton className="h-48 w-full" /> : failed ? <><p role="alert">{t("actionFailed")}</p><Button className="min-h-10" onClick={() => void refresh()}>{t("retryAccount")}</Button></> : <><p>{t("sessionExpired")}</p><Button className="min-h-10" asChild><Link href={accountLink("login", "/account")}>{t("login")}</Link></Button></>}</div>;
-  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section></div>;
+  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section></div>;
 }

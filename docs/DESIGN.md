@@ -443,6 +443,35 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   than inventing a second vocabulary for the same numbers.
 - No new dependency, base component or color token is introduced.
 
+### 5.12 Personal data export — C2 approved 2026-10-14
+
+- Register the export as a collapsed-by-default card in the account centre, after
+  the usage card, reusing the batch A Collapsible disclosure: the trigger names the
+  action, opening focuses the first control, and every result stays inside the
+  panel. It adds a `#export` anchor to the summary navigation. No new base
+  component, dialog or route is introduced.
+- The card reads a scale summary first and shows what is about to be exported —
+  conversation, message and usage-record counts plus the account's oldest and newest
+  activity — before offering any download. Download controls are plain same-origin
+  links to the export endpoint with `format=json` or `format=markdown`; the browser
+  handles the attachment, so exported text never enters localStorage, sessionStorage,
+  a cookie or the URL.
+- Scope controls are a format pair and optional narrowing (one conversation, or a
+  date range). Narrowing is offered, not hidden, when the summary reports the
+  request exceeds the single-response limits, and the wording states the scope of
+  what each link produces. A partial export is labelled partial in both the card and
+  the file; the interface never presents a segment as the whole account.
+- States: loading summary, summary unavailable with manual retry, re-verification
+  required with the existing in-place entry, within limits, over limits, empty
+  (no conversations yet — profile export is still offered and explained), and
+  download unavailable. Failure text says the export changed nothing. There is no
+  progress promise, polling or background job in this release.
+- Confirm nothing destructive: export is read-only, so no AlertDialog is registered
+  for it, and no copy may imply deletion, revocation or a shareable link.
+- Both locales, light and dark, and 360/768/1280px apply; long conversation titles
+  and file names wrap or truncate with CSS rather than forcing horizontal
+  overflow, and every control keeps the §5.10 40px target.
+
 ## 6. Motion
 
 - Micro-interactions (hover, focus, press): CSS transitions, `150ms ease-out`.

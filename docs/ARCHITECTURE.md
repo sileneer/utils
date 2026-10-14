@@ -355,6 +355,64 @@ presentation-only lookup that returns both values as unset on any error, missing
 table or anonymous visit; this path chooses what to display and is never an
 authorization decision, which continues to run through `identity.ts`.
 
+#### Personal data export
+
+GET `/api/account/export/summary` and GET `/api/account/export` return the caller's
+own data as a private download. Both require a current verified active identity
+**and** a login created within 24 hours — the same explicit freshAge gate that
+protects session listing — because reading a whole history is a sensitive read, not
+a routine page load; an older login gets `reauth_required` and the card offers the
+in-place re-verification entry. Anonymous gets 401. These are reads: they take no
+password, hold no account-change fence, and mutate nothing.
+
+Query surface is allowlisted and validated before any SQL: `format` is `json` or
+`markdown` (default `json`); `conversation` is an owned UUID; `from`/`to` are
+`YYYY-MM-DD` UTC day bounds, `from` inclusive and `to` exclusive. Everything else,
+including an unknown parameter, is `bad_request`. Ownership is enforced in SQL
+against the caller's current `user.id`, so another account's conversation id is
+`not_found` rather than forbidden, and no listing call can widen the scope.
+
+All rows for one export are read inside a single SQLite transaction, so the result
+is one consistent snapshot; `readBoundary` records the instant that snapshot was
+taken and `generatedAt` the instant the body was assembled. After assembly the
+handler re-checks the session that authorized it and discards the body with 401 if
+the login was revoked, rotated or switched meanwhile, so a dead identity cannot
+keep streaming an earlier user's data.
+
+First release is bounded on purpose, with no queue, background job or unbounded
+read: at most 200 conversations, 2000 messages and 8 MiB of serialized output per
+response, counted before the body is built. Anything above that is reported as a
+partial export — `complete: false`, `truncated: true` and a reason — and the caller
+must request per-conversation or per-date segments. A segment always states its own
+scope and is never described as a full snapshot; whole-account export at database
+scale needs the separately designed controlled background job, private staging and
+expiry from PLANNING §14.6 before it can be claimed.
+
+The JSON document is versioned (`schemaVersion: 1`) and carries the scope, counts,
+completeness and an explicit `excluded` list. Included: safe profile fields, saved
+preferences, and each conversation's id, title, archive state, times, pinned source
+revision, message positions/roles/content/timestamps/status/normalized error, the
+pinned source context (bounded excerpt text, revision, section/item), and reported
+per-turn usage through the same public `recordedDetails` allowlist the message
+details UI already uses. Missing token or timing data stays absent — it is never
+zero-filled, and cost is not computed, estimated or implied. Messages still pending
+or streaming are reported with the existing active-turn normalization and marked as
+of the export instant, never as completed.
+
+Excluded and stated as such: password hashes and credential rows, verification
+codes and OTP records, session tokens and session rows, native SDK session ids,
+mail delivery records, rate-limit buckets, any other user's rows, private
+environment values, SDK internal transcripts and the full book cache or version
+workspace. Retained source revisions are referenced by identifier only; the export
+never copies book content the user did not already pin into a message.
+
+Responses are `no-store`, vary by Cookie, and carry `Content-Disposition: attachment`
+with a filename that embeds no personal data. There is no shareable or guessable
+public link, no token in a URL, and the browser stores nothing in
+localStorage/sessionStorage: the card links directly to the endpoint so the file
+goes to the download manager. Import, cross-account merge and any delete-on-export
+behaviour are explicitly out of scope.
+
 lifecycle.ts coordinates logout/revocation/password changes per account across route
 bundles. A fence blocks new query registration; a per-owner authorization version
 also rejects requests that authenticated before the fence but register after it.
