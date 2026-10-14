@@ -393,6 +393,56 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   and re-running the challenge; sending acceptance is not described as
   delivery. No new dependency, base component or color token is introduced.
 
+### 5.11 Account preferences and personal usage — batch B approved 2026-10-14
+
+- **Two layers, one visible precedence.** Theme and language exist as a device
+  setting (theme in localStorage `utils_theme_device`, language in the
+  `NEXT_LOCALE` cookie) and, optionally, as an account setting. An explicitly
+  saved account value wins; an unset one falls through to the device value and
+  then to the system default. The header `ThemeToggle` and `LanguageSwitcher`
+  stay device-scoped and keep working anonymously; they do not write to the
+  account. When an account preference overrides the layer the header just
+  changed, the control says so in a status line naming the active value instead
+  of silently doing nothing, and points at `#preferences`.
+- **Preferences section** (`#preferences`) is an account-centre card using the
+  batch A Card/Label pattern plus the registered `ui/select` primitive (its first
+  use in this project). Its trigger sizes itself with
+  `data-[size=default]:h-8`, which outranks a plain height class, so the trigger
+  carries `h-11!` to reach the §5.10 40px target; one
+  select per setting, each including an explicit follow-device choice that stores
+  nothing. Choices are theme
+  device / system / light / dark and language
+  device default / English / Simplified Chinese. Saving follows the batch A profile
+  contract — compare
+  against the server-confirmed value, show Save/Cancel only for a real change,
+  block duplicate submits, and keep saving/saved/failed feedback inside the card.
+  An external save is adopted while nothing is pending locally, and a local edit
+  survives an external save; the comparison is against the last confirmed value so
+  an incoming save is not mistaken for a local edit.
+  Nothing is uploaded on first login, and applying an account value never
+  rewrites the device value.
+- **Language changes reload the document** because messages are server-rendered,
+  so any control that changes language first checks for unsaved form edits and
+  confirms through the registered AlertDialog pattern (same shape as the account
+  menu's logout confirm). Theme changes apply live and need no confirm. No
+  password, OTP or form secret is persisted to make a reload survivable.
+- **Signing out restores independent device settings**: the account layer drops
+  out of resolution and the applied theme returns to the device value, so one
+  account's preference cannot leak into the next identity or into anonymous use.
+  Other tabs re-resolve through the existing account event.
+- **Personal usage card** is a collapsed-by-default, lazily loaded card in the
+  account centre — not part of identity loading and not in the header menu. It
+  reads only the personal read-only usage wrapper and renders used/limit/remaining
+  for the current UTC day, the reset instant formatted in the browser's own time
+  zone with the zone name shown, and one of the four existing
+  `chat.availability_*` states. AI being switched off reads as unavailable, never
+  as an exhausted quota, and no token or cost figure is estimated or implied — the
+  card repeats the existing request-count scope note. Its failure shows a retry
+  inside the card only; identity, profile, security and public reading keep
+  working. Reuse `chat.quotaSummary` / `quotaReset` / `quotaScope` wording rather
+  than inventing a second vocabulary for the same numbers.
+- No new dependency, base component or color token is introduced.
+
 ## 6. Motion
 
 - Micro-interactions (hover, focus, press): CSS transitions, `150ms ease-out`.

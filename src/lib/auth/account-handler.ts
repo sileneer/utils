@@ -3,6 +3,8 @@ import { accountSession } from "./identity";
 import { getAuth } from "./server";
 import { consumeLimits, privateKey } from "./limits";
 import { withAccountChange, beforePasswordWrite } from "./lifecycle";
+import { isLanguage, isTheme, readPreferences, writePreferences } from "./preferences";
+import { availability } from "../agent/usage";
 
 function json(data: unknown, status = 200, cookies?: Headers) {
   const headers = new Headers({ "cache-control": "no-store", vary: "Cookie" });
@@ -19,7 +21,7 @@ function browserInfo(agent: string | null | undefined) {
 export async function handleAccount(request: Request) {
   try {
     const path = new URL(request.url).pathname.slice("/api/account".length);
-    const reads = ["", "/sessions"], writes = ["/profile", "/password", "/sessions/revoke"];
+    const reads = ["", "/sessions", "/preferences", "/usage"], writes = ["/profile", "/password", "/sessions/revoke", "/preferences"];
     if (!(request.method === "GET" ? reads : request.method === "POST" ? writes : []).includes(path)) return fail("not_found", 404);
     const headers = new Headers(request.headers);
     headers.set("x-utils-client-ip", process.env.TRUST_CLOUDFLARE_IP === "1" ? request.headers.get("cf-connecting-ip") || "unknown" : "local");
@@ -28,6 +30,10 @@ export async function handleAccount(request: Request) {
     const auth = getAuth();
     if (request.method === "GET") {
       if (path === "") return json({ user: identity.user });
+      // Presentation and personal counts are not security data: a long-lived
+      // login may still choose its theme and see its own usage.
+      if (path === "/preferences") return json({ preferences: readPreferences(identity.user.id) });
+      if (path === "/usage") return json({ usage: availability(identity.user.id) });
       if (Date.now() - new Date(identity.session.createdAt).getTime() >= 86_400_000) return fail("reauth_required", 403);
       const sessions = await auth.api.listSessions({ headers });
       return json({ sessions: sessions.map((s) => ({
@@ -45,7 +51,7 @@ export async function handleAccount(request: Request) {
       body = JSON.parse(raw);
     } catch { return fail("bad_request", 400); }
     if (!body || typeof body !== "object" || Array.isArray(body)) return fail("bad_request", 400);
-    const allowed = path === "/profile" ? ["name"] : path === "/password" ? ["currentPassword", "newPassword"] : ["password", "id", "others"];
+    const allowed = path === "/profile" ? ["name"] : path === "/password" ? ["currentPassword", "newPassword"] : path === "/preferences" ? ["theme", "language"] : ["password", "id", "others"];
     if (Object.keys(body).some((key) => !allowed.includes(key))) return fail("bad_request", 400);
     if (!consumeLimits([{ key: `account:${privateKey(identity.user.id)}:${path}`, max: 10, window: 60_000 }])) return fail("rate_limited", 429);
     const call = async (route: string, payload: unknown) => {
@@ -59,6 +65,21 @@ export async function handleAccount(request: Request) {
     if (path === "/profile") {
       if (typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 80) return fail("bad_request", 400);
       return await call("/update-user", { name: body.name.trim() });
+    }
+    if (path === "/preferences") {
+      // Presentation settings only: no password, no freshness gate and no
+      // account-wide stop, but an explicit null still has to be a real key.
+      if (!Object.keys(body).length) return fail("bad_request", 400);
+      const patch: { theme?: "system" | "light" | "dark" | null; language?: "en" | "zh" | null } = {};
+      if ("theme" in body) {
+        if (body.theme !== null && !isTheme(body.theme)) return fail("bad_request", 400);
+        patch.theme = body.theme;
+      }
+      if ("language" in body) {
+        if (body.language !== null && !isLanguage(body.language)) return fail("bad_request", 400);
+        patch.language = body.language;
+      }
+      return json({ preferences: writePreferences(identity.user.id, patch) });
     }
     if (Date.now() - new Date(identity.session.createdAt).getTime() >= 86_400_000) return fail("reauth_required", 403);
     const password = path === "/password" ? body.currentPassword : body.password;

@@ -247,7 +247,12 @@ Better Auth's generated schema is versioned in `migrations/001-auth.sql`:
 `user`, `account`, `session`, `verification`, `rateLimit`. Product schema is in
 `002-product.sql`: `conversations`, `messages`, `limits`, `mail_requests`,
 `ai_usage`. `003-chat-history.sql` adds optional `conversation_meta`
-(title/archived_at) and owner/time/usage indexes. Legacy conversation
+(title/archived_at) and owner/time/usage indexes. `004-account-preferences.sql`
+adds `user_preferences` (one row per `user.id`: nullable `theme`, nullable
+`language`, `updated_at`), the only product table touched by batch B. A null
+column means "no account choice" and falls through to the device layer; the
+table stores presentation settings only and holds no role, status or verified
+data, which remain server-only columns on `user`. Legacy conversation
 columns stay unchanged so old-image positional writes remain compatible. A
 missing title override falls back to the first user question (100 characters);
 no model is called to name conversations. User role/status are server-only
@@ -323,7 +328,32 @@ mutations require fresh login plus current-password verification. Origin, JSON,
 bounded bodies, per-account action limits and field allowlists apply. Generic
 Better Auth mutation/session endpoints remain blocked by the public auth facade.
 The wrapper forwards necessary Set-Cookie headers but discards raw library output.
-No schema migration or new credential store is needed.
+Batch A needed no schema migration or new credential store; batch B adds only the
+`user_preferences` table described in §5.
+
+Preferences and personal usage are account-scoped presentation and read surfaces,
+not security mutations: GET and POST `/api/account/preferences` and GET
+`/api/account/usage` require only a current verified active identity, the same
+freshness rule that gates session listing does not apply, and no password
+re-verification is demanded. POST /preferences accepts only `theme` and
+`language`, each either a permitted value (`system|light|dark`, `en|zh`) or an
+explicit null that clears the stored choice; unknown fields, other roles/status
+writes and oversized bodies are rejected by the existing allowlist, origin, JSON
+and per-account-path limit checks. The response projects only the stored columns.
+
+GET /api/account/usage returns exactly the existing `availability(user.id)`
+projection — enabled, used, limit, remaining, resetAt and the ready/busy/quota/
+disabled service state — computed by the same `usage.ts` rules the chat panel
+already uses, so `released` rows are excluded and failed/stopped turns settle as
+before. It reads only the caller's own rows, never another user's, calls no model,
+does not require AI to be configured or enabled, and is not the administrator
+aggregate of §10. Its failure affects only the usage card; identity, profile,
+security operations and public reading are independent of it.
+
+Server-side rendering resolves the account layer of theme and language through a
+presentation-only lookup that returns both values as unset on any error, missing
+table or anonymous visit; this path chooses what to display and is never an
+authorization decision, which continues to run through `identity.ts`.
 
 lifecycle.ts coordinates logout/revocation/password changes per account across route
 bundles. A fence blocks new query registration; a per-owner authorization version
@@ -461,9 +491,13 @@ context. All interface conventions live in DESIGN §5.6.
 
 `next-intl` 4.14 in **cookie mode** — no URL locale prefix, no middleware, no proxy.
 
-- Resolution order (`src/i18n/locale.ts`): `NEXT_LOCALE` cookie → `Accept-Language` negotiation (q-value sorted, `zh*`/`en*`) → `en`.
+- Resolution order (`src/i18n/locale.ts`): explicit account preference →
+  `NEXT_LOCALE` cookie → `Accept-Language` negotiation (q-value sorted, `zh*`/`en*`)
+  → `en`. An account with no saved language changes nothing for the device, and an
+  anonymous or unreadable-preferences visit falls straight through to the cookie.
+  The account lookup is presentation-only and fails open to the device layer.
 - All visible copy lives in `messages/en.json` + `messages/zh.json`, including `tools.<slug>.name/description`. `src/lib/tools.ts` is intentionally content-free (slug, category, status, icon only).
-- `html[lang]` is `en` / `zh-CN` via `htmlLang()`; the header `LanguageSwitcher` writes the cookie and reloads.
+- `html[lang]` is `en` / `zh-CN` via `htmlLang()`; the header `LanguageSwitcher` writes the cookie and reloads, so it stays the device-layer control. The account centre's language choice writes the account preference instead and also reloads, warning first when a form holds unsaved edits.
 - `getTranslations` must be imported from `next-intl/server` (GOTCHAS §F).
 - Consequence: pages that read cookies/headers are dynamically rendered.
 

@@ -1,25 +1,62 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { useTheme } from "next-themes";
 import type { AccountUser } from "@/lib/auth/identity";
+import type { Preferences } from "@/lib/auth/preferences";
 import { accountErrorKey, type AccountErrorScope } from "@/lib/auth/errors";
 import { ACCOUNT_EVENT, ACCOUNT_STORAGE, notifyAccountChange, storageChangeKind } from "@/lib/auth/events";
+import { readDeviceTheme } from "@/lib/theme-device";
 
 type AccountState = {
   user: AccountUser | null | undefined;
   loading: boolean;
   failed: boolean;
   refresh: (invalidate?: boolean) => Promise<void>;
+  /** undefined while unknown, null when anonymous or unreadable (DESIGN §5.11). */
+  preferences: Preferences | undefined;
 };
 const Context = createContext<AccountState | null>(null);
+
+/**
+ * Applies the effective theme: an explicitly saved account choice wins, and an
+ * unset one leaves the device value in charge. It writes only next-themes'
+ * applied cache, so signing out or switching accounts restores the device
+ * setting instead of leaking one account's preference into the next.
+ */
+function ThemeSynchronizer({ preferences }: { preferences: Preferences | undefined }) {
+  const { theme, setTheme } = useTheme();
+  useEffect(() => {
+    // Stay put while the account layer is still unknown, otherwise the device
+    // theme would flash before the saved choice arrives.
+    if (preferences === undefined) return;
+    const target = preferences.theme ?? readDeviceTheme();
+    if (theme !== target) setTheme(target);
+  }, [preferences, theme, setTheme]);
+  return null;
+}
+
 export function AccountProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AccountUser | null>();
+  const [preferences, setPreferences] = useState<Preferences>();
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const version = useRef(0);
+  const loadPreferences = useCallback(async (generation: number) => {
+    try {
+      const response = await fetch("/api/account/preferences", { cache: "no-store", signal: AbortSignal.timeout(5000) });
+      if (!response.ok) throw new Error();
+      const data: { preferences?: Preferences } = await response.json();
+      if (generation !== version.current) return;
+      setPreferences(data.preferences ?? { theme: null, language: null });
+    } catch {
+      // An unreadable preference layer falls back to the device, never blocks.
+      if (generation === version.current) setPreferences({ theme: null, language: null });
+    }
+  }, []);
   const refresh = useCallback(async (invalidate = false) => {
     const generation = ++version.current;
-    if (invalidate) setUser(undefined);
+    if (invalidate) { setUser(undefined); setPreferences({ theme: null, language: null }); }
     setLoading(true);
     try {
       const response = await fetch("/api/account", { cache: "no-store", signal: AbortSignal.timeout(5000) });
@@ -28,9 +65,11 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
       if (generation !== version.current) return;
       setUser(data.user);
       setFailed(false);
+      if (data.user) void loadPreferences(generation);
+      else setPreferences({ theme: null, language: null });
     } catch { if (generation === version.current) setFailed(true); }
     finally { if (generation === version.current) setLoading(false); }
-  }, []);
+  }, [loadPreferences]);
   useEffect(() => {
     const generation = version;
     queueMicrotask(() => void refresh());
@@ -50,7 +89,10 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("focus", focus);
     };
   }, [refresh]);
-  return <Context.Provider value={{ user, loading, failed, refresh }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ user, loading, failed, refresh, preferences }}>
+    <ThemeSynchronizer preferences={preferences} />
+    {children}
+  </Context.Provider>;
 }
 export function useAccount() {
   const value = useContext(Context);
@@ -81,7 +123,9 @@ export async function accountAction(path: string, body: object) {
     throw new Error(error);
   }
   notifyAccountChange(
-    path === "/api/account/profile" ? "profile"
+    // "profile" means "re-resolve without cancelling anything", which is also
+    // what a preference save needs: other tabs re-read it, no chat is stopped.
+    path === "/api/account/profile" || path === "/api/account/preferences" ? "profile"
       : path === "/api/account/password" || path === "/api/account/sessions/revoke" ? "session"
       : "security",
   );

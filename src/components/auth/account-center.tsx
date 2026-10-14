@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useForm, useWatch } from "react-hook-form";
@@ -18,10 +18,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { PasswordField } from "./password-field";
 import { accountAction, useAccount, useAccountError } from "./account-provider";
 import { isUnconfirmedError } from "@/lib/auth/errors";
+import { hasUnsaved, markUnsaved } from "@/lib/unsaved";
+import { readDeviceTheme } from "@/lib/theme-device";
+import type { Availability } from "@/lib/chat/history";
+import type { Preferences as AccountPreferences } from "@/lib/auth/preferences";
 
 type LoginSession = { id: string; current: boolean; createdAt: string; expiresAt: string; browser: string; system: string };
 function Field({ label, error, id, ...props }: React.ComponentProps<typeof Input> & { label: string; error?: string; id: string }) {
@@ -32,8 +37,10 @@ function Summary({ user }: { user: AccountUser }) {
   const initial = Array.from(user.name.trim())[0]?.toUpperCase() || "U";
   const sections = [
     { id: "profile", label: t("profile") },
+    { id: "preferences", label: t("preferences") },
     { id: "security", label: t("security") },
     { id: "sessions", label: t("sessions") },
+    { id: "usage", label: t("usage") },
   ];
   return <Card role="region" aria-label={t("summaryLabel")}><CardContent className="space-y-4">
     <div className="flex flex-wrap items-center gap-3">
@@ -71,6 +78,8 @@ function Profile({ user }: { user: AccountUser }) {
   });
   const draft = useWatch({ control, name: "name" }) ?? "";
   const dirty = draft.trim() !== user.name;
+  // A language switch reloads the document, so remember that this draft exists.
+  useEffect(() => { if (!dirty) return; return markUnsaved("profile"); }, [dirty]);
   // The confirmed name changed (this window, another tab or another device).
   // Adjusting during render keeps an unsaved draft: untouched fields follow the
   // new value, an edited field raises a conflict the user resolves themselves.
@@ -291,11 +300,155 @@ function Sessions({ onFreshness }: { onFreshness: (stale: boolean) => void }) {
     </AlertDialog>
   </CardContent></Card>;
 }
+const FOLLOW_DEVICE = "device";
+const emptySubscribe = () => () => {};
+
+/** Account layer of theme/language. Saving is explicit: nothing is uploaded on
+ * login, and the device layer keeps its own value (DESIGN §5.11). */
+function PreferencesCard({ saved }: { saved: AccountPreferences }) {
+  const t = useTranslations("account");
+  const th = useTranslations("theme");
+  const lg = useTranslations("language");
+  const failure = useAccountError("preferences");
+  // The device theme only exists in this browser, so reveal it after mount.
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
+  const [deviceTheme] = useState(() => readDeviceTheme());
+  const confirmedTheme = saved.theme ?? FOLLOW_DEVICE;
+  const confirmedLanguage = saved.language ?? FOLLOW_DEVICE;
+  const [draft, setDraft] = useState({ theme: confirmedTheme, language: confirmedLanguage });
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [done, setDone] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const pending = useRef(false);
+  // Compare against the last *confirmed* values, not the incoming ones: an
+  // external save must not look like a local edit, or it would never be adopted.
+  const [confirmed, setConfirmed] = useState({ theme: confirmedTheme, language: confirmedLanguage });
+  const dirty = draft.theme !== confirmed.theme || draft.language !== confirmed.language;
+  // Re-resolve when another tab or device saves, without dropping a local edit.
+  if (confirmed.theme !== confirmedTheme || confirmed.language !== confirmedLanguage) {
+    const previous = confirmed;
+    setConfirmed({ theme: confirmedTheme, language: confirmedLanguage });
+    if (draft.theme === previous.theme && draft.language === previous.language)
+      setDraft({ theme: confirmedTheme, language: confirmedLanguage });
+  }
+  useEffect(() => { if (!dirty) return; return markUnsaved("preferences"); }, [dirty]);
+  const edit = (patch: Partial<typeof draft>) => { setDraft((value) => ({ ...value, ...patch })); setDone(false); setNotice(""); setError(""); };
+  const cancel = () => { setDraft({ theme: confirmedTheme, language: confirmedLanguage }); setError(""); setNotice(""); setDone(false); };
+  const save = async () => {
+    if (pending.current) return;
+    pending.current = true;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    const languageChanged = draft.language !== confirmedLanguage;
+    try {
+      await accountAction("/api/account/preferences", {
+        theme: draft.theme === FOLLOW_DEVICE ? null : draft.theme,
+        language: draft.language === FOLLOW_DEVICE ? null : draft.language,
+      });
+      setDone(true);
+      // Language is server-rendered, so it needs a reload; never reload over
+      // another form's unsaved work — say when it will apply instead.
+      if (languageChanged && !hasUnsaved("preferences")) window.location.reload();
+      else if (languageChanged) setNotice(t("languageAppliesOnReload"));
+    } catch (e) { setError(failure(e)); }
+    finally { pending.current = false; setSaving(false); }
+  };
+  return <Card><CardHeader><CardTitle><h2>{t("preferences")}</h2></CardTitle><CardDescription>{t("preferencesDescription")}</CardDescription></CardHeader><CardContent className="space-y-5">
+    <div className="space-y-2">
+      <Label htmlFor="preference-theme">{t("themePreference")}</Label>
+      <Select value={draft.theme} onValueChange={(value) => edit({ theme: value })}>
+        <SelectTrigger id="preference-theme" className="h-11! w-full"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value={FOLLOW_DEVICE}>{t("followDevice")}</SelectItem>
+          <SelectItem value="system">{th("system")}</SelectItem>
+          <SelectItem value="light">{th("light")}</SelectItem>
+          <SelectItem value="dark">{th("dark")}</SelectItem>
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">{t("themePreferenceHint")}{mounted && dirty === false && draft.theme === FOLLOW_DEVICE ? ` ${t("deviceValue", { value: th(deviceTheme) })}` : ""}</p>
+    </div>
+    <div className="space-y-2">
+      <Label htmlFor="preference-language">{t("languagePreference")}</Label>
+      <Select value={draft.language} onValueChange={(value) => edit({ language: value })}>
+        <SelectTrigger id="preference-language" className="h-11! w-full"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value={FOLLOW_DEVICE}>{t("followDevice")}</SelectItem>
+          <SelectItem value="en">{lg("en")}</SelectItem>
+          <SelectItem value="zh">{lg("zh")}</SelectItem>
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">{t("languagePreferenceHint")}</p>
+    </div>
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
+    {done && !dirty && <p role="status" className="text-sm text-muted-foreground">{t("preferencesSaved")}</p>}
+    {dirty && <div className="flex flex-wrap items-center gap-3">
+      <Button type="button" className="min-h-10" disabled={saving} onClick={() => void save()}>
+        {saving && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}
+        {t("savePreferences")}
+      </Button>
+      <Button type="button" variant="outline" className="min-h-10" disabled={saving} onClick={cancel}>{t("cancel")}</Button>
+    </div>}
+  </CardContent></Card>;
+}
+
+/** Personal usage only: its own request, its own failure state, and no effect on
+ * identity, profile, security or public reading (DESIGN §5.11). */
+function UsageCard() {
+  const t = useTranslations("account");
+  const c = useTranslations("chat");
+  const locale = useLocale();
+  const [open, setOpen] = useState(false);
+  const [usage, setUsage] = useState<Availability>();
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  const load = useCallback(async () => {
+    setState("loading");
+    try {
+      const response = await fetch("/api/account/usage", { cache: "no-store", signal: AbortSignal.timeout(5000) });
+      if (!response.ok) throw new Error();
+      const data: { usage?: Availability } = await response.json();
+      if (!data.usage) throw new Error();
+      setUsage(data.usage);
+      setState("ready");
+    } catch { setState("failed"); }
+  }, []);
+  useEffect(() => { if (open && !usage) queueMicrotask(() => void load()); }, [open, usage, load]);
+  const reset = usage ? new Intl.DateTimeFormat(locale, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" }).format(usage.resetAt) : "";
+  return <Card><CardHeader><CardTitle><h2>{t("usage")}</h2></CardTitle><CardDescription>{t("usageDescription")}</CardDescription></CardHeader><CardContent>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <Button variant="outline" className="min-h-10 w-full justify-between gap-2 text-left">
+          <span>{open ? t("usageCollapse") : t("usageLoad")}</span>
+          {usage && <span className="text-xs font-normal text-muted-foreground">{c("availability_" + usage.service)}</span>}
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-3 pt-4">
+        {state === "loading" && <Skeleton className="h-20 w-full" />}
+        {state === "failed" && <Alert><AlertDescription className="space-y-2"><p>{t("usageFailed")}</p><Button variant="outline" className="min-h-10" onClick={() => void load()}>{t("usageRetry")}</Button></AlertDescription></Alert>}
+        {state === "ready" && usage && <>
+          <p role="status" className="text-sm font-medium">{c("availability_" + usage.service)}</p>
+          {/* AI switched off is not a spent quota: no counts are implied. */}
+          {usage.enabled ? <>
+            <p className="text-sm">{c("quotaSummary", { remaining: usage.remaining, limit: usage.limit })}</p>
+            <p className="text-sm text-muted-foreground">{c("quotaReset", { used: usage.used, time: reset })}</p>
+          </> : <p className="text-sm text-muted-foreground">{t("usageUnavailable")}</p>}
+          <p className="text-xs leading-relaxed text-muted-foreground">{c("quotaScope")}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="min-h-10" onClick={() => void load()}>{t("usageRefresh")}</Button>
+            <Button variant="ghost" className="min-h-10" asChild><Link href="/htlb">{t("usageOpenReader")}</Link></Button>
+          </div>
+        </>}
+      </CollapsibleContent>
+    </Collapsible>
+  </CardContent></Card>;
+}
 export function AccountCenter() {
-  const { user, loading, failed, refresh } = useAccount();
+  const { user, loading, failed, refresh, preferences } = useAccount();
   const t = useTranslations("account");
   const [staleSession, setStaleSession] = useState(false);
   const handleFreshness = useCallback((stale: boolean) => setStaleSession(stale), []);
   if (!user) return <div className="mx-auto max-w-2xl space-y-4"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1>{loading ? <Skeleton className="h-48 w-full" /> : failed ? <><p role="alert">{t("actionFailed")}</p><Button className="min-h-10" onClick={() => void refresh()}>{t("retryAccount")}</Button></> : <><p>{t("sessionExpired")}</p><Button className="min-h-10" asChild><Link href={accountLink("login", "/account")}>{t("login")}</Link></Button></>}</div>;
-  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section></div>;
+  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section></div>;
 }

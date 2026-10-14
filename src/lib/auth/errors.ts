@@ -1,7 +1,7 @@
 /** Safe wrapper error codes mapped to account copy keys, one scope per section.
  * Password, profile and session failures must not share the same message, and a
  * transport failure is always an unconfirmed result — never a success. */
-export type AccountErrorScope = "password" | "profile" | "sessions" | "auth";
+export type AccountErrorScope = "password" | "profile" | "preferences" | "sessions" | "auth";
 /** True when the server outcome is unknown, so state must be re-read before the
  * user decides whether to retry. */
 export function isUnconfirmedError(error: unknown): boolean {
@@ -22,6 +22,7 @@ export function accountErrorKey(
       return scope === "sessions" ? "sessionGone" : "actionFailed";
     case "auth_failed":
       if (scope === "password" || scope === "sessions") return "passwordWrong";
+      if (scope === "preferences") return "preferencesFailed";
       return scope === "profile" ? "profileFailed" : "actionFailed";
     case "stop_unconfirmed":
     case "account_busy":

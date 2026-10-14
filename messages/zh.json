@@ -125,7 +125,28 @@
     "challengeScriptFailed": "安全验证脚本加载失败。请检查是否拦截了脚本后重试。",
     "challengeRetry": "重新加载验证",
     "resetChangeEmail": "更换邮箱并重新开始",
-    "mailFailedRegister": "账号已创建，但验证邮件发送失败。请打开“验证邮箱”页面重新发送验证码。"
+    "mailFailedRegister": "账号已创建，但验证邮件发送失败。请打开“验证邮箱”页面重新发送验证码。",
+    "preferences": "偏好设置",
+    "preferencesDescription": "在这里保存的选择会跟随你的账号到任何设备；保持“跟随本设备”的项继续使用当前浏览器自己的设置。",
+    "themePreference": "主题",
+    "themePreferenceHint": "账号已保存的选择优先于本设备。",
+    "languagePreference": "语言",
+    "languagePreferenceHint": "账号已保存的选择优先于本设备，并在页面重新加载后生效。",
+    "followDevice": "跟随本设备",
+    "deviceValue": "本设备当前：{value}",
+    "savePreferences": "保存偏好",
+    "preferencesSaved": "偏好已保存",
+    "preferencesFailed": "未能保存偏好设置，请检查网络后重试。",
+    "languageAppliesOnReload": "语言已保存，将在页面下次重新加载后生效。",
+    "usage": "AI 用量",
+    "usageDescription": "你今天自己的请求次数统计。",
+    "usageLoad": "查看今日用量",
+    "usageCollapse": "收起",
+    "usageFailed": "暂时无法获取用量，你的账号其他设置不受影响。",
+    "usageRetry": "重试",
+    "usageRefresh": "刷新用量",
+    "usageUnavailable": "AI 目前对所有人关闭，这不是你的当日额度已用完。",
+    "usageOpenReader": "前往阅读"
   },
   "meta": {
     "title": "utils — lzhdev.com",
@@ -135,7 +156,11 @@
   "common": {
     "skipToContent": "跳到正文",
     "soon": "即将上线",
-    "openSource": "开源（MIT）"
+    "openSource": "开源（MIT）",
+    "cancel": "取消",
+    "unsavedTitle": "放弃未保存的修改？",
+    "unsavedBody": "切换语言会重新加载页面，尚未保存的修改将会丢失。",
+    "unsavedContinue": "继续并重新加载"
   },
   "nav": {
     "tools": "工具",
@@ -145,13 +170,15 @@
   "language": {
     "label": "切换语言",
     "en": "English",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "accountOverride": "已由账号保存：{language}，优先于本设备"
   },
   "theme": {
     "label": "切换主题",
     "light": "浅色",
     "dark": "深色",
-    "system": "跟随系统"
+    "system": "跟随系统",
+    "accountOverride": "已由账号保存：{theme}，优先于本设备"
   },
   "home": {
     "title": "日常好用的在线工具",

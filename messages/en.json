@@ -125,7 +125,28 @@
     "challengeScriptFailed": "The verification challenge couldn't load. Check whether a script blocker is active, then retry.",
     "challengeRetry": "Retry challenge",
     "resetChangeEmail": "Start over with a different email",
-    "mailFailedRegister": "Your account was created, but the verification email could not be sent. Open the verification page to resend the code."
+    "mailFailedRegister": "Your account was created, but the verification email could not be sent. Open the verification page to resend the code.",
+    "preferences": "Preferences",
+    "preferencesDescription": "Choices saved here follow you to any device. Anything left on the device choice keeps using this browser's own setting.",
+    "themePreference": "Theme",
+    "themePreferenceHint": "An account choice takes priority over this device.",
+    "languagePreference": "Language",
+    "languagePreferenceHint": "An account choice takes priority over this device and applies once the page reloads.",
+    "followDevice": "Follow this device",
+    "deviceValue": "This device: {value}",
+    "savePreferences": "Save preferences",
+    "preferencesSaved": "Preferences saved",
+    "preferencesFailed": "Unable to save your preferences. Check your connection and try again.",
+    "languageAppliesOnReload": "Language saved. It applies the next time this page reloads.",
+    "usage": "AI usage",
+    "usageDescription": "Your own request counts for today.",
+    "usageLoad": "Show today's usage",
+    "usageCollapse": "Close",
+    "usageFailed": "Usage is unavailable right now. Your account settings still work.",
+    "usageRetry": "Try again",
+    "usageRefresh": "Refresh usage",
+    "usageUnavailable": "AI is currently switched off for everyone. This is not your daily limit being used up.",
+    "usageOpenReader": "Go to the reader"
   },
   "meta": {
     "title": "utils — lzhdev.com",
@@ -135,7 +156,11 @@
   "common": {
     "skipToContent": "Skip to content",
     "soon": "Soon",
-    "openSource": "Open source (MIT)"
+    "openSource": "Open source (MIT)",
+    "cancel": "Cancel",
+    "unsavedTitle": "Discard unsaved changes?",
+    "unsavedBody": "Changing the language reloads the page, and edits that have not been saved will be lost.",
+    "unsavedContinue": "Continue and reload"
   },
   "nav": {
     "tools": "Tools",
@@ -145,13 +170,15 @@
   "language": {
     "label": "Switch language",
     "en": "English",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "accountOverride": "Saved to your account: {language} — it wins over this device"
   },
   "theme": {
     "label": "Toggle theme",
     "light": "Light",
     "dark": "Dark",
-    "system": "System"
+    "system": "System",
+    "accountOverride": "Saved to your account: {theme} — it wins over this device"
   },
   "home": {
     "title": "Utilities for everyday work",
