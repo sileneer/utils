@@ -81,9 +81,10 @@ screenshots) live under ignored `data/investigation/account-plan-20261013/`,
 `data/investigation/account-activity-20261014/`. Generated fixture credentials are
 deleted after each QA pass.
 
-**The §14.7 minimal security activity record is implemented in the working tree on top
-of `4d08dec`**: new `migrations/006-security-events.sql`, `src/lib/auth/security-events.ts`
-and `tests/security-events.test.cjs`, plus edits to `account-handler.ts`,
+**The §14.7 minimal security activity record is committed locally as `1590981`**
+(`feat(auth): record confirmed security changes`), on top of `4d08dec`: new
+`migrations/006-security-events.sql`, `src/lib/auth/security-events.ts` and
+`tests/security-events.test.cjs`, plus edits to `account-handler.ts`,
 `email-change.ts`, `account-center.tsx`, both `messages/*.json` and the five docs. It
 adds no dependency, env, Docker or CI change, does not widen the `/api/auth` allowlist,
 and changes no existing table.
@@ -147,7 +148,7 @@ Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
 §14.9/§14.10/§14.11/§14.12) and await the owner's review and a separate publication
 decision; nothing may be merged or deployed on this authorization. Batches A, B, C2
 and C1 are committed, C1 as `4d08dec`. The §14.7 minimal security activity record is
-implemented on top of it in the working tree (§2, PLANNING §14.13). D remains an
+committed on top of it as `1590981` (§2, PLANNING §14.13). D remains an
 unapproved proposal in §14. Do not
 start new features or publish any batch without subsequent authorization.
 
