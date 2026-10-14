@@ -105,7 +105,7 @@ export function useAccountError(scope: AccountErrorScope = "auth") {
   return (error: unknown) => t(accountErrorKey(error instanceof Error ? error.message : "", scope));
 }
 /** Safe errors only; never persist credentials or forward raw auth responses. */
-export async function accountAction(path: string, body: object) {
+export async function accountAction<T = unknown>(path: string, body: object): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -122,11 +122,19 @@ export async function accountAction(path: string, body: object) {
     if (response.status === 401) notifyAccountChange();
     throw new Error(error);
   }
+  let data: T;
+  try { data = (await response.json()) as T; } catch { data = {} as T; }
   notifyAccountChange(
     // "profile" means "re-resolve without cancelling anything", which is also
     // what a preference save needs: other tabs re-read it, no chat is stopped.
-    path === "/api/account/profile" || path === "/api/account/preferences" ? "profile"
+    // Opening, resending or cancelling an email transaction changes no identity,
+    // so it stays in that tier; committing revokes every session and must clear
+    // the known identity exactly like a logout.
+    path === "/api/account/profile" || path === "/api/account/preferences" ||
+    path === "/api/account/email/start" || path === "/api/account/email/resend" ||
+    path === "/api/account/email/cancel" ? "profile"
       : path === "/api/account/password" || path === "/api/account/sessions/revoke" ? "session"
       : "security",
   );
+  return data;
 }

@@ -5,6 +5,17 @@ import { consumeLimits, privateKey } from "./limits";
 import { withAccountChange, beforePasswordWrite } from "./lifecycle";
 import { isLanguage, isTheme, readPreferences, writePreferences } from "./preferences";
 import { buildExport, exportSummary, parseScope } from "./export";
+import { verifyChallenge } from "./turnstile";
+import {
+  applyEmailChange,
+  cancelEmailChange,
+  commitEmailChange,
+  notifyOldEmail,
+  pendingEmailChange,
+  resendEmailChange,
+  startEmailChange,
+  type Side,
+} from "./email-change";
 import { availability } from "../agent/usage";
 
 function json(data: unknown, status = 200, cookies?: Headers) {
@@ -19,13 +30,117 @@ function browserInfo(agent: string | null | undefined) {
   const system = /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Windows/.test(ua) ? "Windows" : /Macintosh/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "unknown";
   return { browser, system };
 }
+type Identity = NonNullable<Awaited<ReturnType<typeof accountSession>>>;
+type Auth = ReturnType<typeof getAuth>;
+
+/** Internal failure names are part of the wrapper's own vocabulary, never the library's. */
+const EMAIL_STATUS: Record<string, number> = {
+  bad_request: 400,
+  auth_failed: 400,
+  challenge_failed: 403,
+  unauthorized: 401,
+  not_found: 404,
+  password_wrong: 400,
+  code_failed: 400,
+  stale_target: 409,
+  already_completed: 409,
+  email_taken: 409,
+  email_same: 400,
+  attempts_exhausted: 409,
+  expired: 410,
+  rate_limited: 429,
+  mail_send_failed: 503,
+  service_unavailable: 503,
+  stop_unconfirmed: 409,
+  account_busy: 409,
+};
+async function attempt(action: () => Promise<Response>) {
+  try {
+    return await action();
+  } catch (error) {
+    const name = error instanceof Error ? error.message : "";
+    return fail(name in EMAIL_STATUS ? name : "service_unavailable", EMAIL_STATUS[name] ?? 503);
+  }
+}
+async function handleEmailChange(
+  path: string,
+  headers: Headers,
+  auth: Auth,
+  identity: Identity,
+  ip: string,
+  origin: string,
+  body: Record<string, unknown>,
+) {
+  const userId = identity.user.id,
+    oldEmail = identity.user.email;
+  const id = typeof body.id === "string" && body.id.length <= 64 ? body.id : "";
+  const code = (value: unknown) => (typeof value === "string" && /^\d{6}$/.test(value) ? value : "");
+  if (!consumeLimits([{ key: `ip:${privateKey(ip)}:change-email`, max: 10, window: 60_000 }]))
+    return fail("rate_limited", 429);
+  if (path === "/email/start" || path === "/email/resend") {
+    const challenge = await verifyChallenge(body.turnstileToken, ip, origin);
+    if (challenge === "unconfigured" || challenge === "unreachable") return fail("service_unavailable", 503);
+    if (challenge !== "ok") return fail("challenge_failed", 403);
+  }
+  if (path === "/email/start") {
+    const password = typeof body.password === "string" ? body.password : "";
+    const newEmail = typeof body.newEmail === "string" ? body.newEmail.trim().toLowerCase() : "";
+    if (!password || password.length > 128) return fail("bad_request", 400);
+    if (!newEmail || newEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail))
+      return fail("bad_request", 400);
+    try {
+      await auth.api.verifyPassword({ headers, body: { password } });
+    } catch {
+      return fail("password_wrong", 400);
+    }
+    if ((await accountSession(headers))?.session.id !== identity.session.id) return fail("unauthorized", 401);
+    return attempt(async () => {
+      await startEmailChange(userId, oldEmail, newEmail);
+      // Identical answer whether or not the target is already someone's account, so
+      // starting a change can never be used to enumerate registrations.
+      return json({ sent: true });
+    });
+  }
+  if (path === "/email/resend") {
+    const side = body.side === "old" || body.side === "new" ? body.side : "";
+    if (!id || !side) return fail("bad_request", 400);
+    return attempt(async () => {
+      await resendEmailChange(userId, id, oldEmail, side as Side);
+      return json({ sent: true });
+    });
+  }
+  if (path === "/email/cancel") {
+    if (!id) return fail("bad_request", 400);
+    return attempt(async () => json(cancelEmailChange(userId, id, oldEmail)));
+  }
+  if (!id) return fail("bad_request", 400);
+  const codes = { old: code(body.oldCode), new: code(body.newCode) };
+  if (!codes.old || !codes.new) return fail("bad_request", 400);
+  if ((await accountSession(headers))?.session.id !== identity.session.id) return fail("unauthorized", 401);
+  return attempt(async () => {
+    const result = await commitEmailChange(userId, id, oldEmail, codes, async (newEmail) => {
+      applyEmailChange(userId, newEmail);
+    });
+    // The address is already committed here, so a notice failure is reported as its
+    // own fact and must never recast the change as incomplete or retry itself.
+    let notified = true;
+    try {
+      await notifyOldEmail(oldEmail);
+    } catch {
+      notified = false;
+    }
+    return json({ changed: true, signedOut: true, changedTo: result.changedTo, notified });
+  });
+}
 export async function handleAccount(request: Request) {
   try {
     const path = new URL(request.url).pathname.slice("/api/account".length);
-    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary"], writes = ["/profile", "/password", "/sessions/revoke", "/preferences"];
+    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary", "/email"],
+      writes = ["/profile", "/password", "/sessions/revoke", "/preferences", "/email/start", "/email/resend", "/email/verify", "/email/cancel"];
     if (!(request.method === "GET" ? reads : request.method === "POST" ? writes : []).includes(path)) return fail("not_found", 404);
+    const ip = process.env.TRUST_CLOUDFLARE_IP === "1" ? request.headers.get("cf-connecting-ip") || "unknown" : "local";
     const headers = new Headers(request.headers);
-    headers.set("x-utils-client-ip", process.env.TRUST_CLOUDFLARE_IP === "1" ? request.headers.get("cf-connecting-ip") || "unknown" : "local");
+    headers.set("x-utils-client-ip", ip);
     const identity = await accountSession(headers);
     if (!identity) return request.method === "GET" && path === "" ? json({ user: null }) : fail("unauthorized", 401);
     const auth = getAuth();
@@ -63,7 +178,11 @@ export async function handleAccount(request: Request) {
           },
         });
       }
-      const sessions = await auth.api.listSessions({ headers });
+      // An in-flight email change is security state, so it shares the freshAge gate and
+    // is described only by mask: the row never echoes a stored digest.
+    if (path === "/email")
+      return json({ pending: pendingEmailChange(identity.user.id, identity.user.email) });
+    const sessions = await auth.api.listSessions({ headers });
       return json({ sessions: sessions.map((s) => ({
         id: s.id, current: s.id === identity.session.id,
         createdAt: new Date(s.createdAt).toISOString(), expiresAt: new Date(s.expiresAt).toISOString(),
@@ -79,8 +198,18 @@ export async function handleAccount(request: Request) {
       body = JSON.parse(raw);
     } catch { return fail("bad_request", 400); }
     if (!body || typeof body !== "object" || Array.isArray(body)) return fail("bad_request", 400);
-    const allowed = path === "/profile" ? ["name"] : path === "/password" ? ["currentPassword", "newPassword"] : path === "/preferences" ? ["theme", "language"] : ["password", "id", "others"];
-    if (Object.keys(body).some((key) => !allowed.includes(key))) return fail("bad_request", 400);
+    const fields: Record<string, string[]> = {
+      "/profile": ["name"],
+      "/password": ["currentPassword", "newPassword"],
+      "/preferences": ["theme", "language"],
+      "/sessions/revoke": ["password", "id", "others"],
+      "/email/start": ["password", "newEmail", "turnstileToken"],
+      "/email/resend": ["id", "side", "turnstileToken"],
+      "/email/verify": ["id", "oldCode", "newCode"],
+      "/email/cancel": ["id"],
+    };
+    const allowed = fields[path];
+    if (!allowed || Object.keys(body).some((key) => !allowed.includes(key))) return fail("bad_request", 400);
     if (!consumeLimits([{ key: `account:${privateKey(identity.user.id)}:${path}`, max: 10, window: 60_000 }])) return fail("rate_limited", 429);
     const call = async (route: string, payload: unknown) => {
       const response = await auth.handler(new Request(origin + "/api/auth" + route, {
@@ -110,6 +239,8 @@ export async function handleAccount(request: Request) {
       return json({ preferences: writePreferences(identity.user.id, patch) });
     }
     if (Date.now() - new Date(identity.session.createdAt).getTime() >= 86_400_000) return fail("reauth_required", 403);
+    if (path.startsWith("/email/"))
+      return await handleEmailChange(path, headers, auth, identity, ip, origin, body);
     const password = path === "/password" ? body.currentPassword : body.password;
     if (typeof password !== "string" || !password || password.length > 128) return fail("bad_request", 400);
     if (path === "/password" && (typeof body.newPassword !== "string" || body.newPassword.length < 8 || body.newPassword.length > 128 || !/[A-Za-z]/.test(body.newPassword) || !/[0-9]/.test(body.newPassword))) return fail("bad_request", 400);

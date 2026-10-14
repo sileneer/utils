@@ -3,6 +3,7 @@ import { consumeLimits, privateKey } from "./limits";
 import { withMailOutcome } from "./mail";
 import { accountSession } from "./identity";
 import { withAccountChange, beforePasswordWrite } from "./lifecycle";
+import { verifyChallenge } from "./turnstile";
 import { db } from "../db";
 
 // Deliberately expose only password login and purpose-scoped verification/reset.
@@ -107,39 +108,12 @@ export async function handleAuth(request: Request) {
       return json("rate_limited", 429);
     const sends = sendPaths.has(route);
     if (sends) {
-      if (
-        !process.env.BREVO_API_KEY ||
-        !process.env.MAIL_FROM ||
-        !process.env.TURNSTILE_SITE_KEY ||
-        !process.env.TURNSTILE_SECRET_KEY
-      )
+      if (!process.env.BREVO_API_KEY || !process.env.MAIL_FROM)
         return json("service_unavailable", 503);
-      if (
-        typeof body.turnstileToken !== "string" ||
-        body.turnstileToken.length > 2048
-      )
-        return json("challenge_failed", 403);
-      const result = await fetch(
-        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-        {
-          method: "POST",
-          signal: AbortSignal.timeout(10_000),
-          body: new URLSearchParams({
-            secret: process.env.TURNSTILE_SECRET_KEY,
-            response: body.turnstileToken,
-            ...(ip !== "local" && ip !== "unknown" ? { remoteip: ip } : {}),
-          }),
-        },
-      );
-      const verification = await result.json();
-      const testKey =
-        process.env.TURNSTILE_SITE_KEY === "1x00000000000000000000AA" &&
-        !origin.startsWith("https://");
-      if (
-        !verification.success ||
-        (!testKey && verification.hostname !== new URL(origin).hostname)
-      )
-        return json("challenge_failed", 403);
+      const challenge = await verifyChallenge(body.turnstileToken, ip, origin);
+      if (challenge === "unconfigured" || challenge === "unreachable")
+        return json("service_unavailable", 503);
+      if (challenge !== "ok") return json("challenge_failed", 403);
     }
     const forwarded = new Headers(request.headers);
     forwarded.set("x-utils-client-ip", ip);

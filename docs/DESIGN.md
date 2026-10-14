@@ -472,6 +472,55 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   and file names wrap or truncate with CSS rather than forcing horizontal
   overflow, and every control keeps the §5.10 40px target.
 
+### 5.13 Secure email change — C1 approved 2026-10-14
+
+- The flow is a collapsed-by-default card in the account centre, on the batch A
+  Collapsible disclosure pattern, with an `#email` anchor added to the summary
+  navigation. It reuses the registered `PasswordField`, `Alert`, `Badge`, `Button`,
+  `Field`/`Input` and the same Turnstile `Challenge` the auth forms use — that
+  component was lifted out of `account-form.tsx` into `challenge.tsx` so both surfaces
+  share one implementation rather than a copy. No new dependency or token.
+- `Challenge` loads the api.js tag with `strategy="afterInteractive"` and derives
+  readiness from the presence of `window.turnstile`, not only from the script
+  callback: the default `lazy` strategy waits for the node to enter the viewport, so a
+  widget mounted inside a collapsed card below the fold would sit on "loading"
+  forever. If the API never appears within ~10s the component reports the existing
+  script-error state with its retry button instead of hanging.
+- The card is a small state machine, one visible state at a time, and every state says
+  what happens next: closed, idle (current password + new address + challenge),
+  pending (masked target, expiry countdown, per-slot attempt counts, two code fields,
+  resend with a cooldown, cancel), committing, done, plus the failure states below. A
+  page reload restores `pending` from the account's live transaction; a transaction
+  opened for an address the account no longer signs in with is not offered at all.
+- **Two codes, two fields.** The pending panel asks for the code sent to the current
+  address and the one sent to the target side by side (stacked at narrow widths), and
+  says so in the field labels, because the change needs both mailboxes and neither
+  code substitutes for the other. The panel carries its own `Challenge`: a new code
+  requires a fresh challenge, exactly like the reset flow's resend, so the resend
+  buttons are disabled until one is issued. The client cooldown matches the server's
+  one-send-per-address-per-minute bucket rather than inviting a refused attempt.
+- Old-mailbox access is never the only proof, and never an optional one: the form asks
+  for the current password and the card states plainly that an account which cannot
+  receive at its old address cannot be self-served here, with no dead-end affordance
+  that pretends otherwise.
+- Stale-login and signed-out states reuse the batch A distinction, with the in-place
+  re-verification entry pointing back at `#email`. A wrong password, a wrong code, an
+  exhausted attempt budget, a rate limit, an expired or cancelled transaction, a
+  target that turned out to be unusable and an unconfirmed AI stop each get their own
+  wording — and none of them may claim the address changed.
+- After a successful commit the result is a page-level state, not a card state:
+  committing revokes every session, so the signed-in page is replaced by a notice
+  naming the new address, explaining that all sessions were signed out and offering
+  that login as the only next step. A different login clears it.
+- A post-commit notice failure is reported as "the change is already applied; the
+  notification could not be sent", never as a failed change, and never re-submits.
+- Cancelling a pending transaction and the sign-out implied by committing both confirm
+  through the registered AlertDialog pattern, with a "Back" dismiss action — not the
+  generic "Back to the site" navigation label. Both locales, both themes,
+  360/768/1280px, keyboard operation and the §5.10 40px target apply. The trigger's
+  masked-address badge wraps to its own line when it cannot share the label row, so
+  neither it nor the countdown can force horizontal overflow.
+
 ## 6. Motion
 
 - Micro-interactions (hover, focus, press): CSS transitions, `150ms ease-out`.

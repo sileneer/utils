@@ -780,3 +780,15 @@ after the closing animation.
 **Cause** Chrome can reserve 15px for its vertical scrollbar. **Fix** assert
 `scrollWidth <= innerWidth`, not equality. Record the selected emulated viewport
 and actual content width in the private receipt.
+
+### A lazy script tag never reports ready inside a collapsed card
+
+**Symptom** the Turnstile widget in the account centre's email-change card stays on
+"loading" with the API global already present, so the submit button never enables.
+**Cause** `next/script` defaults to `strategy="lazy"`, which only fetches once the node
+enters the viewport, and `onReady` is not re-reported when a same-`src` tag is reused
+by a later mount. The auth forms hid this because their challenge mounts in view.
+**Fix** load it with `afterInteractive` and treat the presence of `window.turnstile`
+as the readiness signal, with a bounded wait that falls through to the existing
+retryable script-error state. `turnstile.ready()` is not an option here — Cloudflare
+rejects it while the tag is async/deferred, which is how `next/script` inserts it.

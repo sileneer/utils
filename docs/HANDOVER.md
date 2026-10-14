@@ -18,11 +18,13 @@ on 2026-10-11, including its normal push-to-main CI/CD rollout. This does not
 authorize provider calls or new features. On 2026-10-13 the owner authorized
 **local implementation of PLANNING §14 batch A**, and on 2026-10-14
 **local implementation of batch B** (account preferences plus the personal usage
-overview) and **local implementation and isolated verification of C2** (personal
-data export). None of these approvals covers C1 or D, and none covers publication.
-Batches A, B and C2 are implemented locally and unmerged; production still runs the
-§13 release. Exporting production data, account deletion, real mail and paid AI
-calls remain unapproved. Off-machine backup uploads and
+overview), **local implementation and isolated verification of C2** (personal
+data export) and **local technical verification, protocol design, implementation
+and simulated acceptance of C1** (secure email change). None of these approvals
+covers D, and none covers publication. Batches A, B, C2 and C1 are implemented
+locally and unmerged; production still runs the §13 release. Exporting production
+data, account deletion, changing a real account's email, real mail sending and paid
+AI calls remain unapproved. Off-machine backup uploads and
 pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
 
 ## 2. Checkout and release position
@@ -47,27 +49,43 @@ handler, so the ARCHITECTURE §5 server contract was unchanged.
 `i18n/locale.ts`, `theme-provider`, `theme-toggle`, `language-switcher`, both
 `messages/*.json`, the docs, and two migration-count assertions.
 
-**Batch C2 is implemented in the working tree, still uncommitted**: new
-`src/lib/auth/export.ts` and `tests/export.test.cjs`, plus edits to
-`src/lib/auth/account-handler.ts`, `src/components/auth/account-center.tsx`,
-both `messages/*.json` and the four docs. It adds no migration, dependency,
-env, Docker or CI change, and touches no server-side auth handler beyond the
-account wrapper's own routing. Nothing was pushed, merged,
+**Batch C2 is committed locally as `4c14e7d`**
+(`feat(auth): add personal data export`): new `src/lib/auth/export.ts` and
+`tests/export.test.cjs`, plus edits to `account-handler`, `account-center`, both
+`messages/*.json` and the four docs. It adds no migration, dependency, env, Docker or
+CI change, and touches no server-side auth handler beyond the account wrapper's own
+routing.
+
+**Batch C1 is the newest local commit on this branch**, following `4c14e7d`:
+new `migrations/005-email-change.sql`, `src/lib/auth/email-change.ts`,
+`src/lib/auth/turnstile.ts`, `src/components/auth/challenge.tsx` and
+`tests/email-change.test.cjs`, plus edits to `account-center`, `account-form`,
+`account-handler`, `account-provider`, `errors`, `handler`, `mail`, both
+`messages/*.json`, the four docs and two migration-count assertions (now derived from
+the `migrations/` directory instead of a literal). It changes no dependency, env,
+Docker or CI file, does not widen the `/api/auth` allowlist and does not configure the
+library's `changeEmail`. It does alter the **shared** `Challenge` component and the
+extracted Turnstile verification helper used by the public login/register/reset forms,
+so those paths are regression-covered by `tests/account.test.cjs` and
+`tests/auth.test.cjs` rather than left untouched. Nothing was pushed, merged,
 deployed or production-tested for any batch. Existing ignored `.zcode/`, data and investigations
-are preserved. Planning notes and fixture evidence for all three passes (disposable databases,
+are preserved. Planning notes and fixture evidence for all four passes (disposable databases,
 generated-credential seeding, fault-injection launchers, generated export artefacts and
 screenshots) live under ignored `data/investigation/account-plan-20261013/`,
 `data/investigation/account-batch-a-20261013/`,
-`data/investigation/account-batch-b-20261014/` and
-`data/investigation/account-c2-20261014/`. Generated fixture credentials are
+`data/investigation/account-batch-b-20261014/`,
+`data/investigation/account-c2-20261014/` and
+`data/investigation/account-c1-20261014/`. Generated fixture credentials are
 deleted after each QA pass.
 
 PLANNING section 14 remains the canonical home for the improvement plan; §14.9,
-§14.10 and §14.11 record what batches A, B and C2 actually changed. ARCHITECTURE §5/§7 and DESIGN
-§5.10–§5.12 describe the implemented client contract (section anchors, the
+§14.10, §14.11 and §14.12 record what batches A, B, C2 and C1 actually changed.
+ARCHITECTURE §5/§7 and DESIGN
+§5.10–§5.13 describe the implemented client contract (section anchors, the
 `reauth=1` copy variant, safe error codes and their per-section mapping in
 `src/lib/auth/errors.ts`, the two-layer theme keys, the preference priority, the
-personal usage wrapper and the export document contract).
+personal usage wrapper, the export document contract and the two-code email-change
+protocol).
 
 [Documentation PR #8](https://github.com/sileneer/utils/pull/8) publishes the
 shared agent instructions and living-doc refresh, based on `70f5a78`, to `main`.
@@ -95,12 +113,14 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 ## 3. Canonical implementation map
 
 - ARCHITECTURE §3 owns agent tools/SSE/message details; §5 owns public accounts,
-  ownership, safe return paths, security lifecycle, preference/usage wrappers and
-  future-module integration; §7 owns locale resolution; §8 owns runtime
+  ownership, safe return paths, security lifecycle, preference/usage wrappers, the
+  personal export contract, the two-code email-change protocol and future-module
+  integration; §7 owns locale resolution; §8 owns runtime
   provider/env config; §10 owns administrator aggregates.
-- DESIGN §5.6–5.12 owns chat/source/account/admin patterns, the batch A
+- DESIGN §5.6–5.13 owns chat/source/account/admin patterns, the batch A
   account-operations clarifications, the batch B preferences/usage-card
-  patterns and the C2 export card. Account forms use registered primitives; there
+  patterns, the C2 export card and the C1 email-change card. Account forms use
+  registered primitives; there
   is no adopted `ui/form` component, and `ui/select` is now used for the preference
   and export-scope choices.
 - DEPLOYMENT §8/§11–12 owns release checks, service setup and backup operations.
@@ -110,11 +130,20 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 ## 4. Next actions
 
-Batches A, B and C2 are implemented locally (§2, PLANNING §14.9/§14.10/§14.11) and
-await the owner's review and a separate publication decision; nothing may be merged
-or deployed on this authorization. Batches A and B are committed; C2 is still
-uncommitted in the working tree. C1 and D remain unapproved proposals in §14. Do not
+Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
+§14.9/§14.10/§14.11/§14.12) and await the owner's review and a separate publication
+decision; nothing may be merged or deployed on this authorization. Batches A, B and
+C2 are committed; C1 is the newest local commit on the branch. D remains an
+unapproved proposal in §14. Do not
 start new features or publish any batch without subsequent authorization.
+
+C1 leaves one deliberate open item: **real mail delivery for the three
+`change-email*` purposes has never been exercised** — this authorization covered
+simulated acceptance only, and the Brevo adapter is unchanged apart from the new
+purposes. Before any publication, a separately scoped check should confirm that a
+code reaches a real old and a real new mailbox, that the two subjects and bodies read
+correctly to a human, and that the retired-address notice arrives; the loopback pass
+could only inspect the request bodies the fixture intercepted.
 
 The batch B visual gap noted here earlier is now largely closed, and two of its open
 questions were settled during the C2 pass:
@@ -189,7 +218,15 @@ deleted the same way, after its command line was read back and confirmed. Batch 
 used two further dedicated fixture databases — `data/investigation/account-c2-20261014/fixture/`
 to generate export artefacts without a server, and `.../ui/` for the browser pass —
 and its loopback preview was likewise stopped only after verifying its command line,
-with both ports then confirmed free and its credentials deleted. Screenshots are
+with both ports then confirmed free and its credentials deleted. Batch C1 QA used a
+separate fixture database under `data/investigation/account-c1-20261014/ui/` on its own
+loopback pair (3011 app, 3012 fixture outbox and mail-fault switch), with AI disabled
+and no provider credential, and a second disposable database per automated test file.
+Its launcher processes were stopped only after their command lines were read back and
+confirmed, both ports were then verified free, and the generated credential file was
+deleted. Two throwaway schema-probe scripts and their `data/schema-probe*.sqlite*`
+databases created earlier in the same pass were removed once they had answered the
+question they were built for. Screenshots are
 outside Git. The owner
 logged in normally; no production cookies were exported, captured or minted.
 
@@ -444,3 +481,63 @@ verified by fetching the exact link URLs the card renders rather than by inspect
 files in the browser's download manager. No production data was exported, no real mail
 was sent and no paid AI call was made; both allowances are unchanged. Nothing here is
 production or deployment acceptance.
+
+**Batch C1 local implementation verification (2026-10-14):** `npm test` runs 118
+cases across eight files, all passing, including 18 new
+`tests/email-change.test.cjs` cases on a dedicated disposable database with an
+intercepted mail outbox. They cover: two purpose-scoped codes issued to the right
+mailboxes and never crossed; a started transaction leaving address, sessions and
+history untouched; a confirmed pair rewriting only the address while preserving
+`user.id`, role, status, name, createdAt, conversation/message/usage ownership and
+signing out every session; single-use consumption (a replay is refused because the
+committing session is itself revoked); swapped and half-present code pairs; the
+fifth wrong code closing the budget with its own cause and correct codes then failing
+to revive it; expiry closing the transaction; cross-account refusal of
+resend/cancel/verify plus `stale_target` when the signing-in address moves behind the
+request; exactly one live transaction per account and an identical generic answer when
+the target is already held; a target registered between start and commit aborting as
+`email_taken` with sessions intact; per-side resend rotation; idempotent cancel; a
+failed send leaving no confirmable transaction; an unconfirmed AI stop returning 409
+with the address and sessions unchanged and the transaction retryable; a notification
+failure reported apart from the committed change; the password/fresh-session/challenge
+prerequisites; and the change-email mail family exhausting its own budget while the
+password-reset reserve still answers. Codes are asserted absent from the database.
+
+Browser QA used a fresh loopback fixture database (ports 3011/3012), runtime-generated
+credentials, intercepted mail with a switchable send fault, AI disabled and no provider
+credential. Verified in the running UI: the card is collapsed by default and joins the
+summary navigation; the idle form states the two-code rule and the old-mailbox
+limitation; a started transaction shows the masked target, a live countdown, per-slot
+attempt counts, resend, cancel and the two code fields; a wrong code reports its own
+cause and decrements only that slot's budget while the draft is kept; the commit dialog
+names the sign-out consequence; a successful commit replaces the signed-in page with
+the new address, the all-sessions-signed-out explanation and login as the only next
+step, and signing in with the new address then works. A cancelled request returns the
+card to the idle form; a send failure reports "email could not be sent, address
+unchanged"; a target already held by another account is accepted generically at start
+and only refused at commit with the account untouched; an expired request falls back to
+the form with its own wording. Twelve combinations (en/zh × light/dark ×
+360/768/1280px) rendered the expanded card with **the applied `dark`/`light` class and
+`html[lang]` asserted on every run**, no horizontal overflow and no interactive target
+below 40px; four images were captured and read (en/light/360, en/light/1280,
+zh/dark/360, en/dark/1280) plus the expired-state capture. Real Tab moved focus from
+the trigger into the password field with a visible `:focus-visible` ring.
+
+Three defects were found only in the browser and fixed: the shared `Challenge` widget
+never left "loading" inside a collapsed card (§GOTCHAS "A lazy script tag never reports
+ready"); the pending panel had no challenge of its own, so every resend was refused
+with 403; and the trigger's masked-address badge overlapped its label at 360px. The
+client resend cooldown was also aligned to the server's per-minute bucket.
+
+Limits of this C1 record: **real mail delivery was not exercised** — the fixture
+intercepts Brevo, so only the request bodies and the recorded purposes/codes were
+inspected, and no message was ever delivered to a real mailbox. The Cloudflare widget
+could not complete in this sandbox (its challenge endpoint is unreachable here), so the
+browser pass substituted a loopback stub for `api.js`'s `render()` contract while the
+server still verified every submitted token through the intercepted `siteverify` call;
+the widget's own loading/expired/failed states remain as batch A recorded them on the
+auth forms. Widths are same-origin-frame emulation, not a physical device. The
+unconfirmed-stop path was driven with a local active-query stub under a shortened
+timeout, not with a paid provider request. No production account's address was
+changed, no real mail was sent and no paid AI call was made; both allowances are
+unchanged. Nothing here is production or deployment acceptance.

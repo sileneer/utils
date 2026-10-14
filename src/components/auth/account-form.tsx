@@ -1,10 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import Script from "next/script";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTranslations, useLocale } from "next-intl";
-import { useTheme } from "next-themes";
+import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -25,125 +23,10 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PasswordField } from "./password-field";
+import { Challenge } from "./challenge";
 
 type Mode = "login" | "register" | "verify" | "reset";
 type Values = { email: string; password: string; otp: string; name: string };
-type TurnstileAPI = {
-  render: (node: HTMLElement, options: Record<string, unknown>) => string;
-  reset: (id: string) => void;
-  remove: (id: string) => void;
-};
-declare global {
-  interface Window {
-    turnstile?: TurnstileAPI;
-  }
-}
-type ChallengeState = "loading" | "ready" | "expired" | "failed" | "script";
-function Challenge({
-  siteKey,
-  onToken,
-}: {
-  siteKey: string;
-  onToken: (value: string) => void;
-}) {
-  const t = useTranslations("account");
-  const node = useRef<HTMLDivElement>(null),
-    widget = useRef<string>(undefined);
-  const [state, setState] = useState<ChallengeState>("loading");
-  const [widgetAttempt, setWidgetAttempt] = useState(0);
-  const [scriptAttempt, setScriptAttempt] = useState(0);
-  const [compact, setCompact] = useState(true);
-  const { resolvedTheme } = useTheme();
-  const locale = useLocale();
-  useEffect(() => {
-    if (!node.current) return;
-    const observer = new ResizeObserver((entries) =>
-      setCompact(entries[0].contentRect.width < 300),
-    );
-    observer.observe(node.current);
-    return () => observer.disconnect();
-  }, []);
-  useEffect(() => {
-    if (state !== "ready" || !node.current || !window.turnstile) return;
-    onToken("");
-    try {
-      widget.current = window.turnstile.render(node.current, {
-        sitekey: siteKey,
-        size: compact ? "compact" : "flexible",
-        theme: resolvedTheme === "dark" ? "dark" : "light",
-        language: locale === "zh" ? "zh-cn" : "en",
-        callback: onToken,
-        "expired-callback": () => {
-          onToken("");
-          setState("expired");
-        },
-        "error-callback": () => {
-          onToken("");
-          setState("failed");
-        },
-      });
-    } catch {
-      // A rejected render must surface as the explicit failed state, not crash the form.
-      queueMicrotask(() => setState("failed"));
-      return;
-    }
-    return () => {
-      if (widget.current) {
-        window.turnstile?.remove(widget.current);
-        widget.current = undefined;
-      }
-    };
-  }, [state, widgetAttempt, siteKey, onToken, locale, compact, resolvedTheme]);
-  // Explicit, user-bounded retry: reload the script only when it never loaded.
-  function retry() {
-    onToken("");
-    setWidgetAttempt((value) => value + 1);
-    if (state === "script" || !window.turnstile) {
-      setScriptAttempt((value) => value + 1);
-      setState("loading");
-    } else setState("ready");
-  }
-  const scriptSrc = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit${scriptAttempt ? `&retry=${scriptAttempt}` : ""}`;
-  const message =
-    state === "expired"
-      ? t("challengeExpired")
-      : state === "failed"
-        ? t("challengeFailed")
-        : state === "script"
-          ? t("challengeScriptFailed")
-          : null;
-  return (
-    <>
-      <Script
-        key={scriptAttempt}
-        src={scriptSrc}
-        onReady={() => setState("ready")}
-        onError={() => setState("script")}
-      />
-      <div ref={node} className="flex min-h-16 w-full justify-center" />
-      {state === "loading" && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {t("challengeLoading")}
-        </p>
-      )}
-      {message && (
-        <div className="space-y-2">
-          <p role="status" className="text-sm text-destructive">
-            {message}
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-10"
-            onClick={retry}
-          >
-            {t("challengeRetry")}
-          </Button>
-        </div>
-      )}
-    </>
-  );
-}
 export function AccountForm({
   mode,
   returnTo = "/",

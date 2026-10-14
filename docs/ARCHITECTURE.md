@@ -252,7 +252,10 @@ adds `user_preferences` (one row per `user.id`: nullable `theme`, nullable
 `language`, `updated_at`), the only product table touched by batch B. A null
 column means "no account choice" and falls through to the device layer; the
 table stores presentation settings only and holds no role, status or verified
-data, which remain server-only columns on `user`. Legacy conversation
+data, which remain server-only columns on `user`. `005-email-change.sql` adds
+`email_changes`, the transactional state for the email-change flow described in
+§5; it is independent of the `verification` table so a change-email code can never
+collide with a registration or reset code. Legacy conversation
 columns stay unchanged so old-image positional writes remain compatible. A
 missing title override falls back to the first user question (100 characters);
 no model is called to name conversations. User role/status are server-only
@@ -354,6 +357,85 @@ Server-side rendering resolves the account layer of theme and language through a
 presentation-only lookup that returns both values as unset on any error, missing
 table or anonymous visit; this path chooses what to display and is never an
 authorization decision, which continues to run through `identity.ts`.
+
+#### Email change
+
+Changing the sign-in address is a product flow in `src/lib/auth/email-change.ts`,
+not the library endpoint. Better Auth 1.7.7 ships `/email-otp/change-email`, but it
+confirms only the session (no current password), keys its OTP to the
+registration-purpose identifier when `verifyCurrentEmail` is enabled, has no
+transaction identity, keeps the current session signed in after success, writes the
+`user` row directly so the account-change AI fence never runs, checks uniqueness in a
+read-then-write race, and reports "Email already in use". PLANNING §14.6 records that
+verification. The endpoint stays unconfigured and outside the public auth allowlist.
+
+`005-email-change.sql` adds `email_changes`: one row per request with its own uuid
+`id`, `user_id`, `old_email_hash` (keyed digest of the address being retired),
+plaintext `new_email` (needed to send and later commit it), `old_code_digest`,
+`new_code_digest`, `old_attempts`, `new_attempts`, `status`
+(`pending|cancelled|completed`), and `created_at`/`expires_at`. A partial unique index
+on `new_email` while `status='pending'` is the race guard the library lacks.
+
+**Two codes, one per mailbox.** `start` issues a separate six-digit code to the
+current address (purpose `change-email-old`) and to the target
+(`change-email-new`). Each side keeps its own digest and its own five-attempt budget,
+and `verify` supplies both at once, so a code delivered to one mailbox can never
+satisfy the other and the new address cannot authorize the change alone. Codes are
+never stored or logged in the clear — only keyed digests — and comparison is
+fixed-time. The attempt that exhausts a budget closes the transaction and reports
+`attempts_exhausted` rather than inviting another try. The 600-second window is shared
+and a resend renews it.
+
+Routes are a `GET /api/account/email` pending-state read plus POSTs under
+`/api/account/email/` (`start`, `resend`, `verify`, `cancel`), all taking the
+wrapper's existing origin, JSON, body-size and per-route field-allowlist checks.
+Every one requires a current verified active identity and a login inside 24 hours;
+`start` additionally verifies the current password, and `start` and `resend` require
+the same Turnstile challenge as the public send paths — so possession of the old
+mailbox is never the only proof, and an account that cannot receive at its old address
+is told plainly that this page cannot complete the change. `cancel` needs no password
+and no challenge, so an in-flight request can always be abandoned.
+
+`start` first cancels that account's own pending transactions, so exactly one is ever
+live, and it answers identically whether or not the target is already someone's
+address: nothing here confirms or denies a registration. A target that becomes
+registered between `start` and `verify` is caught by the `user.email` unique
+constraint at commit and returns `email_taken` with the account untouched. A request
+whose signing-in address has since moved fails as `stale_target` without revealing
+which condition matched.
+
+Commit runs inside `withAccountChange`: the account's running AI request must reach a
+confirmed terminal state before anything is written, so an unconfirmed stop returns
+409 `stop_unconfirmed`, the address stays unchanged and the transaction reopens for
+retry. On a confirmed stop one immediate transaction sets `user.email`,
+`emailVerified` and `updatedAt` (ISO text, the format the library itself writes;
+`account` has no email column, so the address lives only on `user`) and deletes every
+session row for that user; the response is success but the client is signed out and
+must log in with the new address. The stable `user.id` means role, profile,
+conversation ownership, usage rows, preferences and retained source versions are
+untouched — no second user is created and no history is migrated.
+
+Send or verify failures keep the old address, and the account can retry. The
+post-commit result notice to the retired address (purpose `change-email-notice`) is
+reported separately from the identity change: it is attempted after the transaction
+commits and its failure returns a success with `notified: false`, never a rolled-back
+or repeated change, because the new address is already authoritative by then.
+
+Limiter buckets are purpose-scoped so a change cannot starve recovery: three starts
+per hour per account, one send per minute and three per hour keyed separately to the
+old and the new address, a per-IP budget on these routes, and a shared daily mail
+ceiling in `mail.ts` where the whole `change-email*` family is capped well below the
+`forget-password` reserve. Failures are mapped to wrapper-only names —
+`password_wrong`, `code_failed`, `attempts_exhausted`, `expired`, `not_found`,
+`stale_target`, `already_completed`, `email_taken`, `email_same`, `rate_limited`,
+`challenge_failed`, `mail_send_failed`, `stop_unconfirmed` — each with its own copy in
+both locales, and none of them worded as a completed change.
+
+In the Brevo adapter the family is three purposes — `change-email-old`,
+`change-email-new` and `change-email-notice` — each with the same per-purpose ceiling
+as registration mail, plus a shared daily cap across all three that is set well below
+the `forget-password` reserve so a run of address changes cannot exhaust recovery.
+`sendOTP` rejects any purpose outside its table, so an unregistered one fails closed.
 
 #### Personal data export
 

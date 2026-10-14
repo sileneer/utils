@@ -198,7 +198,9 @@ test("003 migration backs up legacy schema and preserves messages, native select
   await database.migrate(db);
   assert.equal(
     db.prepare("SELECT count(*) n FROM schema_migrations").get().n,
-    4,
+    fs
+      .readdirSync(path.join(__dirname, "../migrations"))
+      .filter((file) => file.endsWith(".sql")).length,
   );
   assert.equal(db.pragma("integrity_check", { simple: true }), "ok");
   assert.deepEqual(db.pragma("foreign_key_check"), []);

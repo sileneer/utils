@@ -21,6 +21,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { PasswordField } from "./password-field";
+import { Challenge } from "./challenge";
 import { accountAction, useAccount, useAccountError } from "./account-provider";
 import { isUnconfirmedError } from "@/lib/auth/errors";
 import { hasUnsaved, markUnsaved } from "@/lib/unsaved";
@@ -40,6 +41,7 @@ function Summary({ user }: { user: AccountUser }) {
     { id: "profile", label: t("profile") },
     { id: "preferences", label: t("preferences") },
     { id: "security", label: t("security") },
+    { id: "email", label: t("emailNav") },
     { id: "sessions", label: t("sessions") },
     { id: "usage", label: t("usage") },
     { id: "export", label: t("export") },
@@ -541,11 +543,275 @@ function ExportCard({ onFreshness }: { onFreshness: (stale: boolean) => void }) 
     </Collapsible>
   </CardContent></Card>;
 }
+type EmailTransaction = {
+  id: string;
+  maskedNewEmail: string;
+  expiresAt: number;
+  attemptsLeft: { old: number; new: number };
+};
+type EmailMoved = { changedTo: string; oldEmail: string; notified: boolean };
+
+/** Committing revokes every session, so the result belongs to the page rather than
+ * to a card that can no longer assume a signed-in identity. */
+function EmailMovedNotice({ moved }: { moved: EmailMoved }) {
+  const t = useTranslations("account");
+  return <Card role="region" aria-label={t("emailDoneTitle")}><CardHeader><CardTitle><h2>{t("emailDoneTitle")}</h2></CardTitle></CardHeader>
+    <CardContent className="space-y-4">
+      <p role="status" className="break-all text-sm font-medium">{t("emailDone", { email: moved.changedTo })}</p>
+      <p className="text-sm text-muted-foreground">{t("emailSignedOut")}</p>
+      {/* A notification failure is its own fact: the address already changed. */}
+      {!moved.notified && <Alert><AlertDescription className="break-all">{t("emailNoticeFailed", { email: moved.oldEmail })}</AlertDescription></Alert>}
+      <Button className="min-h-10" asChild><Link href={accountLink("login", "/")}>{t("loginWithNewEmail")}</Link></Button>
+    </CardContent>
+  </Card>;
+}
+/** Secure email change (DESIGN §5.13). Two codes, one per mailbox: the sign-in
+ * address is written only after both are confirmed and a running AI request has
+ * reached a confirmed terminal state. */
+function EmailCard({
+  email,
+  onFreshness,
+  onMoved,
+}: {
+  email: string;
+  onFreshness: (stale: boolean) => void;
+  onMoved: (moved: EmailMoved) => void;
+}) {
+  const t = useTranslations("account");
+  const failure = useAccountError("email");
+  const [open, setOpen] = useState(false);
+  const [config, setConfig] = useState<{ siteKey: string; available: boolean }>();
+  const [token, setToken] = useState(""),
+    [challenge, setChallenge] = useState(0);
+  const [transaction, setTransaction] = useState<EmailTransaction | null | undefined>(undefined);
+  const [status, setStatus] = useState<"idle" | "loading" | "reauth" | "failed">("idle");
+  const [password, setPassword] = useState("");
+  const [target, setTarget] = useState("");
+  const [codes, setCodes] = useState({ old: "", new: "" });
+  const [error, setError] = useState("");
+  // Accepted by the server but with no live transaction: the target already belongs
+  // to an account. Stated without confirming or denying that registration.
+  const [blind, setBlind] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const [remaining, setRemaining] = useState(0);
+  const [dialog, setDialog] = useState<"cancel" | "commit" | null>(null);
+  const [committing, setCommitting] = useState(false);
+  // The ref is the same-frame guard; `working` is what the buttons may read, because
+  // a ref must never be consulted during render.
+  const [working, setWorking] = useState(false);
+  const busy = useRef(false);
+  const load = useCallback(async (): Promise<EmailTransaction | null> => {
+    setStatus("loading");
+    let next: EmailTransaction | null = null;
+    try {
+      const response = await fetch("/api/account/email", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+      if (response.status === 403) { setTransaction(null); setStatus("reauth"); onFreshness(true); return null; }
+      if (!response.ok) { setTransaction(null); setStatus("failed"); onFreshness(false); return null; }
+      const data: { pending?: EmailTransaction | null } = await response.json();
+      next = data.pending ?? null;
+      setStatus("idle");
+      onFreshness(false);
+    } catch { setTransaction(null); setStatus("failed"); return null; }
+    setTransaction(next);
+    return next;
+  }, [onFreshness]);
+  // `undefined` means "never read yet", so opening the card loads once and a reload
+  // restores a live transaction instead of silently discarding it.
+  useEffect(() => {
+    if (open && transaction === undefined) queueMicrotask(() => void load());
+  }, [open, transaction, load]);
+  useEffect(() => {
+    fetch("/api/auth-config", { cache: "no-store" })
+      .then((response) => response.json())
+      .then(setConfig)
+      .catch(() => setConfig({ siteKey: "", available: false }));
+  }, []);
+  useEffect(() => {
+    if (!transaction) return;
+    const tick = () => setRemaining(transaction.expiresAt - Date.now());
+    tick();
+    const id = setInterval(tick, 1_000);
+    return () => clearInterval(id);
+  }, [transaction]);
+  useEffect(() => {
+    if (!cooldown) return;
+    const id = setInterval(() => setCooldown((value) => Math.max(0, value - 1)), 1_000);
+    return () => clearInterval(id);
+  }, [cooldown]);
+  // A language switch reloads the document, so remember that a draft exists.
+  const draft = password !== "" || target !== "";
+  useEffect(() => {
+    if (!draft) return;
+    return markUnsaved("email");
+  }, [draft]);
+  const expired = transaction !== null && transaction !== undefined && remaining <= 0;
+  const sameAddress = target.trim().toLowerCase() === email.toLowerCase();
+  const clock = `${Math.floor(Math.max(0, remaining) / 60_000)}:${String(Math.floor((Math.max(0, remaining) % 60_000) / 1_000)).padStart(2, "0")}`;
+  const send = async (route: string, body: Record<string, unknown>) => {
+    if (busy.current) return false;
+    busy.current = true;
+    setWorking(true);
+    setError("");
+    let ok = false;
+    try {
+      await accountAction(`/api/account/email/${route}`, body);
+      ok = true;
+    } catch (raised) {
+      setError(failure(raised));
+      if (isUnconfirmedError(raised)) void load();
+    } finally {
+      busy.current = false;
+      setWorking(false);
+      // Every accepted attempt consumes its token, so a fresh challenge is issued
+      // before another email can be sent.
+      setToken("");
+      setChallenge((value) => value + 1);
+    }
+    return ok;
+  };
+  const start = async () => {
+    if (!password || !target || sameAddress) return;
+    if (!(await send("start", { password, newEmail: target, turnstileToken: token }))) return;
+    setPassword("");
+    setTarget("");
+    setCodes({ old: "", new: "" });
+    setBlind((await load()) === null);
+  };
+  const resend = async (side: "old" | "new") => {
+    if (!transaction || cooldown) return;
+    if (await send("resend", { id: transaction.id, side, turnstileToken: token })) {
+      // Matches the server's one send per address per minute, so the button does not
+      // invite an attempt the limiter would refuse.
+      setCooldown(60);
+      setCodes({ old: "", new: "" });
+      setBlind(false);
+      await load();
+    }
+  };
+  const cancel = async () => {
+    if (!transaction) return;
+    if (await send("cancel", { id: transaction.id })) {
+      setCodes({ old: "", new: "" });
+      setBlind(false);
+      await load();
+    }
+  };
+  const commit = async () => {
+    if (busy.current || !transaction) return;
+    busy.current = true;
+    setWorking(true);
+    setError("");
+    setCommitting(true);
+    const retiring = email;
+    try {
+      const result = await accountAction<{ changedTo: string; notified: boolean }>("/api/account/email/verify", {
+        id: transaction.id, oldCode: codes.old, newCode: codes.new,
+      });
+      onMoved({ changedTo: result.changedTo, oldEmail: retiring, notified: result.notified !== false });
+    } catch (raised) {
+      setCommitting(false);
+      setError(failure(raised));
+      void load();
+    } finally {
+      busy.current = false;
+      setWorking(false);
+    }
+  };
+  const siteKey = config?.available ? config.siteKey : "";
+  const challengeReady = Boolean(siteKey);
+  return <Card><CardHeader><CardTitle><h2>{t("emailSection")}</h2></CardTitle><CardDescription>{t("emailDescription")}</CardDescription></CardHeader>
+    <CardContent className="space-y-4">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className="min-h-10 w-full flex-wrap justify-between gap-2 text-left">
+            <span className="shrink-0">{open ? t("emailCollapse") : t("emailChange")}</span>
+            {transaction && !expired && <Badge variant="secondary" className="max-w-full min-w-0 truncate">{t("emailPendingBadge", { email: transaction.maskedNewEmail })}</Badge>}
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-4 pt-4">
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {status === "loading" && <Skeleton className="h-24 w-full" />}
+          {status === "failed" && <Alert><AlertDescription className="space-y-2"><p>{t("emailLoadFailed")}</p><Button variant="outline" className="min-h-10" onClick={() => void load()}>{t("emailRetry")}</Button></AlertDescription></Alert>}
+          {status === "reauth" && <Alert><AlertDescription className="space-y-2"><p>{t("reauth")}</p><Button variant="outline" className="min-h-10" asChild><Link href={accountLink("login", "/account#email", true)}>{t("refreshLogin")}</Link></Button></AlertDescription></Alert>}
+          {status !== "reauth" && status !== "loading" && (!transaction || expired) && <div className="space-y-4">
+            {expired && <p role="status" className="text-sm text-destructive">{t("emailExpired")}</p>}
+            {blind && <p role="status" className="text-sm text-destructive">{t("emailNoTransaction")}</p>}
+            <p className="text-sm text-muted-foreground">{t("emailIntro")}</p>
+            <Alert><AlertDescription>{t("emailOldMailboxNote")}</AlertDescription></Alert>
+            <div className="space-y-2">
+              <PasswordField label={t("currentPassword")} id="email-current-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => { setPassword(event.target.value); setBlind(false); }} />
+              <Field label={t("emailNewAddress")} id="email-new-address" type="email" autoComplete="email" maxLength={254} value={target} onChange={(event) => { setTarget(event.target.value); setBlind(false); }} error={target && sameAddress ? t("emailSame") : undefined} />
+              <p className="text-xs text-muted-foreground">{t("emailCodesNote")}</p>
+            </div>
+            {challengeReady && <Challenge key={challenge} siteKey={siteKey} onToken={setToken} />}
+            {config && !config.available && <p role="status" className="text-sm text-muted-foreground">{t("emailServiceUnavailable")}</p>}
+            <Button className="min-h-10" type="button" disabled={!challengeReady || working || !token || !password || !target || sameAddress} onClick={() => void start()}>
+              {working && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}
+              {t("emailStart")}
+            </Button>
+          </div>}
+          {transaction && !expired && status !== "reauth" && <div className="space-y-4">
+            <p role="status" className="break-all text-sm font-medium">{t("emailPendingSent", { email: transaction.maskedNewEmail })}</p>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <span>{t("emailExpiresIn", { time: clock })}</span>
+              <Badge variant="secondary">{t("emailAttemptsLeft", { old: transaction.attemptsLeft.old, new: transaction.attemptsLeft.new })}</Badge>
+            </div>
+            {/* A new code needs a fresh challenge, exactly like the reset flow's
+                resend, so the widget lives in this panel too. */}
+            {challengeReady && <div className="space-y-2">
+              <p className="text-sm font-medium">{t("emailChallengeHeading")}</p>
+              <Challenge key={challenge} siteKey={siteKey} onToken={setToken} />
+            </div>}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" className="min-h-10" disabled={!challengeReady || working || cooldown > 0 || !token} onClick={() => void resend("old")}>{cooldown > 0 ? t("emailResendWait", { seconds: cooldown }) : t("emailResendOld")}</Button>
+              <Button variant="outline" className="min-h-10" disabled={!challengeReady || working || cooldown > 0 || !token} onClick={() => void resend("new")}>{cooldown > 0 ? t("emailResendWait", { seconds: cooldown }) : t("emailResendNew")}</Button>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <div className="min-w-40 flex-1"><Field label={t("emailCodeOld")} id="email-code-old" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={codes.old} onChange={(event) => setCodes((value) => ({ ...value, old: event.target.value }))} /></div>
+              <div className="min-w-40 flex-1"><Field label={t("emailCodeNew")} id="email-code-new" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={codes.new} onChange={(event) => setCodes((value) => ({ ...value, new: event.target.value }))} /></div>
+            </div>
+            <p className="text-xs text-muted-foreground">{t("emailEffect")}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button className="min-h-10" disabled={committing || working || !/^\d{6}$/.test(codes.old) || !/^\d{6}$/.test(codes.new)} onClick={() => setDialog("commit")}>
+                {committing && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}
+                {t("emailConfirm")}
+              </Button>
+              <Button variant="outline" className="min-h-10" disabled={working || committing} onClick={() => setDialog("cancel")}>{t("emailCancel")}</Button>
+            </div>
+          </div>}
+        </CollapsibleContent>
+      </Collapsible>
+      <AlertDialog open={dialog !== null} onOpenChange={(value) => { if (!value && !working) setDialog(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{dialog === "cancel" ? t("emailCancelTitle") : t("emailCommitTitle")}</AlertDialogTitle>
+            <AlertDialogDescription className="break-all">
+              {dialog === "cancel"
+                ? t("emailCancelBody", { email: transaction?.maskedNewEmail ?? "" })
+                : t("emailCommitBody", { email: transaction?.maskedNewEmail ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-10" disabled={working}>{t("emailDialogBack")}</AlertDialogCancel>
+            <AlertDialogAction className="min-h-10" onClick={() => (dialog === "cancel" ? void cancel() : void commit())}>
+              {dialog === "cancel" ? t("emailCancelConfirm") : t("emailCommitConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </CardContent>
+  </Card>;
+}
 export function AccountCenter() {
   const { user, loading, failed, refresh, preferences } = useAccount();
   const t = useTranslations("account");
   const [staleSession, setStaleSession] = useState(false);
+  const [moved, setMoved] = useState<EmailMoved | null>(null);
   const handleFreshness = useCallback((stale: boolean) => setStaleSession(stale), []);
+  // Right after a commit the identity is gone, so the result outranks the signed-in
+  // page. A different login clears it: only the account that retired `oldEmail`
+  // should still see that commit's outcome.
+  if (moved && (!user || moved.oldEmail === user.email)) return <div className="mx-auto max-w-2xl space-y-6"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><EmailMovedNotice moved={moved} /></div>;
   if (!user) return <div className="mx-auto max-w-2xl space-y-4"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1>{loading ? <Skeleton className="h-48 w-full" /> : failed ? <><p role="alert">{t("actionFailed")}</p><Button className="min-h-10" onClick={() => void refresh()}>{t("retryAccount")}</Button></> : <><p>{t("sessionExpired")}</p><Button className="min-h-10" asChild><Link href={accountLink("login", "/account")}>{t("login")}</Link></Button></>}</div>;
-  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section></div>;
+  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="email" className="scroll-mt-24"><EmailCard key={`email:${user.id}`} email={user.email} onFreshness={handleFreshness} onMoved={setMoved} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section></div>;
 }
