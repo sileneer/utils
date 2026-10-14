@@ -56,7 +56,7 @@ handler, so the ARCHITECTURE §5 server contract was unchanged.
 CI change, and touches no server-side auth handler beyond the account wrapper's own
 routing.
 
-**Batch C1 is the newest local commit on this branch**, following `4c14e7d`:
+**Batch C1 is committed locally as `4d08dec`** (`feat(auth): add secure email change`):
 new `migrations/005-email-change.sql`, `src/lib/auth/email-change.ts`,
 `src/lib/auth/turnstile.ts`, `src/components/auth/challenge.tsx` and
 `tests/email-change.test.cjs`, plus edits to `account-center`, `account-form`,
@@ -133,7 +133,7 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
 §14.9/§14.10/§14.11/§14.12) and await the owner's review and a separate publication
 decision; nothing may be merged or deployed on this authorization. Batches A, B and
-C2 are committed; C1 is the newest local commit on the branch. D remains an
+C2 and C1 are committed, C1 as `4d08dec`. D remains an
 unapproved proposal in §14. Do not
 start new features or publish any batch without subsequent authorization.
 
