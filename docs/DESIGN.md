@@ -521,6 +521,37 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   masked-address badge wraps to its own line when it cannot share the label row, so
   neither it nor the countdown can force horizontal overflow.
 
+### 5.14 Security activity card — approved 2026-10-14
+
+- Register it as a collapsed-by-default card in the account centre on the batch A
+  Collapsible disclosure pattern, with an `#activity` anchor added to the summary
+  navigation, placed after the sessions card because it explains what happened to
+  those sessions rather than what is live now. It reuses `Card`, `Collapsible`,
+  `Badge`, `Button`, `Alert` and `Skeleton`; no new dependency, primitive or token.
+- The card is read-only and loads lazily on first expand, on the batch B usage-card
+  shape: a trigger that carries no private content, a skeleton while fetching, a
+  failure alert with an explicit retry that re-reads rather than replaying anything,
+  and a `reauth_required` alert pointing at the in-place re-verification entry,
+  because this is a gated security read.
+- Every row is one confirmed event: a verb-first label naming the operation, the local
+  date and time with the browser's own time-zone label, and the coarse inferred
+  device (`Chrome · Windows`) in the same words the session list already uses. Single
+  and batch revocation read differently and the batch row states the number of
+  sessions that actually went away, so the two can never be confused.
+- The empty state is a real state and must stay honest: "no recorded activity yet",
+  plus one line saying that operations performed before this record existed are not
+  shown. Never imply that an empty list means an untouched account, and never derive
+  rows from the current session list.
+- Two standing notes belong in the card, not in a tooltip: what is deliberately not
+  recorded (no IP or location, no device identifier, no address, no codes), and the
+  retention window with its exact length, so a missing old entry is explained instead
+  of looking like a deletion by someone else.
+- Copy must not overstate the guarantee. Say "confirmed changes to your account" and
+  "sign-in sessions", not "security log", "audit trail" or "protected".
+- Both locales, both themes, 360/768/1280px, keyboard operation and the §5.10 40px
+  target apply; long masked addresses and device labels must wrap rather than force
+  horizontal overflow.
+
 ## 6. Motion
 
 - Micro-interactions (hover, focus, press): CSS transitions, `150ms ease-out`.

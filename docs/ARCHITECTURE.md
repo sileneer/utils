@@ -255,7 +255,9 @@ table stores presentation settings only and holds no role, status or verified
 data, which remain server-only columns on `user`. `005-email-change.sql` adds
 `email_changes`, the transactional state for the email-change flow described in
 §5; it is independent of the `verification` table so a change-email code can never
-collide with a registration or reset code. Legacy conversation
+collide with a registration or reset code. `006-security-events.sql` adds
+`security_events`, the short desensitized record of confirmed security changes also
+described in §5. Legacy conversation
 columns stay unchanged so old-image positional writes remain compatible. A
 missing title override falls back to the first user question (100 characters);
 no model is called to name conversations. User role/status are server-only
@@ -494,6 +496,76 @@ public link, no token in a URL, and the browser stores nothing in
 localStorage/sessionStorage: the card links directly to the endpoint so the file
 goes to the download manager. Import, cross-account merge and any delete-on-export
 behaviour are explicitly out of scope.
+
+#### Security activity
+
+A short, desensitized record of the account's own confirmed security changes
+(PLANNING §14.7). It exists so a user can answer "did my account actually change,
+when, and from what kind of device" — it is not an audit platform, an administrator
+console or an incident trail, and it deliberately records nothing about logins.
+
+**Login sessions are not a security log.** The session table describes access that is
+live *now*; a revoked or expired row says nothing about what happened while it existed.
+Events are therefore written only when an operation is confirmed, and no history is
+backfilled, inferred or reconstructed from existing session rows. Accounts that
+predate this table correctly show an empty list rather than an invented past.
+
+`006-security-events.sql` adds `security_events`, one row per confirmed event:
+
+| Column | Contents |
+|---|---|
+| `id` | generated uuid, so a retry cannot collide with or overwrite an earlier row |
+| `user_id` | the subject, `ON DELETE CASCADE` |
+| `kind` | `password_change` \| `email_change` \| `session_revoke_one` \| `session_revoke_others`, enforced by CHECK |
+| `occurred_at` | epoch milliseconds of the confirmed change |
+| `browser`, `system` | the two inferred labels from the existing `browserInfo` projection of the acting session's User-Agent — a controlled vocabulary, never the raw UA |
+| `masked_email` | `email_change` only: the target address with its local part masked |
+| `sessions_affected` | the two revoke kinds only: how many sessions actually went away |
+
+Never stored, at any depth: passwords or hashes, verification or OTP codes, session or
+CSRF tokens, cookies, raw User-Agent strings, IP addresses or any location, email
+bodies, model or conversation content, and the full new address. The row is written
+with the same keyed-digest discipline as the rest of the account layer and carries no
+free-text field a client can populate.
+
+Recording is tied to the real outcome, not to the request:
+
+- `email_change` is inserted **inside** the same immediate transaction that moves
+  `user.email` and deletes the sessions, so the change and its record commit or roll
+  back together.
+- `password_change`, `session_revoke_one` and `session_revoke_others` mutate through the
+  library, which owns their transaction, so they are written **after** the wrapper has
+  confirmed an OK response. A transport failure, a non-OK response, an unconfirmed AI
+  stop or a rejected password writes nothing, and an unknown outcome is never recorded
+  as success.
+- Because the mutation is already durable at that point, a failed event insert after a
+  confirmed change is swallowed rather than turned into an error: reporting a completed
+  password change as failed would invite a retry that can no longer succeed.
+  The asymmetry is deliberate — the record is best-effort *after* a confirmed change
+  and never best-effort *before* one.
+- A batch revoke counts the caller's other live sessions first and writes **nothing**
+  when that count is zero, so a repeated click cannot manufacture an event for a
+  change that did not happen. A single revoke that has already lost its target returns
+  `not_found` upstream and likewise writes nothing.
+- Changing a password also revokes other sessions, but it is one operation and is
+  recorded once, as `password_change`; the revocation is part of its stated effect, not
+  a second event.
+
+GET `/api/account/activity` is the only read. It takes the wrapper's existing origin
+and identity checks, requires a current verified active identity **and** a login inside
+24 hours — the same gate as session listing, because this is security data — and
+filters by the caller's own `user.id` in SQL, so the result cannot be widened by any
+parameter. There is no administrator view in this scope and no query by address,
+device or date; if one is ever added, administrator status continues to come only from
+the server-side `role` column and never from a client-supplied field.
+
+Retention is 180 days with a cap of 100 rows per account, both enforced in
+`security_events.ts`: expired rows are pruned when a new event is written and the read
+filters by age as well, so a row can neither outlive the window nor be hidden while it
+still counts against the cap. Automatic cleanup applies to this table's own rows only.
+It never deletes or trims accounts, sessions, chat history, pinned source versions,
+book cache or backups, and it is not a general-purpose purge — the retention and
+pruning questions in DEPLOYMENT §12 remain separate and unapproved.
 
 lifecycle.ts coordinates logout/revocation/password changes per account across route
 bundles. A fence blocks new query registration; a per-owner authorization version

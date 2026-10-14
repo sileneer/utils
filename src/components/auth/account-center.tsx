@@ -29,6 +29,7 @@ import { readDeviceTheme } from "@/lib/theme-device";
 import type { Availability } from "@/lib/chat/history";
 import type { Preferences as AccountPreferences } from "@/lib/auth/preferences";
 import type { ExportSummary } from "@/lib/auth/export";
+import type { SecurityEvent } from "@/lib/auth/security-events";
 
 type LoginSession = { id: string; current: boolean; createdAt: string; expiresAt: string; browser: string; system: string };
 function Field({ label, error, id, ...props }: React.ComponentProps<typeof Input> & { label: string; error?: string; id: string }) {
@@ -43,6 +44,7 @@ function Summary({ user }: { user: AccountUser }) {
     { id: "security", label: t("security") },
     { id: "email", label: t("emailNav") },
     { id: "sessions", label: t("sessions") },
+    { id: "activity", label: t("activityNav") },
     { id: "usage", label: t("usage") },
     { id: "export", label: t("export") },
   ];
@@ -802,6 +804,72 @@ function EmailCard({
     </CardContent>
   </Card>;
 }
+/** Read-only list of the account's own confirmed security changes (DESIGN §5.14).
+ * It never derives a row from the session list, and it never shows a device, address
+ * or count the server did not record. */
+function ActivityCard() {
+  const t = useTranslations("account");
+  const locale = useLocale();
+  const [open, setOpen] = useState(false);
+  const [events, setEvents] = useState<SecurityEvent[]>();
+  const [retentionDays, setRetentionDays] = useState<number>();
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "reauth" | "failed">("idle");
+  const load = useCallback(async () => {
+    setStatus("loading");
+    try {
+      const response = await fetch("/api/account/activity", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+      if (response.status === 403) { setStatus("reauth"); return; }
+      if (!response.ok) { setStatus("failed"); return; }
+      const data: { events?: SecurityEvent[]; retentionDays?: number } = await response.json();
+      if (!data.events) { setStatus("failed"); return; }
+      setEvents(data.events);
+      setRetentionDays(data.retentionDays);
+      setStatus("ready");
+    } catch { setStatus("failed"); }
+  }, []);
+  useEffect(() => {
+    if (open && status === "idle") queueMicrotask(() => void load());
+  }, [open, status, load]);
+  // Component options rather than dateStyle/timeStyle: those cannot be combined with
+  // timeZoneName, and the zone label is the point — the list is shown in the
+  // browser's own zone, so it has to say which one.
+  const stamp = (ms: number) => new Intl.DateTimeFormat(locale, {
+    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+  }).format(new Date(ms));
+  return <Card><CardHeader><CardTitle><h2>{t("activity")}</h2></CardTitle><CardDescription>{t("activityDescription")}</CardDescription></CardHeader><CardContent>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <Button variant="outline" className="min-h-10 w-full justify-between gap-2 text-left">
+          <span>{open ? t("activityCollapse") : t("activityLoad")}</span>
+          {events && <span className="text-xs font-normal text-muted-foreground">{t("activityCount", { count: events.length })}</span>}
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-4 pt-4">
+        {status === "loading" && <Skeleton className="h-24 w-full" />}
+        {status === "failed" && <Alert><AlertDescription className="space-y-2"><p>{t("activityFailed")}</p><Button variant="outline" className="min-h-10" onClick={() => void load()}>{t("activityRetry")}</Button></AlertDescription></Alert>}
+        {status === "reauth" && <Alert><AlertDescription className="space-y-2"><p>{t("reauth")}</p><Button variant="outline" className="min-h-10" asChild><Link href={accountLink("login", "/account#activity", true)}>{t("refreshLogin")}</Link></Button></AlertDescription></Alert>}
+        {status === "ready" && events && (events.length === 0
+          ? <div className="space-y-1">
+            <p role="status" className="text-sm font-medium">{t("activityEmpty")}</p>
+            {/* An empty list is not an untouched account: earlier operations simply
+                predate this record, and saying so is the honest state. */}
+            <p className="text-xs text-muted-foreground">{t("activityEmptyNote")}</p>
+          </div>
+          : <ul className="divide-y">
+            {events.map((event) => <li key={event.id} className="space-y-1 py-3">
+              <p className="text-sm font-medium">{t("activityKind_" + event.kind)}</p>
+              <p className="break-words text-xs text-muted-foreground">{stamp(event.occurredAt)} · {event.browser} · {event.system}</p>
+              {event.kind === "email_change" && event.maskedEmail && <p className="break-all text-xs text-muted-foreground">{t("activityEmailTarget", { email: event.maskedEmail })}</p>}
+              {event.kind === "session_revoke_others" && event.sessionsAffected !== undefined && <p className="text-xs text-muted-foreground">{t("activityRevokeCount", { count: event.sessionsAffected })}</p>}
+            </li>)}
+          </ul>)}
+        {status === "ready" && <p className="text-xs leading-relaxed text-muted-foreground">{t("activityRetention", { days: retentionDays ?? 0 })}</p>}
+        {status === "ready" && <p className="text-xs leading-relaxed text-muted-foreground">{t("activityPrivacy")}</p>}
+        {status === "ready" && events && events.length > 0 && <Button variant="outline" className="min-h-10" onClick={() => void load()}>{t("activityRefresh")}</Button>}
+      </CollapsibleContent>
+    </Collapsible>
+  </CardContent></Card>;
+}
 export function AccountCenter() {
   const { user, loading, failed, refresh, preferences } = useAccount();
   const t = useTranslations("account");
@@ -813,5 +881,5 @@ export function AccountCenter() {
   // should still see that commit's outcome.
   if (moved && (!user || moved.oldEmail === user.email)) return <div className="mx-auto max-w-2xl space-y-6"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><EmailMovedNotice moved={moved} /></div>;
   if (!user) return <div className="mx-auto max-w-2xl space-y-4"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1>{loading ? <Skeleton className="h-48 w-full" /> : failed ? <><p role="alert">{t("actionFailed")}</p><Button className="min-h-10" onClick={() => void refresh()}>{t("retryAccount")}</Button></> : <><p>{t("sessionExpired")}</p><Button className="min-h-10" asChild><Link href={accountLink("login", "/account")}>{t("login")}</Link></Button></>}</div>;
-  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="email" className="scroll-mt-24"><EmailCard key={`email:${user.id}`} email={user.email} onFreshness={handleFreshness} onMoved={setMoved} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section></div>;
+  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="email" className="scroll-mt-24"><EmailCard key={`email:${user.id}`} email={user.email} onFreshness={handleFreshness} onMoved={setMoved} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="activity" className="scroll-mt-24"><ActivityCard key={`activity:${user.id}`} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section></div>;
 }

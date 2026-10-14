@@ -6,6 +6,7 @@ import { withAccountChange, beforePasswordWrite } from "./lifecycle";
 import { isLanguage, isTheme, readPreferences, writePreferences } from "./preferences";
 import { buildExport, exportSummary, parseScope } from "./export";
 import { verifyChallenge } from "./turnstile";
+import { readSecurityEvents, recordSecurityEvent, RETENTION_DAYS } from "./security-events";
 import {
   applyEmailChange,
   cancelEmailChange,
@@ -29,6 +30,25 @@ function browserInfo(agent: string | null | undefined) {
   const browser = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "unknown";
   const system = /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Windows/.test(ua) ? "Windows" : /Macintosh/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "unknown";
   return { browser, system };
+}
+/** The acting session's own inferred device labels. Only the two derived values are
+ * ever returned to the caller; the raw User-Agent stays in the session row. */
+function actingDevice(identity: Identity) {
+  const row = db().prepare("SELECT userAgent FROM session WHERE id=? AND userId=?")
+    .get(identity.session.id, identity.user.id) as { userAgent: string | null } | undefined;
+  return browserInfo(row?.userAgent);
+}
+/**
+ * The security change is already durable by the time this runs, so a failed record is
+ * swallowed rather than reported: telling the user their password change failed would
+ * invite a retry that can no longer succeed.
+ */
+function safeRecord(event: Parameters<typeof recordSecurityEvent>[0]) {
+  try {
+    recordSecurityEvent(event);
+  } catch {
+    /* The event is best-effort after a confirmed change, never a reason to deny one. */
+  }
 }
 type Identity = NonNullable<Awaited<ReturnType<typeof accountSession>>>;
 type Auth = ReturnType<typeof getAuth>;
@@ -119,7 +139,7 @@ async function handleEmailChange(
   if ((await accountSession(headers))?.session.id !== identity.session.id) return fail("unauthorized", 401);
   return attempt(async () => {
     const result = await commitEmailChange(userId, id, oldEmail, codes, async (newEmail) => {
-      applyEmailChange(userId, newEmail);
+      applyEmailChange(userId, newEmail, actingDevice(identity));
     });
     // The address is already committed here, so a notice failure is reported as its
     // own fact and must never recast the change as incomplete or retry itself.
@@ -135,7 +155,7 @@ async function handleEmailChange(
 export async function handleAccount(request: Request) {
   try {
     const path = new URL(request.url).pathname.slice("/api/account".length);
-    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary", "/email"],
+    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary", "/email", "/activity"],
       writes = ["/profile", "/password", "/sessions/revoke", "/preferences", "/email/start", "/email/resend", "/email/verify", "/email/cancel"];
     if (!(request.method === "GET" ? reads : request.method === "POST" ? writes : []).includes(path)) return fail("not_found", 404);
     const ip = process.env.TRUST_CLOUDFLARE_IP === "1" ? request.headers.get("cf-connecting-ip") || "unknown" : "local";
@@ -179,10 +199,14 @@ export async function handleAccount(request: Request) {
         });
       }
       // An in-flight email change is security state, so it shares the freshAge gate and
-    // is described only by mask: the row never echoes a stored digest.
-    if (path === "/email")
-      return json({ pending: pendingEmailChange(identity.user.id, identity.user.email) });
-    const sessions = await auth.api.listSessions({ headers });
+      // is described only by mask: the row never echoes a stored digest.
+      if (path === "/email")
+        return json({ pending: pendingEmailChange(identity.user.id, identity.user.email) });
+      // Confirmed security changes are security data too, so this read is gated the
+      // same way and is scoped to the caller in SQL rather than by any parameter.
+      if (path === "/activity")
+        return json({ events: readSecurityEvents(identity.user.id), retentionDays: RETENTION_DAYS });
+      const sessions = await auth.api.listSessions({ headers });
       return json({ sessions: sessions.map((s) => ({
         id: s.id, current: s.id === identity.session.id,
         createdAt: new Date(s.createdAt).toISOString(), expiresAt: new Date(s.expiresAt).toISOString(),
@@ -254,17 +278,35 @@ export async function handleAccount(request: Request) {
     return await withAccountChange(identity.user.id, async () => {
       const latest = await accountSession(headers);
       if (latest?.session.id !== identity.session.id) return fail("unauthorized", 401);
-      if (path === "/password") return await call("/change-password", {
-        currentPassword: password, newPassword: body.newPassword, revokeOtherSessions: true,
-      });
+      const device = actingDevice(identity);
+      if (path === "/password") {
+        const response = await call("/change-password", {
+          currentPassword: password, newPassword: body.newPassword, revokeOtherSessions: true,
+        });
+        // One operation, one event: the other sessions going with it is part of a
+        // password change's stated effect, not a second recorded revocation.
+        if (response.ok) safeRecord({ userId: identity.user.id, kind: "password_change", ...device });
+        return response;
+      }
       if (body.others) {
         await beforePasswordWrite();
-        return await call("/revoke-other-sessions", {});
+        const affected = (db().prepare(
+          "SELECT count(*) n FROM session WHERE userId=? AND id<>? AND expiresAt>?",
+        ).get(identity.user.id, identity.session.id, Date.now()) as { n: number }).n;
+        const response = await call("/revoke-other-sessions", {});
+        // Counted before the call and skipped at zero, so a repeated click cannot
+        // manufacture an event for a revocation that changed nothing.
+        if (response.ok && affected > 0)
+          safeRecord({ userId: identity.user.id, kind: "session_revoke_others", sessionsAffected: affected, ...device });
+        return response;
       }
       const target = db().prepare("SELECT token FROM session WHERE id=? AND userId=? AND expiresAt>?").get(body.id, identity.user.id, Date.now()) as { token: string } | undefined;
       if (!target || body.id === identity.session.id) return fail("not_found", 404);
       await beforePasswordWrite();
-      return await call("/revoke-session", { token: target.token });
+      const response = await call("/revoke-session", { token: target.token });
+      if (response.ok)
+        safeRecord({ userId: identity.user.id, kind: "session_revoke_one", sessionsAffected: 1, ...device });
+      return response;
     }, false);
   } catch (error) {
     if (error instanceof Error && ["stop_unconfirmed", "account_busy"].includes(error.message)) return fail(error.message, 409);

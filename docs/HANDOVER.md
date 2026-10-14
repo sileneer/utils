@@ -20,9 +20,11 @@ authorize provider calls or new features. On 2026-10-13 the owner authorized
 **local implementation of batch B** (account preferences plus the personal usage
 overview), **local implementation and isolated verification of C2** (personal
 data export) and **local technical verification, protocol design, implementation
-and simulated acceptance of C1** (secure email change). None of these approvals
-covers D, and none covers publication. Batches A, B, C2 and C1 are implemented
-locally and unmerged; production still runs the §13 release. Exporting production
+and simulated acceptance of C1** (secure email change). On 2026-10-14 the owner also
+authorized **local implementation of the minimal security activity record from
+PLANNING §14.7**. None of these approvals
+covers D, and none covers publication. Batches A, B, C2, C1 and the activity record are
+implemented locally and unmerged; production still runs the §13 release. Exporting production
 data, account deletion, changing a real account's email, real mail sending and paid
 AI calls remain unapproved. Off-machine backup uploads and
 pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
@@ -69,23 +71,32 @@ extracted Turnstile verification helper used by the public login/register/reset 
 so those paths are regression-covered by `tests/account.test.cjs` and
 `tests/auth.test.cjs` rather than left untouched. Nothing was pushed, merged,
 deployed or production-tested for any batch. Existing ignored `.zcode/`, data and investigations
-are preserved. Planning notes and fixture evidence for all four passes (disposable databases,
+are preserved. Planning notes and fixture evidence for all five passes (disposable databases,
 generated-credential seeding, fault-injection launchers, generated export artefacts and
 screenshots) live under ignored `data/investigation/account-plan-20261013/`,
 `data/investigation/account-batch-a-20261013/`,
 `data/investigation/account-batch-b-20261014/`,
 `data/investigation/account-c2-20261014/` and
-`data/investigation/account-c1-20261014/`. Generated fixture credentials are
+`data/investigation/account-c1-20261014/` and
+`data/investigation/account-activity-20261014/`. Generated fixture credentials are
 deleted after each QA pass.
 
+**The §14.7 minimal security activity record is implemented in the working tree on top
+of `4d08dec`**: new `migrations/006-security-events.sql`, `src/lib/auth/security-events.ts`
+and `tests/security-events.test.cjs`, plus edits to `account-handler.ts`,
+`email-change.ts`, `account-center.tsx`, both `messages/*.json` and the five docs. It
+adds no dependency, env, Docker or CI change, does not widen the `/api/auth` allowlist,
+and changes no existing table.
+
 PLANNING section 14 remains the canonical home for the improvement plan; §14.9,
-§14.10, §14.11 and §14.12 record what batches A, B, C2 and C1 actually changed.
+§14.10, §14.11, §14.12 and §14.13 record what batches A, B, C2, C1 and the activity
+record actually changed.
 ARCHITECTURE §5/§7 and DESIGN
-§5.10–§5.13 describe the implemented client contract (section anchors, the
+§5.10–§5.14 describe the implemented client contract (section anchors, the
 `reauth=1` copy variant, safe error codes and their per-section mapping in
 `src/lib/auth/errors.ts`, the two-layer theme keys, the preference priority, the
-personal usage wrapper, the export document contract and the two-code email-change
-protocol).
+personal usage wrapper, the export document contract, the two-code email-change
+protocol and the desensitized security event vocabulary with its retention window).
 
 [Documentation PR #8](https://github.com/sileneer/utils/pull/8) publishes the
 shared agent instructions and living-doc refresh, based on `70f5a78`, to `main`.
@@ -114,26 +125,29 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 - ARCHITECTURE §3 owns agent tools/SSE/message details; §5 owns public accounts,
   ownership, safe return paths, security lifecycle, preference/usage wrappers, the
-  personal export contract, the two-code email-change protocol and future-module
-  integration; §7 owns locale resolution; §8 owns runtime
+  personal export contract, the two-code email-change protocol, the security activity
+  record and future-module integration; §7 owns locale resolution; §8 owns runtime
   provider/env config; §10 owns administrator aggregates.
-- DESIGN §5.6–5.13 owns chat/source/account/admin patterns, the batch A
+- DESIGN §5.6–5.14 owns chat/source/account/admin patterns, the batch A
   account-operations clarifications, the batch B preferences/usage-card
-  patterns, the C2 export card and the C1 email-change card. Account forms use
+  patterns, the C2 export card, the C1 email-change card and the security
+  activity card. Account forms use
   registered primitives; there
   is no adopted `ui/form` component, and `ui/select` is now used for the preference
   and export-scope choices.
 - DEPLOYMENT §8/§11–12 owns release checks, service setup and backup operations.
 - PLANNING §11–14 owns decisions, deferred account features and the §14
-  improvement plan with its batch A/B implementation results. GOTCHAS owns
+  improvement plan with its batch A/B/C1/C2 and security-activity implementation
+  results. GOTCHAS owns
   debugging lessons. AGENTS is the shared rulebook; CLAUDE imports it.
 
 ## 4. Next actions
 
 Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
 §14.9/§14.10/§14.11/§14.12) and await the owner's review and a separate publication
-decision; nothing may be merged or deployed on this authorization. Batches A, B and
-C2 and C1 are committed, C1 as `4d08dec`. D remains an
+decision; nothing may be merged or deployed on this authorization. Batches A, B, C2
+and C1 are committed, C1 as `4d08dec`. The §14.7 minimal security activity record is
+implemented on top of it in the working tree (§2, PLANNING §14.13). D remains an
 unapproved proposal in §14. Do not
 start new features or publish any batch without subsequent authorization.
 
@@ -226,7 +240,16 @@ Its launcher processes were stopped only after their command lines were read bac
 confirmed, both ports were then verified free, and the generated credential file was
 deleted. Two throwaway schema-probe scripts and their `data/schema-probe*.sqlite*`
 databases created earlier in the same pass were removed once they had answered the
-question they were built for. Screenshots are
+question they were built for. The security-activity pass used a sixth dedicated fixture
+database under `data/investigation/account-activity-20261014/ui/` on its own loopback
+pair (3021 app, 3022 outbox and Turnstile stub); its launcher processes were stopped
+only after their command lines were read back and confirmed, both ports were then
+verified free with no socket left in LISTENING, and its generated credential file was
+deleted. That pass also used two fixture-only helpers: one that inserts a single
+`email_change` row so the masked-address line could be inspected without re-driving the
+C1 flow, and one that ages or expires the run's own session row so the card's
+stale-login state could be seen against the real server. Both operate only on the
+throwaway database and neither deletes application data. Screenshots are
 outside Git. The owner
 logged in normally; no production cookies were exported, captured or minted.
 
@@ -541,3 +564,61 @@ unconfirmed-stop path was driven with a local active-query stub under a shortene
 timeout, not with a paid provider request. No production account's address was
 changed, no real mail was sent and no paid AI call was made; both allowances are
 unchanged. Nothing here is production or deployment acceptance.
+
+**Security activity local implementation verification (2026-10-14):** 130 regressions
+pass across nine files, all green, including 12 new `tests/security-events.test.cjs`
+cases on their own disposable database. They cover: an account with three live sessions
+and no operations having an empty list, so nothing is inferred from sessions; a refused
+password change writing nothing and a confirmed one writing exactly one event with no
+second revocation row (and that the caller stays signed in on a rotated session);
+single versus batch revocation as distinct kinds carrying the real affected count, a
+retry against a gone target writing nothing, and a zero-affected batch writing nothing
+even though the call itself succeeds; the current session refusing to be revoked without
+producing an event; an email change recording once with a masked target and never the
+plaintext address, while a wrong code, an unconfirmed AI stop and an `email_taken`
+collision all record nothing and leave the account and its sessions untouched; a sweep
+of the whole table for the run's password, every issued code, every live session token,
+both raw User-Agent strings and the unmasked target, all absent; retention hiding an
+expired row and pruning it on the next write; the 100-row cap keeping the newest entries
+while leaving another account's rows alone; two accounts reading only their own events
+with seven different scope-widening or `admin=true` query strings all returning the
+caller's own rows; the read refusing anonymous callers and a 25-hour-old login; and the
+`kind` vocabulary being closed both by the writer and by the table's CHECK constraint.
+
+Browser QA used a fresh loopback fixture database (3021 app, 3022 outbox and Turnstile
+stub), runtime-generated credentials, intercepted mail and AI disabled. Verified in the
+running UI: the card is collapsed by default and joins the summary navigation; the empty
+state says "no recorded activity yet" with the explicit note that earlier operations are
+not shown, while the same account's session card still lists live sessions — the two
+claims stay separate; after real operations performed through the forms (a password
+change, a single revocation and a batch revocation, each confirmed through its dialog
+with the current password) the list shows every kind with its local time and zone label,
+the inferred device, the batch's session count and the masked new address; the trigger
+reports the entry count; the stale-login state renders the re-verification alert pointing
+at `/login?returnTo=/account#activity&reauth=1` and shows no rows. Twelve combinations
+(en/zh × light/dark × 360/768/1280px) rendered the expanded card with **the applied
+`dark`/`light` class and `html[lang]` asserted on every run**, no horizontal overflow and
+no interactive target below 40px; four images were captured and read (en/light/360,
+zh/light/360, en/light/1280 desktop list, zh/dark/1280) plus the empty and stale-login
+states. Real Tab moved focus from the trigger to the reload button with a visible
+`:focus-visible` ring, and the accessibility tree exposes the trigger as
+`expandable expanded` with an accessible name including the count.
+
+One defect was found only in the browser and fixed: the card's timestamp formatter
+combined `dateStyle`/`timeStyle` with `timeZoneName`, which Chrome rejects, and because
+it threw during render it took the whole account page down to the error boundary — see
+GOTCHAS "dateStyle cannot be combined with timeZoneName".
+
+Limits of this record: the card's **network-failure branch was not visually confirmed** —
+the attempt to intercept that one request from the page did not take effect, and
+re-entering the fixture password to re-establish a session was declined, so that alert
+and its retry button are covered by code inspection and by the identical shipped pattern
+on the usage and export cards, not by a screenshot. The `email_change` row visible in the
+browser screenshots was inserted directly into the throwaway fixture database in exactly
+the shape the commit writes, so the masked-address line could be reviewed without
+re-driving the C1 flow; the flow-produced row is covered by the regression tests instead.
+axe-core was not re-run for this card. Widths remain same-origin-frame browser
+emulation, not a physical device. No production account was touched, no real notification
+mail was sent, no new-device or unusual-location detection was added, and no paid AI call
+was made; both allowances are unchanged. Nothing here is production or deployment
+acceptance.

@@ -792,3 +792,16 @@ by a later mount. The auth forms hid this because their challenge mounts in view
 as the readiness signal, with a bounded wait that falls through to the existing
 retryable script-error state. `turnstile.ready()` is not an option here — Cloudflare
 rejects it while the tag is async/deferred, which is how `next/script` inserts it.
+
+### dateStyle cannot be combined with timeZoneName
+
+**Symptom** the account centre renders its error boundary as soon as a list of
+formatted timestamps appears; the server logs nothing, so it looks like a data fault.
+**Cause** `new Intl.DateTimeFormat(locale, { dateStyle, timeStyle, timeZoneName })`
+throws a `TypeError` in Chrome — the style presets are mutually exclusive with
+`timeZoneName` — and the throw happens during render, so the whole page is caught by
+the boundary rather than just the card. **Fix** build the format from component options
+(`year`/`month`/`day`/`hour`/`minute` plus `timeZoneName`), which is what the usage card
+already does to get a zone label. When adding any timestamp that must name its zone,
+check the combination in a real browser: TypeScript accepts the options object and the
+unit tests never format a date.

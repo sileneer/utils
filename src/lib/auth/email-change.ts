@@ -3,6 +3,7 @@ import { db } from "../db";
 import { privateKey, consumeLimits } from "./limits";
 import { sendOTP } from "./mail";
 import { withAccountChange, beforePasswordWrite } from "./lifecycle";
+import { recordSecurityEvent } from "./security-events";
 
 /** Same 600s / five-attempt policy as the registration and reset codes. */
 const CODE_TTL_MS = 600_000;
@@ -166,8 +167,16 @@ export function cancelEmailChange(userId: string, id: string, oldEmail: string) 
   return { cancelled: true };
 }
 
-/** Write the new address and sign every session out, atomically. */
-export function applyEmailChange(userId: string, newEmail: string) {
+/**
+ * Write the new address, record the confirmed change and sign every session out,
+ * atomically. The event belongs in this transaction: if it cannot be written, the
+ * address does not move either, so a record and a change can never disagree.
+ */
+export function applyEmailChange(
+  userId: string,
+  newEmail: string,
+  device: { browser?: string; system?: string } = {},
+) {
   const database = db();
   try {
     // `user` timestamps are ISO text because that is what the library writes;
@@ -178,6 +187,13 @@ export function applyEmailChange(userId: string, newEmail: string) {
         if (!database.prepare("UPDATE user SET email=?, emailVerified=1, updatedAt=? WHERE id=?").run(newEmail, now, userId).changes)
           throw new Error("not_found");
         database.prepare("DELETE FROM session WHERE userId=?").run(userId);
+        recordSecurityEvent({
+          userId,
+          kind: "email_change",
+          browser: device.browser,
+          system: device.system,
+          maskedEmail: maskEmail(newEmail),
+        });
       })
       .immediate();
   } catch (error) {
