@@ -13,6 +13,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { VERIFY_EMAIL_KEY } from "@/lib/chat/keys";
 import {
   Card,
   CardContent,
@@ -110,7 +111,7 @@ export function AccountForm({
       .then(setConfig)
       .catch(() => setConfig({ siteKey: "", available: false }));
     try {
-      setValue("email", sessionStorage.getItem("utils_verify_email") || "");
+      setValue("email", sessionStorage.getItem(VERIFY_EMAIL_KEY) || "");
     } catch {
       /* Storage optional. */
     }
@@ -213,7 +214,7 @@ export function AccountForm({
     pending.current = true;
     try {
       try {
-        sessionStorage.setItem("utils_verify_email", email);
+        sessionStorage.setItem(VERIFY_EMAIL_KEY, email);
       } catch {
         /* Optional. */
       }

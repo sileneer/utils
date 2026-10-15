@@ -134,10 +134,14 @@ export async function accountAction<T = unknown>(path: string, body: object): Pr
     // second factor off revokes every login, including this one. Passkeys are the
     // same: adding, renaming or removing one never ends a live session, so other
     // windows only re-resolve — the sessions card is where a live login is revoked.
+    // Asking to delete an account, and withdrawing that ask, likewise changes no
+    // access at all; only the completed deletion falls through to "security", where
+    // every window drops the identity it can no longer read.
     path === "/api/account/profile" || path === "/api/account/preferences" ||
     path === "/api/account/email/start" || path === "/api/account/email/resend" ||
     path === "/api/account/email/cancel" || path === "/api/account/2fa/enable" ||
     path === "/api/account/2fa/recovery-codes" ||
+    path === "/api/account/deletion/request" || path === "/api/account/deletion/withdraw" ||
     path.startsWith("/api/account/passkeys/") ? "profile"
       : path === "/api/account/password" || path === "/api/account/sessions/revoke" ? "session"
       : "security",

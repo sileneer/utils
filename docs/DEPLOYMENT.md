@@ -391,6 +391,15 @@ SDK gets its explicit runtime/provider allowlist.
   set, replace with the coherent backup, set uid/gid 1001 and mode 600, then start
   and verify. Never copy a live main DB alone or silently restore on image rollback.
   Rollback of app images must preserve newly registered accounts.
+- Self-service account deletion writes one durable record outside the database:
+  `deleted-accounts.jsonl`, beside the DB file (`/app/data/deleted-accounts.jsonl`, mode
+  600). It is append-only, is **not** contained in any SQLite backup, and `migrate()`
+  reconciles it before the server serves a request, so it is what stops a restored
+  pre-deletion database from silently bringing a deleted identity back. Preserve it across
+  restores the same way as the SDK directory, and never hand-edit or prune it. A restore
+  that replaces the whole data volume with an older snapshot can still roll the file back
+  too; that limit is documented in ARCHITECTURE §5, and no backup is ever pruned to
+  "complete" a deletion.
 - The host compose also mounts `/opt/utils/data/sdk` at
   `/home/nextjs/.claude`. Create the SDK directory as app uid 1001, mode 700,
   before recreation. This preserves native SDK resume files across deployments;

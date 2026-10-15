@@ -9,6 +9,8 @@ import { verifyChallenge } from "./turnstile";
 import { readSecurityEvents, recordSecurityEvent, RETENTION_DAYS } from "./security-events";
 import { proveFactor, revokeAllSessions, translateFactorError, twoFactorStatus } from "./two-factor";
 import { handlePasskeyManagement, passkeyListResponse } from "./passkey-handler";
+import { deletionView, markExportDelivered } from "./deletion";
+import { handleDeletion } from "./deletion-handler";
 import {
   applyEmailChange,
   cancelEmailChange,
@@ -265,10 +267,11 @@ async function handleTwoFactorManagement(
 export async function handleAccount(request: Request) {
   try {
     const path = new URL(request.url).pathname.slice("/api/account".length);
-    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary", "/email", "/activity", "/2fa", "/passkeys"],
+    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary", "/email", "/activity", "/2fa", "/passkeys", "/deletion"],
       writes = ["/profile", "/password", "/sessions/revoke", "/preferences", "/email/start", "/email/resend", "/email/verify", "/email/cancel",
         "/2fa/enable", "/2fa/confirm", "/2fa/disable", "/2fa/recovery-codes",
-        "/passkeys/register/start", "/passkeys/register/finish", "/passkeys/rename", "/passkeys/remove"];
+        "/passkeys/register/start", "/passkeys/register/finish", "/passkeys/rename", "/passkeys/remove",
+        "/deletion/request", "/deletion/withdraw", "/deletion/complete"];
     if (!(request.method === "GET" ? reads : request.method === "POST" ? writes : []).includes(path)) return fail("not_found", 404);
     const ip = process.env.TRUST_CLOUDFLARE_IP === "1" ? request.headers.get("cf-connecting-ip") || "unknown" : "local";
     const headers = new Headers(request.headers);
@@ -304,6 +307,10 @@ export async function handleAccount(request: Request) {
         // revocation or account switch mid-assembly cannot emit the old data.
         if ((await accountSession(headers))?.session.id !== identity.session.id)
           return fail("unauthorized", 401);
+        // A whole-account export is what unlocks the final deletion step, so generating one
+        // stamps the open request. The server cannot know whether the file was kept, which is
+        // why the precondition is worded as "generated", never as "you have your copy".
+        markExportDelivered(identity.user.id, query.scope);
         return new Response(outcome.result.body, {
           headers: {
             "cache-control": "no-store",
@@ -325,6 +332,9 @@ export async function handleAccount(request: Request) {
       // shares the sessions/activity gate and is projected: no key, credential id or
       // AAGUID crosses the wire.
       if (path === "/passkeys") return json(passkeyListResponse(identity.user.id));
+      // Whether an account is waiting to be deleted is its own security state, so it sits
+      // behind the same freshness gate as the sessions, activity and passkey lists.
+      if (path === "/deletion") return json({ deletion: deletionView(identity.user.id) });
       const sessions = await auth.api.listSessions({ headers });
       return json({ sessions: sessions.map((s) => ({
         id: s.id, current: s.id === identity.session.id,
@@ -361,6 +371,9 @@ export async function handleAccount(request: Request) {
       "/passkeys/register/finish": ["response", "name"],
       "/passkeys/rename": ["password", "id", "name"],
       "/passkeys/remove": ["password", "code", "id"],
+      "/deletion/request": ["password", "code"],
+      "/deletion/withdraw": ["password", "code"],
+      "/deletion/complete": ["password", "code", "confirm"],
     };
     const allowed = fields[path];
     if (!allowed || Object.keys(body).some((key) => !allowed.includes(key))) return fail("bad_request", 400);
@@ -408,6 +421,8 @@ export async function handleAccount(request: Request) {
         safeRecord({ userId: identity.user.id, kind: "passkey_remove", ...actingDevice(identity) });
       return result;
     }
+    if (path.startsWith("/deletion/"))
+      return await handleDeletion(path, headers, auth, identity, ip, body);
     const password = path === "/password" ? body.currentPassword : body.password;
     if (typeof password !== "string" || !password || password.length > 128) return fail("bad_request", 400);
     if (path === "/password" && (typeof body.newPassword !== "string" || body.newPassword.length < 8 || body.newPassword.length > 128 || !/[A-Za-z]/.test(body.newPassword) || !/[0-9]/.test(body.newPassword))) return fail("bad_request", 400);

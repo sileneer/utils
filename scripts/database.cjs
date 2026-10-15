@@ -27,6 +27,10 @@ async function migrate(db = open()) {
       );
     }).immediate();
   }
+  // The same entry point that versions the schema also honours the durable deletion
+  // intents, so a restored database cannot serve a deleted identity back to the browser
+  // (ARCHITECTURE §5 "Account deletion"). A failure here must not start the server.
+  require("../src/lib/auth/deletion.cjs").reconcileDeletions(db);
   return db;
 }
 async function main() {

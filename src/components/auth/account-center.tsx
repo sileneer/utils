@@ -28,6 +28,7 @@ import { isUnconfirmedError } from "@/lib/auth/errors";
 import { hasUnsaved, markUnsaved } from "@/lib/unsaved";
 import { readDeviceTheme } from "@/lib/theme-device";
 import type { Availability } from "@/lib/chat/history";
+import { clearAccountState } from "@/lib/chat/clear";
 import type { Preferences as AccountPreferences } from "@/lib/auth/preferences";
 import type { ExportSummary } from "@/lib/auth/export";
 import type { SecurityEvent } from "@/lib/auth/security-events";
@@ -57,6 +58,7 @@ function Summary({ user }: { user: AccountUser }) {
     { id: "activity", label: t("activityNav") },
     { id: "usage", label: t("usage") },
     { id: "export", label: t("export") },
+    { id: "deletion", label: t("deletionNav") },
   ];
   return <Card role="region" aria-label={t("summaryLabel")}><CardContent className="space-y-4">
     <div className="flex flex-wrap items-center gap-3">
@@ -1034,6 +1036,238 @@ function PasskeysCard() {
       </AlertDialog>
     </CardContent></Card>;
 }
+
+type DeletionState =
+  | { status: "none" }
+  | {
+    status: "pending";
+    requestedAt: number;
+    eligibleAt: number;
+    expiresAt: number;
+    exportedAt: number | null;
+    eligible: boolean;
+  };
+
+/**
+ * Account deletion (DESIGN §5.17, ARCHITECTURE §5 "Account deletion").
+ *
+ * Nothing on this card deletes anything by itself. Requesting opens a cooling-off period
+ * that touches no data, and the account only goes when the final ceremony completes after
+ * it. That is why the card can promise withdrawal in one breath and irreversibility in the
+ * next without contradicting itself.
+ */
+function DeletionCard({ email, onDeleted }: { email: string; onDeleted: () => void }) {
+  const t = useTranslations("account");
+  const locale = useLocale();
+  const failure = useAccountError("deletion");
+  const { user } = useAccount();
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<DeletionState>();
+  const [status, setStatus] = useState<"idle" | "loading" | "reauth" | "failed">("idle");
+  const [factorOn, setFactorOn] = useState(false);
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [working, setWorking] = useState(false);
+  const busy = useRef(false);
+  // A controlled dialog has no Radix trigger to fall back to, so focus is restored by hand.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const finalTrigger = useRef<HTMLButtonElement>(null);
+  const closeFocus = useRef<"trigger" | "heading">("heading");
+  const load = useCallback(async () => {
+    setStatus("loading");
+    try {
+      const response = await fetch("/api/account/deletion", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+      if (response.status === 403) { setStatus("reauth"); return; }
+      if (!response.ok) { setStatus("failed"); return; }
+      setState((await response.json()).deletion as DeletionState);
+      setStatus("idle");
+    } catch { setStatus("failed"); }
+  }, []);
+  useEffect(() => {
+    if (open && state === undefined && status !== "failed") queueMicrotask(() => void load());
+  }, [open, state, status, load]);
+  useEffect(() => {
+    if (!open) return;
+    queueMicrotask(async () => {
+      try {
+        const response = await fetch("/api/account/2fa", { cache: "no-store" });
+        if (response.ok) setFactorOn(Boolean((await response.json()).twoFactor?.enabled));
+      } catch { /* The code field stays hidden; the server still demands it. */ }
+    });
+  }, [open]);
+  const changeOpen = (value: boolean) => {
+    setOpen(value);
+    if (value) return;
+    setPassword("");
+    setCode("");
+    setConfirm("");
+    setError("");
+    setNotice("");
+    setConfirming(false);
+  };
+  const stepUp = (extra: Record<string, unknown> = {}) => ({ password, ...(factorOn && code ? { code } : {}), ...extra });
+  const call = async (path: string, body: Record<string, unknown>) => {
+    if (busy.current) return null;
+    busy.current = true;
+    setWorking(true);
+    setError("");
+    setNotice("");
+    try {
+      return await accountAction<Record<string, unknown>>(path, body);
+    } catch (raised) {
+      setError(failure(raised));
+      return null;
+    } finally {
+      busy.current = false;
+      setWorking(false);
+    }
+  };
+  const request = async () => {
+    if (await call("/api/account/deletion/request", stepUp())) {
+      setNotice(t("deletionRequested"));
+      await load();
+    }
+  };
+  const withdraw = async () => {
+    if (await call("/api/account/deletion/withdraw", stepUp())) {
+      setPassword("");
+      setCode("");
+      setNotice(t("deletionWithdrawn"));
+      await load();
+    }
+  };
+  const complete = async (event?: { preventDefault: () => void }) => {
+    // The action would close the dialog as it fires, which is right for a confirmation and
+    // wrong for a refusal: the reason has to stay next to the field that caused it.
+    event?.preventDefault();
+    const result = await call("/api/account/deletion/complete", stepUp({ confirm: confirm.trim() }));
+    if (!result) {
+      closeFocus.current = "trigger";
+      return;
+    }
+    setConfirming(false);
+    // The identity is gone on the server; this only drops what *this* browser kept for it.
+    clearAccountState(user?.id ?? "");
+    onDeleted();
+  };
+  const stamp = (ms: number) => new Intl.DateTimeFormat(locale, {
+    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+  }).format(new Date(ms));
+  const ready = Boolean(password) && (!factorOn || Boolean(code));
+  const canConfirm = ready && confirm.trim().length >= 3;
+  const pending = state?.status === "pending" ? state : null;
+  return <Card><CardHeader><CardTitle>
+    <h2 ref={headingRef} tabIndex={-1} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("deletion")}</h2>
+  </CardTitle><CardDescription>{t("deletionDescription")}</CardDescription></CardHeader>
+    <CardContent className="space-y-4">
+      <Collapsible open={open} onOpenChange={changeOpen}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className="min-h-10 w-full flex-wrap justify-between gap-2 text-left">
+            <span className="shrink-0">{open ? t("deletionCollapse") : t("deletionManage")}</span>
+            {state && <Badge variant={pending ? "default" : "secondary"}>{pending ? t("deletionBadgePending") : t("deletionBadgeNone")}</Badge>}
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-4 pt-4">
+          {error && !confirming && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
+          {status === "loading" && <Skeleton className="h-24 w-full" />}
+          {status === "failed" && <Alert><AlertDescription className="space-y-2"><p>{t("deletionFailed")}</p><Button variant="outline" className="min-h-10" onClick={() => void load()}>{t("activityRetry")}</Button></AlertDescription></Alert>}
+          {status === "reauth" && <Alert><AlertDescription className="space-y-2"><p>{t("reauth")}</p><Button variant="outline" className="min-h-10" asChild><Link href={accountLink("login", "/account#deletion", true)}>{t("refreshLogin")}</Link></Button></AlertDescription></Alert>}
+          {status !== "loading" && status !== "reauth" && status !== "failed" && state && <>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("deletionImpactHeading")}</p>
+              <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                <li>{t("deletionImpactAccount")}</li>
+                <li>{t("deletionImpactChat")}</li>
+                <li>{t("deletionImpactMail")}</li>
+                <li>{t("deletionImpactBackups")}</li>
+              </ul>
+            </div>
+            <div className="space-y-2 rounded-lg border p-4">
+              <p className="text-sm font-medium">{t("deletionExportHeading")}</p>
+              <p className="text-xs text-muted-foreground">{t("deletionExportHint")}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" className="min-h-10" asChild><a href="#export">{t("deletionExportLink")}</a></Button>
+                {pending?.exportedAt
+                  ? <p role="status" className="self-center text-sm text-muted-foreground">{t("deletionExportDone", { at: stamp(pending.exportedAt) })}</p>
+                  : <p className="self-center text-sm text-muted-foreground">{t("deletionExportMissing")}</p>}
+              </div>
+            </div>
+            {pending ? <div className="space-y-3">
+              <p className="text-sm">{t("deletionPending", { requested: stamp(pending.requestedAt) })}</p>
+              <p className="text-xs text-muted-foreground">{pending.eligible
+                ? t("deletionAvailableNow", { lapses: stamp(pending.expiresAt) })
+                : t("deletionAvailableOn", { available: stamp(pending.eligibleAt), lapses: stamp(pending.expiresAt) })}</p>
+              <div className="flex flex-wrap gap-2">
+                <PasswordField label={t("currentPassword")} id="deletion-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
+                {factorOn && <Field label={t("passkeyFactorCode")} id="deletion-factor-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />}
+                <Button variant="outline" className="min-h-10 self-end" disabled={working || !ready} onClick={() => void withdraw()}>{t("deletionWithdraw")}</Button>
+                {pending.eligible && <Button
+                  ref={finalTrigger}
+                  variant="destructive"
+                  className="min-h-10 self-end"
+                  disabled={working || !ready || !pending.exportedAt}
+                  onClick={() => { closeFocus.current = "heading"; setError(""); setConfirming(true); }}
+                >{t("deletionFinalButton")}</Button>}
+              </div>
+              {!pending.exportedAt && <p className="text-xs text-muted-foreground">{t("deletionExportNeededHint")}</p>}
+            </div> : <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">{t("deletionRequestHint")}</p>
+              <PasswordField label={t("currentPassword")} id="deletion-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
+              {factorOn && <Field label={t("passkeyFactorCode")} id="deletion-factor-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />}
+              <Button className="min-h-10" variant="outline" disabled={working || !ready} onClick={() => void request()}>{t("deletionRequest")}</Button>
+            </div>}
+          </>}
+        </CollapsibleContent>
+      </Collapsible>
+      <AlertDialog open={confirming} onOpenChange={(value) => {
+        if (value) return;
+        if (!working) { setConfirming(false); closeFocus.current = "trigger"; }
+      }}>
+        <AlertDialogContent onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (closeFocus.current === "trigger" && finalTrigger.current?.isConnected) { finalTrigger.current.focus(); return; }
+          headingRef.current?.focus();
+        }}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("deletionConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription className="break-words space-y-2">
+              <span className="block">{t("deletionConfirmBody", { email })}</span>
+              <span className="block">{t("deletionConfirmBackups")}</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3">
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            <PasswordField label={t("currentPassword")} id="deletion-confirm-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
+            {factorOn && <Field label={t("passkeyFactorCode")} id="deletion-confirm-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />}
+            <Field label={t("deletionConfirmLabel")} id="deletion-confirm-email" type="email" autoComplete="off" maxLength={320} value={confirm} onChange={(event) => setConfirm(event.target.value)} />
+            <p className="text-xs text-muted-foreground">{t("deletionConfirmHint", { email })}</p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-10" disabled={working}>{t("factorDialogBack")}</AlertDialogCancel>
+            <AlertDialogAction className="min-h-10" disabled={working || !canConfirm} onClick={(event) => void complete(event)}>{t("deletionConfirmAction")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <p className="text-xs leading-relaxed text-muted-foreground">{t("deletionNote")}</p>
+    </CardContent></Card>;
+}
+
+/** Shown in place of the account centre once the deletion has completed. It holds no
+ * personal data: the account it describes no longer exists. */
+function DeletionNotice() {
+  const t = useTranslations("account");
+  return <div className="space-y-3">
+    <h1 className="font-display text-2xl font-semibold">{t("deletionNoticeHeading")}</h1>
+    <p className="text-sm text-muted-foreground">{t("deletionNoticeBody")}</p>
+    <Button variant="outline" className="min-h-10" asChild><Link href="/">{t("deletionBackHome")}</Link></Button>
+  </div>;
+}
+
 type EmailTransaction = {
   id: string;
   maskedNewEmail: string;
@@ -1367,12 +1601,16 @@ export function AccountCenter() {
   // Turning the factor on or off revokes every session, so the outcome outranks the
   // signed-in page exactly like an email commit does.
   const [factorChange, setFactorChange] = useState<"enabled" | "disabled" | null>(null);
+  // A completed deletion outranks the signed-in page the same way, and unlike the factor
+  // notices it can never be shown again: there is no account left to describe.
+  const [deleted, setDeleted] = useState(false);
   const handleFreshness = useCallback((stale: boolean) => setStaleSession(stale), []);
   // Right after a commit the identity is gone, so the result outranks the signed-in
   // page. A different login clears it: only the account that retired `oldEmail`
   // should still see that commit's outcome.
   if (moved && (!user || moved.oldEmail === user.email)) return <div className="mx-auto max-w-2xl space-y-6"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><EmailMovedNotice moved={moved} /></div>;
+  if (deleted && !user) return <div className="mx-auto max-w-2xl space-y-6"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><DeletionNotice /></div>;
   if (factorChange && !user) return <div className="mx-auto max-w-2xl space-y-6"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><FactorNotice state={factorChange} /></div>;
   if (!user) return <div className="mx-auto max-w-2xl space-y-4"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1>{loading ? <Skeleton className="h-48 w-full" /> : failed ? <><p role="alert">{t("actionFailed")}</p><Button className="min-h-10" onClick={() => void refresh()}>{t("retryAccount")}</Button></> : <><p>{t("sessionExpired")}</p><Button className="min-h-10" asChild><Link href={accountLink("login", "/account")}>{t("login")}</Link></Button></>}</div>;
-  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="two-factor" className="scroll-mt-24"><TwoFactorCard key={`two-factor:${user.id}`} onSignedOut={setFactorChange} /></section><section id="passkeys" className="scroll-mt-24"><PasskeysCard key={`passkeys:${user.id}`} /></section><section id="email" className="scroll-mt-24"><EmailCard key={`email:${user.id}`} email={user.email} onFreshness={handleFreshness} onMoved={setMoved} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="activity" className="scroll-mt-24"><ActivityCard key={`activity:${user.id}`} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section></div>;
+  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="two-factor" className="scroll-mt-24"><TwoFactorCard key={`two-factor:${user.id}`} onSignedOut={setFactorChange} /></section><section id="passkeys" className="scroll-mt-24"><PasskeysCard key={`passkeys:${user.id}`} /></section><section id="email" className="scroll-mt-24"><EmailCard key={`email:${user.id}`} email={user.email} onFreshness={handleFreshness} onMoved={setMoved} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="activity" className="scroll-mt-24"><ActivityCard key={`activity:${user.id}`} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section><section id="deletion" className="scroll-mt-24"><DeletionCard key={`deletion:${user.id}`} email={user.email} onDeleted={() => setDeleted(true)} /></section></div>;
 }

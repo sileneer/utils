@@ -882,6 +882,103 @@ message ID and reserved/accepted/failed state. No OTP/mail body is persisted or
 logged. Accepted is not delivered. A request-local outcome catches Better Auth's
 background-error swallowing and returns a recoverable 503 on mail failure.
 
+### Account deletion
+
+The lifecycle above ends one way: a person can delete their own account. This section is
+the **reviewable deletion inventory** — what is removed, what is anonymized, what is kept,
+in which order and with what restore consequence. It is the only place that list lives;
+PLANNING §14.7 records why the decisions were made and HANDOVER records what has actually
+been executed. **Nothing outside a disposable fixture has ever been deleted by this code**,
+and running it against production data requires the owner's approval of this list.
+
+Two facts drive the whole design. `conversations.owner_user_id` and `ai_usage.user_id`
+reference `user(id)` **without** `ON DELETE CASCADE`, so with `foreign_keys = ON` a bare
+`delete user` fails rather than silently orphaning rows; every other product table does
+cascade. And the shared reader workspace under `AGENT_DATA_DIR/versions/` has no per-user
+subtree at all, so it can never be part of a deletion.
+
+| Store | Action | Why |
+|---|---|---|
+| `user` | delete | the identity itself; last write inside the transaction |
+| `account`, `session` | delete (cascade from `user`) | password hash and every live login |
+| `user_preferences` | delete (cascade) | presentation only, dies with the account |
+| `twoFactor`, `passkey` | delete (cascade) | encrypted factor material and credentials; no key ever existed server-side |
+| `email_changes` | delete (cascade) | an in-flight change is abandoned and its target address is freed |
+| `security_events` | delete (cascade) | the record belongs to the account; keeping it would preserve a history of a person who no longer exists |
+| `conversation_meta`, `messages` | delete (cascade from `conversations`) | titles, archive state, every message body |
+| `conversations` | **explicit delete** | no cascade exists; deleting these first is what makes the `user` delete possible |
+| `ai_usage` | **explicit delete** | no cascade exists; per-turn usage rows and their token JSON |
+| `verification` | delete by identifier and by value | email-OTP/reset identifiers embed the **plaintext normalized email**, and two-factor/passkey rows carry the user id in `value`; leaving either would keep the address alive in the database after the account is gone |
+| `limits` | delete by keyed digest | rows whose HMAC covers this email (both forms) or this user id; the IP-keyed buckets are not attributable to an account and stay, because they protect the site rather than describe the person |
+| `rateLimit` (library) | retain | keys are `ip\|path`, never an identity, and the library expires them |
+| `mail_requests` | **anonymize, do not delete** | `email_hash` becomes a fixed deletion marker while `purpose`, `created_at`, `status` and `provider_id` stay, so the global daily mail budget keeps counting what it actually sent without continuing to describe a deleted person. No mail body or OTP was ever stored |
+| SDK transcripts `~/.claude/projects/*/<sdk_session_id>.jsonl` | delete by exact filename, after the database commits | one file per conversation inside a **shared** project directory, so only the names this account owned are touched; SQLite backups never contained them, and a database-only restore already clears `sdk_session_id` with `needs_rebuild = 1` |
+| `AGENT_DATA_DIR/versions/**` | retain | shared, immutable, ownerless source pairs; other readers and older messages reference them |
+| retired `data/agent/sessions/*.json` | out of reach, retained | no owner column exists, so they cannot be attributed to this account; an operator-side sweep is the only route and it is not part of this feature |
+| browser `htlb_chat_session_id:<id>`, `htlb_chat_model:<id>`, `htlb_chat_draft:<id>:*`, `sessionStorage utils_verify_email` | cleared by the client on completion | id-namespaced, so another account's drafts on the same browser are untouched; the device theme keys deliberately survive, because they describe the device, not the account |
+| `/app/data/backups/*.sqlite` | retain, never pruned by this feature | a backup taken before the deletion still contains the identity until the owner decides otherwise; see the resurrection guard below |
+
+**Order and atomicity.** Every database effect above runs in one `.immediate()`
+transaction, children before `user`, so the operation is all-or-nothing and
+`foreign_keys = ON` is the enforcement: a store this list ever misses makes the `user`
+delete throw and the whole transaction roll back, rather than leaving an orphan behind.
+`foreign_key_check` is asserted after the deletion for exactly that reason. The file sweep
+cannot join that transaction, so it happens after the commit and its outstanding paths are
+carried in the durable intent record below until they succeed.
+
+**States.** `account_deletions` holds at most one row per account and is the whole state
+machine: `requested_at`, `eligible_at` (the end of the cooling-off period), `expires_at`
+(after which the request lapses) and `exported_at`. The cooling-off period is **7 days** and
+the request then stays completable for **30 days**, after which it lapses back to no request
+at all. Both numbers are product choices bounded by existing site constants, and are stated
+as such rather than as compliance requirements: 7 days is long enough that a deletion
+requested from a compromised session is noticed on an ordinary visit and reversed with
+nothing lost, and short enough to stay well inside the 14-day session lifetime, so a request
+is never governed by a login that has already expired; the 30-day completion window keeps an
+unclaimed request from accumulating indefinitely, because a lapsed request is not a queue
+entry waiting to fire. A pending request is read lazily —
+lapse and eligibility are computed from those timestamps whenever the state is read, so no
+background job, scheduler or cron is needed and nothing can be deleted by a timer nobody is
+watching. Withdrawal deletes the row and leaves the account exactly as it was, because the
+cooling-off period touches no data. The final step is a second, explicit ceremony that is
+refused before `eligible_at`, refused after `expires_at`, and refused unless a full export
+was generated after the request.
+
+**The durable intent record.** Before the transaction, one line is appended and fsynced to
+`deleted-accounts.jsonl` beside the database file: the user id, the keyed email digest, the
+timestamp and the transcript paths that were owed. The file is not part of any SQLite
+backup, which is what makes it useful: at migration time — the same `migrate()` every entry
+point and every test already runs before a request is served — any id in that file that
+still has a `user` row is deleted again through the same re-entrant routine. That covers
+both a crash between the intent and the commit and a database restore that rolled the
+identity back in. It honours the file rather than asking, because a line can only exist
+there after the person completed the full confirmation ceremony. Re-registering the same
+email address is unaffected: the guard matches on the user id, which is never reused.
+Because the file lives beside the database rather than inside it, DEPLOYMENT §11 requires it
+to be preserved across restores, and a whole-volume rollback to an older snapshot can still
+bring an identity back — that limit is stated rather than papered over.
+
+**Gates.** The final step requires a login created within `session.freshAge`, the current
+password, and a live second factor when the account has one; the target is always the
+caller's own identity, resolved from the session, and no URL or body field can name another
+account. It runs inside the same `withAccountChange` fence as every other security mutation,
+which blocks new owner queries, bumps the account authorization version so a request that
+authenticated earlier cannot register, and aborts the owner's active AI turn and waits for
+it to be confirmed — an unconfirmed stop returns `stop_unconfirmed` and deletes nothing. A
+second concurrent attempt returns `account_busy` rather than queueing.
+
+**Last administrator.** An account that is the only `role = 'admin' AND status = 'active'
+AND emailVerified = 1` row cannot self-delete, because that predicate is exactly what
+`/admin` requires and promotion is a CLI-only, owner-operated command with no demotion path.
+The refusal says so and points at promoting another verified active account first; it is not
+overridable from the browser.
+
+**Backups.** A completed deletion does not touch any existing backup, and this feature
+never prunes one. Restoring a pre-deletion backup therefore re-introduces the identity until
+the next migration reconciles it from the intent file, and an off-machine copy held by the
+owner is outside this mechanism entirely. The person is told this in the confirmation copy:
+deletion ends the account's presence in the live database, not in the owner's backup set.
+
 ## 6. Book proxy and browser bridge
 
 GET /htlb/book prepares/revalidates the verified pair once per day, or resolves

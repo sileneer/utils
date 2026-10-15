@@ -1,3 +1,5 @@
+import { draftPrefix } from "./keys";
+
 /** Read-only bounded reconciliation. Never resubmit a model request. */
 export async function confirmTerminal(
   read: () => Promise<boolean>,
@@ -23,5 +25,5 @@ export async function confirmTerminal(
   return false;
 }
 export function draftKey(owner: string, session: string | null) {
-  return "htlb_chat_draft:" + owner + ":" + (session ?? "new");
+  return draftPrefix(owner) + (session ?? "new");
 }

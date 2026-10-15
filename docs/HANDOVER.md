@@ -1,8 +1,8 @@
 # Handover
 
 **Updated 2026-10-15 for the locally implemented PLANNING §14 batches A, B, C1, C2,
-the §14.7 security activity record, the §14.7 TOTP second factor and the §14.7 passkey
-capability.**
+the §14.7 security activity record, the §14.7 TOTP second factor, the §14.7 passkey
+capability and the §14.7 account deletion.**
 The full account/UI acceptance below is dated **2026-10-09**; the
 documentation release
 uses normal CI/CD and read-only revision/health checks, with separate evidence. Runtime contracts:
@@ -27,12 +27,17 @@ PLANNING §14.7** and **local design, implementation and full recovery acceptanc
 §14.7 TOTP second factor**. On 2026-10-15 the owner authorized **local evaluation,
 implementation and verification of the §14.7 passkey capability**, explicitly excluding
 production credential registration, a domain change, publication, real mail and paid AI
-calls. None of these approvals
-covers D, and none covers publication. Batches A, B, C2, C1, the activity record, TOTP and
-passkeys are
+calls. On 2026-10-15 the owner also authorized **local lifecycle design, isolated
+implementation and disposable-account verification of the §14.7 account deletion**,
+explicitly excluding deletion or anonymization of any production account or retained data,
+cleanup of existing retained files, backups or owner files, publication, real mail and paid
+AI calls. None of these approvals
+covers D, and none covers publication. Batches A, B, C2, C1, the activity record, TOTP,
+passkeys and deletion are
 implemented locally and unmerged; production still runs the §13 release. **No production
 account has two-factor enabled**, and enabling it for the owner account is separately
-unapproved; **no passkey has been registered anywhere but a disposable local fixture**. Exporting production
+unapproved; **no passkey has been registered anywhere but a disposable local fixture**, and
+**the deletion code has never been run against a real account or a retained file**. Exporting production
 data, account deletion, changing a real account's email, real mail sending and paid
 AI calls remain unapproved. Off-machine backup uploads and
 pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
@@ -132,19 +137,36 @@ installed. `008-passkey.sql` is generated from that plugin and purely additive;
 nothing has deployed that migration yet. No `/passkey/*` library path is reachable from
 `/api/auth`, and the production domain was not touched.
 
+**The §14.7 account deletion is committed locally on this branch**
+(`feat(auth): delete an account on its owner's request`), on top of `058fb94`: new
+`migrations/009-account-deletion.sql`, `src/lib/auth/deletion.cjs`,
+`src/lib/auth/deletion.ts`, `src/lib/auth/deletion-handler.ts`, `src/lib/auth/keying.cjs`,
+`src/lib/chat/keys.ts`, `src/lib/chat/clear.ts` and `tests/deletion.test.cjs`, plus edits to
+`scripts/database.cjs` (reconciliation inside `migrate()`), `account-handler.ts`, `errors.ts`,
+`limits.ts` (its keyed-digest helper moved to the shared module), `account-center.tsx`,
+`account-provider.tsx`, `use-chat.ts`, `recovery.ts`, `account-form.tsx`, both
+`messages/*.json` and the five docs. It adds **no dependency, no env variable and no new
+route file**: the three writes and the one read live on the existing `/api/account` handler,
+so the `/api/auth` allowlist is unchanged and the library's own `deleteUser` is never called.
+`009-account-deletion.sql` is purely additive. The only durable artefact written outside the
+database is `deleted-accounts.jsonl`, beside the DB file, which the deletion appends and
+`migrate()` reconciles.
+
 PLANNING section 14 remains the canonical home for the improvement plan; §14.9,
-§14.10, §14.11, §14.12, §14.13, §14.14 and §14.15 record what batches A, B, C2, C1, the
-activity record, the TOTP second factor and passkeys actually changed.
+§14.10, §14.11, §14.12, §14.13, §14.14, §14.15 and §14.16 record what batches A, B, C2, C1,
+the activity record, the TOTP second factor, passkeys and the account deletion actually
+changed.
 ARCHITECTURE §5/§7/§8 and DESIGN
-§5.10–§5.16 describe the implemented client contract (section anchors, the
+§5.10–§5.17 describe the implemented client contract (section anchors, the
 `reauth=1` copy variant, safe error codes and their per-section mapping in
 `src/lib/auth/errors.ts`, the two-layer theme keys, the preference priority, the
 personal usage wrapper, the export document contract, the two-code email-change
 protocol, the desensitized security event vocabulary with its retention window, the
 two-factor invariant, challenge surface, recovery-code rules and the
-`BETTER_AUTH_SECRET` stability requirement, and the passkey route table, the
+`BETTER_AUTH_SECRET` stability requirement, the passkey route table, the
 user-verification enforcement, the extended session invariant and the
-registrable-domain rpID constraint).
+registrable-domain rpID constraint, and the **itemized deletion inventory** with its
+cooling-off states, last-administrator gate and out-of-database resurrection guard).
 
 [Documentation PR #8](https://github.com/sileneer/utils/pull/8) publishes the
 shared agent instructions and living-doc refresh, based on `70f5a78`, to `main`.
@@ -174,21 +196,26 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 - ARCHITECTURE §3 owns agent tools/SSE/message details; §5 owns public accounts,
   ownership, safe return paths, security lifecycle, preference/usage wrappers, the
   personal export contract, the two-code email-change protocol, the security activity
-  record, the TOTP second factor, the passkey surface and future-module integration; §7
+  record, the TOTP second factor, the passkey surface, the itemized account-deletion
+  inventory and future-module integration; §7
   owns locale
   resolution; §8 owns runtime provider/env config, including the
   `BETTER_AUTH_SECRET` stability requirement; §10 owns administrator aggregates.
-- DESIGN §5.6–5.16 owns chat/source/account/admin patterns, the batch A
+- DESIGN §5.6–5.17 owns chat/source/account/admin patterns, the batch A
   account-operations clarifications, the batch B preferences/usage-card
   patterns, the C2 export card, the C1 email-change card, the security
-  activity card, the two-factor enrolment/challenge/recovery card and the passkey
-  management/sign-in card. Account forms use
+  activity card, the two-factor enrolment/challenge/recovery card, the passkey
+  management/sign-in card and the account-deletion card with its confirmation dialog.
+  Account forms use
   registered primitives; there
   is no adopted `ui/form` component, and `ui/select` is now used for the preference
   and export-scope choices.
-- DEPLOYMENT §8/§11–12 owns release checks, service setup and backup operations.
+- DEPLOYMENT §8/§11–12 owns release checks, service setup and backup operations, including
+  the rule that `deleted-accounts.jsonl` is preserved across restores and that no backup is
+  pruned to complete a deletion.
 - PLANNING §11–14 owns decisions, deferred account features and the §14
-  improvement plan with its batch A/B/C1/C2, security-activity, two-factor and passkey
+  improvement plan with its batch A/B/C1/C2, security-activity, two-factor, passkey and
+  account-deletion
   implementation
   results. GOTCHAS owns
   debugging lessons. AGENTS is the shared rulebook; CLAUDE imports it.
@@ -200,8 +227,9 @@ Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
 decision; nothing may be merged or deployed on this authorization. Batches A, B, C2
 and C1 are committed, C1 as `4d08dec`. The §14.7 minimal security activity record is
 committed on top of it as `1590981` (§2, PLANNING §14.13), the §14.7 TOTP second
-factor as `1142983` (§2, PLANNING §14.14), and the §14.7 passkey capability as `058fb94`
-on top of those (§2, PLANNING §14.15). D remains an
+factor as `1142983` (§2, PLANNING §14.14), the §14.7 passkey capability as `058fb94`
+on top of those (§2, PLANNING §14.15), and the §14.7 account deletion on top of that
+(§2, PLANNING §14.16). D remains an
 unapproved proposal in §14. Do not
 start new features or publish any batch without subsequent authorization.
 
@@ -244,6 +272,33 @@ Passkeys leave their own deliberate open items:
   future `better-auth` bump must move `@better-auth/passkey` with it and re-check the
   `overrides`; the plugin's peer range is `^1.7.7`, so npm will otherwise drift
   `@better-auth/core` sideways (PLANNING §14.7 records the measured failure).
+
+Account deletion is implemented but **deliberately unexecuted against anything real**, and
+this authorization does not cover running it on production data:
+
+- **The reviewable deletion list is ARCHITECTURE §5 "Account deletion".** Deleting a real
+  account, or letting the reconciliation touch a real database, needs the owner's explicit
+  approval of that specific list first. Everything removed so far was created seconds earlier
+  inside a disposable fixture.
+- **Backups are not pruned by this feature and must not be.** A pre-deletion backup still
+  contains the identity; the guard is the out-of-database `deleted-accounts.jsonl` plus the
+  reconciliation in `migrate()`, which covers a database-only restore — the documented
+  restore procedure — and not a whole-volume rollback to an older snapshot. DEPLOYMENT §11 now
+  says to preserve that file across restores the way the SDK directory is preserved.
+- **No restore drill was performed.** The resurrection guard was verified against a copy of a
+  fixture database, never against a real `/app/data/backups` artefact, and no off-machine
+  destination exists yet.
+- **The cooling-off never auto-executes.** A request that is never confirmed simply lapses
+  after 30 days and the account continues unchanged; if the owner later wants scheduled
+  automatic completion, that is a new decision requiring a scheduler this site does not have.
+- **No demotion path exists for administrators.** `scripts/database.cjs admin` can only
+  promote, so the last-administrator refusal is currently the only thing standing between a
+  self-service deletion and an unreachable `/admin`. A reassignment flow would be its own
+  small feature.
+- **Two stores are retained by design and remain operator-only**: the shared
+  `AGENT_DATA_DIR/versions/**` pairs, which have no per-user subtree, and the retired
+  `data/agent/sessions/*.json` files, which carry no owner column and therefore cannot be
+  attributed to any account.
 
 C1 leaves one deliberate open item: **real mail delivery for the three
 `change-email*` purposes has never been exercised** — this authorization covered
@@ -377,6 +432,24 @@ echoed a disposable password in a request-body dump were deleted once the pass w
 and the remaining log was checked to hold no credential value. Screenshots, the software
 authenticator fixture and the probe scripts stay local and ignored. No production cookie or
 session was exported, captured or minted, and no passkey was registered on any real account.
+
+The account-deletion pass used a ninth dedicated fixture database under
+`data/investigation/account-deletion-20261015/ui/` on its own loopback pair (3035 app, 3036
+outbox and Turnstile stub) with AI disabled, no provider credential and intercepted
+mail/challenge. Because this feature deletes things, three extra guards were built into the
+harness rather than trusted: the launcher repoints `HOME`/`USERPROFILE` at a `fake-home`
+directory so the SDK transcript sweep can only ever touch files the QA script itself created;
+the browser script deletes exactly the disposable account it registered minutes earlier; and
+`deleted-accounts.jsonl` for that run sits beside the fixture database, inside ignored
+`data/`. The throwaway headless Chrome again used its own temporary profile and debug port
+9337 and was killed by the script that started it, with no such process and no listener on
+3035/3036 afterwards, both verified. The launcher was stopped only after its command line had
+been read back and confirmed to be this fixture. Fixture credentials are generated per run and
+were checked not to appear in any surviving log. The `planning-with-files` helper script that
+appended the new copy lives under the same ignored directory and is not part of the
+application. Screenshots, the CDP drivers and the fixture databases stay local and ignored.
+**No production or owner account was deleted, no retained file, backup or owner-owned data was
+touched, and no real SDK transcript was removed.**
 
 ## 7. Verification and limits
 
@@ -890,3 +963,50 @@ the fixture had to move from `127.0.0.1` to `localhost` because browsers refuse 
 address as a relying-party id. The 300-second challenge expiry was exercised by aging the
 `verification` row, not by waiting. No real mail was sent (passkeys send none by design),
 no paid AI call was made, and nothing was merged, pushed or deployed.
+
+**Account deletion local implementation verification (2026-10-15):** 186 regressions pass
+across twelve files, all green, including 18 new `tests/deletion.test.cjs` cases on their own
+disposable database. They cover: the additive migration and an untouched pre-existing account;
+a request removing nothing, recording no security event and refusing to duplicate itself; the
+password gate and, with two-factor on, the live-factor gate; the cooling-off and export
+preconditions, including that a **narrowed** export does not satisfy them; the typed
+confirmation compared against the server's own address rather than a client claim; a completed
+deletion leaving zero rows in `user`, `account`, `session`, `conversations`, `messages`,
+`ai_usage`, `user_preferences` and `security_events`, an empty `PRAGMA foreign_key_check`, and
+the old cookie resolving to `{user: null}`; the address gone from the table that stored it in
+the clear and from the keyed digests, while the mail rows themselves and their count survive so
+the site's budget stays honest; two accounts kept apart when one goes; withdrawal; an unclaimed
+request lapsing without deleting anything; the last administrator refused and permitted again
+once a second exists; a stale login and another account's cookie both refused; an active answer
+that will not release producing `stop_unconfirmed` and no deletion, then succeeding once it
+does; a concurrent security change producing `account_busy`; re-entrancy, where repeating the
+deletion cannot reach a second identity; and the resurrection guard, where a database copied
+from **before** the deletion is reconciled by the same `migrate()` the server runs at startup —
+the deleted identity is removed again, the account that was never deleted is untouched, and a
+fresh registration of the same address under a new id is left alone.
+
+Browser QA used the ninth loopback fixture plus a throwaway headless Chrome, and deleted only
+the account the script had created minutes earlier. Verified in the running UI: request →
+withdraw → request again → the waiting period moved past rather than waited out → export
+generated → the final button appearing, disabled until the password is typed and enabled after;
+the confirmation dialog naming the exact address, stating the backup limit, and holding focus
+with `aria-labelledby` set; Escape closing it and returning focus to the button that opened it;
+a wrong typed address **leaving the dialog open** with its own reason while the account is
+untouched; then completion, the neutral notice, the deleted account's `localStorage` keys empty
+while another account's draft key on the same browser is still there, and the pending
+verification address cleared from `sessionStorage`. The SDK transcript sweep was exercised
+against a fake home directory: the account's own transcript file was removed and its neighbour
+in the same shared project directory was left standing, with nothing owed recorded afterwards.
+Twenty-four combinations (en/zh × light/dark × 360/768/1280px) were rendered for the card with
+an open request, with the applied theme class and `html[lang]` asserted on every run, no
+horizontal overflow and no clipped text; axe-core reported **zero violations** on the card and
+on the confirmation dialog. Keyboard order is trigger → export link → password → show-password
+→ withdraw → delete, each with a visible focus ring.
+
+Limits of this record: **no real account, retained file, backup or production SDK transcript
+was ever deleted**, and executing this against production data needs the owner's approval of
+the ARCHITECTURE §5 list; no restore drill was performed against a real backup artefact; the
+`data/agent/sessions/*.json` legacy files and the shared `versions/**` pairs are retained by
+design and are outside this feature; and there is no scheduler, so an unconfirmed request can
+only lapse, never fire. No real mail was sent (deletion sends none by design), no paid AI call
+was made, and nothing was merged, pushed or deployed.

@@ -685,6 +685,57 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   §5.10 40px target apply. Credential names are user text and wrap rather than forcing
   horizontal overflow.
 
+### 5.17 Account deletion — approved 2026-10-15
+
+- One account-centre card, last in the security group, with a `#deletion` anchor in the
+  summary navigation. Collapsed by default like the other security cards, because its
+  first line is a question, not an action. It reuses `Card`, `Collapsible`, `Alert`,
+  `Button`, `PasswordField`, the registered `AlertDialog` and the existing factor-code
+  field; **no new UI primitive, token or dependency**, and the destructive action uses the
+  registered `destructive` button variant rather than a bespoke red.
+- **The export comes first, inside the card.** The pending state renders the export entry
+  point and states that a full export must be generated before deletion can be confirmed —
+  not as a suggestion but as the visible precondition, with its own line reporting whether
+  an export has been produced since the request. A person who cannot export cannot delete,
+  which is the opposite of the failure mode this card exists to avoid.
+- Three states, each rendered distinctly, and no fourth: **none** (the request form with the
+  impact statement), **pending** (the date the final step unlocks, the date the request
+  lapses, the export precondition, and a withdraw action), and **refused** (a distinct
+  message per cause). There is deliberately no "scheduled", "processing" or "deleted later"
+  state: nothing happens to the data until the final ceremony completes, and the copy says
+  so.
+- The impact statement is written as a list of outcomes, not a warning banner: what is
+  removed (identity, logins, credentials, every conversation and message, usage history,
+  preferences, security record), what is anonymized rather than deleted (mail metadata, so
+  the site's own budget accounting stays honest), what is kept (shared book source versions,
+  other people's data, and **existing backups, which this feature never prunes**). Saying
+  "your data is gone everywhere right now" would be false, so the copy does not say it.
+- Requesting needs the current password and a live second factor when one is enabled. The
+  final step is an `AlertDialog` that additionally needs the same proof **again** and a
+  typed confirmation matching the account's own email address: an irreversible action gets
+  a physical cost, and the typed value is compared server-side, never trusted from the
+  client. The dialog's title names the account being deleted so a shared browser cannot be
+  confused about which identity is meant.
+- Focus discipline: opening the confirmation moves focus to its first field, Escape and the
+  cancel button return focus to the control that opened it, the destructive button is not
+  the default focus target, and the dialog cannot be dismissed by clicking outside it while
+  a deletion is in flight.
+- On completion the client clears **its own** leftovers — the deleted account's chat session,
+  model and draft keys and the pending-verification email in `sessionStorage` — then routes
+  to the signed-out site with a neutral notice. It does not clear the device theme keys,
+  which describe the browser rather than the account, and it never touches another account's
+  id-namespaced keys. The notice holds no personal data: no email, no counts, no "goodbye".
+- Failure copy stays distinct per cause and never implies the deletion happened or that it
+  is pending when it is not: cooling-off not elapsed, request lapsed, export missing,
+  wrong password, wrong or expired factor, another change in flight on this account, an
+  active answer that could not be confirmed stopped, the last administrator, and a session
+  too old to authorize this. A refusal leaves the account exactly as it was and says which
+  of those it is.
+- The card is a security surface, so it inherits the §5.10 rules: 40px minimum targets, both
+  locales, both themes, 360/768/1280, keyboard-only operation of the whole request →
+  withdraw and request → confirm paths, and no state, email or token written to
+  localStorage, a URL or a toast.
+
 ## 6. Motion
 
 - Micro-interactions (hover, focus, press): CSS transitions, `150ms ease-out`.

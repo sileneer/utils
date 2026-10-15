@@ -10,8 +10,7 @@ import {
 } from "@/lib/chat/protocol";
 import type { ActiveTurn, Availability } from "@/lib/chat/history";
 import { confirmTerminal, draftKey } from "@/lib/chat/recovery";
-const SESSION_KEY = "htlb_chat_session_id";
-const MODEL_KEY = "htlb_chat_model";
+import { MODEL_KEY, SESSION_KEY } from "@/lib/chat/keys";
 function store(key: string, value: string) {
   try {
     localStorage.setItem(key, value);

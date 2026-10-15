@@ -9,6 +9,7 @@ export type AccountErrorScope =
   | "email"
   | "twoFactor"
   | "passkeys"
+  | "deletion"
   | "auth";
 /** True when the server outcome is unknown, so state must be re-read before the
  * user decides whether to retry. */
@@ -43,12 +44,34 @@ const PASSKEY_KEYS: Record<string, string> = {
   bad_request: "passkeyInvalid",
   unauthorized: "sessionExpired",
 };
+/**
+ * The deletion vocabulary. Every one of these is a different reason the site did *not*
+ * delete the account, and the person has to be able to tell them apart: too early, no
+ * export yet, this account holds the last administrator seat, the typed address did not
+ * match. A factor failure keeps its shared wording, because it is the same fact.
+ */
+const DELETION_KEYS: Record<string, string> = {
+  already_requested: "deletionAlreadyOpen",
+  not_requested: "deletionNoneOpen",
+  cooling_off: "deletionTooEarly",
+  export_required: "deletionExportNeeded",
+  last_admin: "deletionLastAdmin",
+  confirm_mismatch: "deletionConfirmMismatch",
+  password_wrong: "deletionPasswordWrong",
+  not_found: "deletionGone",
+  unauthorized: "sessionExpired",
+  bad_request: "deletionInvalid",
+};
 export function accountErrorKey(
   code: string,
   scope: AccountErrorScope = "auth",
 ): string {
   if (scope === "twoFactor" && FACTOR_KEYS[code]) return FACTOR_KEYS[code];
   if (scope === "passkeys" && PASSKEY_KEYS[code]) return PASSKEY_KEYS[code];
+  if (scope === "deletion") {
+    const key = DELETION_KEYS[code] ?? FACTOR_KEYS[code];
+    if (key) return key;
+  }
   switch (code) {
     case "rate_limited":
       return scope === "email" ? "emailLimited" : "limited";
