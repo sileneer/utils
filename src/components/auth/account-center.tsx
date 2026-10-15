@@ -32,6 +32,12 @@ import type { Preferences as AccountPreferences } from "@/lib/auth/preferences";
 import type { ExportSummary } from "@/lib/auth/export";
 import type { SecurityEvent } from "@/lib/auth/security-events";
 import type { TwoFactorStatus } from "@/lib/auth/two-factor";
+import {
+  CeremonyError,
+  createPasskey,
+  passkeySupport,
+  type WebAuthnOptions,
+} from "@/lib/passkey-browser";
 
 type LoginSession = { id: string; current: boolean; createdAt: string; expiresAt: string; browser: string; system: string };
 function Field({ label, error, id, ...props }: React.ComponentProps<typeof Input> & { label: string; error?: string; id: string }) {
@@ -45,6 +51,7 @@ function Summary({ user }: { user: AccountUser }) {
     { id: "preferences", label: t("preferences") },
     { id: "security", label: t("security") },
     { id: "two-factor", label: t("twoFactorNav") },
+    { id: "passkeys", label: t("passkeysNav") },
     { id: "email", label: t("emailNav") },
     { id: "sessions", label: t("sessions") },
     { id: "activity", label: t("activityNav") },
@@ -821,6 +828,212 @@ function TwoFactorCard({ onSignedOut }: { onSignedOut: (state: "enabled" | "disa
       </AlertDialog>
     </CardContent></Card>;
 }
+/** Passkeys (DESIGN §5.16). The browser is asked for a ceremony only from an explicit
+ * action, and every reason a ceremony can fail gets its own words, because WebAuthn
+ * reports "the person dismissed it" and "this device has no authenticator" the same way
+ * to code that does not look. */
+type PasskeyRow = { id: string; name: string; label: string; createdAt: number; synced: boolean };
+function PasskeysCard() {
+  const t = useTranslations("account");
+  const locale = useLocale();
+  const failure = useAccountError("passkeys");
+  const [open, setOpen] = useState(false);
+  const [passkeys, setPasskeys] = useState<PasskeyRow[]>();
+  const [status, setStatus] = useState<"idle" | "loading" | "reauth" | "failed">("idle");
+  const [factorOn, setFactorOn] = useState(false);
+  // Capability is read once, after hydration: before that neither the button nor the
+  // "this browser cannot" line is rendered, so the server and client never disagree.
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
+  const [passkeyReady] = useState(() => passkeySupport().available);
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
+  const [target, setTarget] = useState<PasskeyRow | null>(null);
+  const [working, setWorking] = useState(false);
+  const busy = useRef(false);
+  const load = useCallback(async () => {
+    setStatus("loading");
+    try {
+      const response = await fetch("/api/account/passkeys", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+      if (response.status === 403) { setStatus("reauth"); return; }
+      if (!response.ok) { setStatus("failed"); return; }
+      const data: { passkeys?: PasskeyRow[] } = await response.json();
+      setPasskeys(data.passkeys ?? []);
+      setStatus("idle");
+    } catch { setStatus("failed"); }
+  }, []);
+  useEffect(() => {
+    if (open && passkeys === undefined && status !== "failed") queueMicrotask(() => void load());
+  }, [open, passkeys, status, load]);
+  // Decided after mount: `window` is absent during the server render, and guessing
+  // either way would flash the wrong message.
+  useEffect(() => {
+    if (!open) return;
+    queueMicrotask(async () => {
+      try {
+        const response = await fetch("/api/account/2fa", { cache: "no-store" });
+        if (response.ok) setFactorOn(Boolean((await response.json()).twoFactor?.enabled));
+      } catch { /* The code field simply stays hidden; the server still demands it. */ }
+    });
+  }, [open]);
+  const changeOpen = (value: boolean) => {
+    setOpen(value);
+    if (value) return;
+    setPassword("");
+    setCode("");
+    setName("");
+    setError("");
+    setNotice("");
+    setRenaming(null);
+    setTarget(null);
+  };
+  const stepUp = (extra: Record<string, unknown>) => ({
+    password,
+    ...(factorOn && code ? { code } : {}),
+    ...extra,
+  });
+  const call = async (path: string, body: Record<string, unknown>) => {
+    if (busy.current) return false;
+    busy.current = true;
+    setWorking(true);
+    setError("");
+    setNotice("");
+    try {
+      await accountAction(path, body);
+      return true;
+    } catch (raised) {
+      setError(failure(raised));
+      return false;
+    } finally {
+      busy.current = false;
+      setWorking(false);
+    }
+  };
+  const add = async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setWorking(true);
+    setError("");
+    setNotice("");
+    const chosen = name.trim();
+    try {
+      const started = await accountAction<WebAuthnOptions>("/api/account/passkeys/register/start", stepUp(chosen ? { name: chosen } : {}));
+      let credential;
+      try {
+        credential = await createPasskey(started);
+      } catch (raised) {
+        // The challenge is spent whichever way this ends, so the only honest answer is
+        // what the browser reported; the password field keeps its value for a retry.
+        setError(t("passkeyCeremony_" + (raised instanceof CeremonyError ? raised.reason : "failed")));
+        return;
+      }
+      await accountAction("/api/account/passkeys/register/finish", {
+        response: credential,
+        ...(chosen ? { name: chosen } : {}),
+      });
+      setName("");
+      setPassword("");
+      setCode("");
+      setNotice(t("passkeyAdded"));
+      await load();
+    } catch (raised) {
+      setError(failure(raised));
+    } finally {
+      busy.current = false;
+      setWorking(false);
+    }
+  };
+  const rename = async (id: string, value: string) => {
+    if (await call("/api/account/passkeys/rename", stepUp({ id, name: value }))) {
+      setRenaming(null);
+      await load();
+    }
+  };
+  const remove = async () => {
+    if (!target) return;
+    if (await call("/api/account/passkeys/remove", stepUp({ id: target.id }))) {
+      setTarget(null);
+      setNotice(t("passkeyRemoved"));
+      await load();
+    }
+  };
+  const stamp = (ms: number) => new Intl.DateTimeFormat(locale, {
+    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+  }).format(new Date(ms));
+  const ready = Boolean(password) && (!factorOn || Boolean(code));
+  return <Card><CardHeader><CardTitle><h2>{t("passkeys")}</h2></CardTitle><CardDescription>{t("passkeysDescription")}</CardDescription></CardHeader>
+    <CardContent className="space-y-4">
+      <Collapsible open={open} onOpenChange={changeOpen}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className="min-h-10 w-full flex-wrap justify-between gap-2 text-left">
+            <span className="shrink-0">{open ? t("passkeysCollapse") : t("passkeysManage")}</span>
+            {passkeys && <Badge variant={passkeys.length ? "default" : "secondary"}>{t("passkeyCount", { count: passkeys.length })}</Badge>}
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-4 pt-4">
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
+          {status === "loading" && <Skeleton className="h-24 w-full" />}
+          {status === "failed" && <Alert><AlertDescription className="space-y-2"><p>{t("passkeysFailed")}</p><Button variant="outline" className="min-h-10" onClick={() => void load()}>{t("activityRetry")}</Button></AlertDescription></Alert>}
+          {status === "reauth" && <Alert><AlertDescription className="space-y-2"><p>{t("reauth")}</p><Button variant="outline" className="min-h-10" asChild><Link href={accountLink("login", "/account#passkeys", true)}>{t("refreshLogin")}</Link></Button></AlertDescription></Alert>}
+          {status !== "loading" && status !== "reauth" && status !== "failed" && <>
+            {passkeys && passkeys.length === 0 && <p className="text-sm text-muted-foreground">{t("passkeysEmpty")}</p>}
+            {passkeys && passkeys.length > 0 && <ul className="divide-y">
+              {passkeys.map((passkey) => <li key={passkey.id} className="space-y-2 py-3">
+                {renaming?.id === passkey.id ? <div className="flex flex-wrap items-end gap-2">
+                  <div className="min-w-40 flex-1"><Field label={t("passkeyName")} id={`passkey-rename-${passkey.id}`} maxLength={40} value={renaming.value} onChange={(event) => setRenaming({ id: passkey.id, value: event.target.value })} /></div>
+                  <Button className="min-h-10" disabled={working || !ready || !renaming.value.trim()} onClick={() => void rename(passkey.id, renaming.value.trim())}>{t("passkeySaveName")}</Button>
+                  <Button variant="ghost" className="min-h-10" disabled={working} onClick={() => setRenaming(null)}>{t("cancel")}</Button>
+                </div> : <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0 space-y-1">
+                    <p className="break-words text-sm font-medium">{passkey.name || t("passkeyUnnamed")}</p>
+                    <p className="break-words text-xs text-muted-foreground">
+                      {[passkey.label || t("passkeyUnknownAuthenticator"), stamp(passkey.createdAt), passkey.synced ? t("passkeySynced") : t("passkeySingleDevice")].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" className="min-h-10" disabled={working} onClick={() => { setRenaming({ id: passkey.id, value: passkey.name }); setError(""); }}>{t("passkeyRename")}</Button>
+                    <Button variant="outline" className="min-h-10" disabled={working} onClick={() => { setTarget(passkey); setError(""); }}>{t("passkeyRemove")}</Button>
+                  </div>
+                </div>}
+              </li>)}
+            </ul>}
+            <div className="space-y-4 rounded-lg border p-4">
+              <p className="text-sm font-medium">{t("passkeyAddHeading")}</p>
+              {mounted && !passkeyReady && <Alert><AlertDescription>{t("passkeyUnsupported")}</AlertDescription></Alert>}
+              <p className="text-xs text-muted-foreground">{t("passkeysStepUp")}</p>
+              <PasswordField label={t("currentPassword")} id="passkey-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
+              {factorOn && <Field label={t("passkeyFactorCode")} id="passkey-factor-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />}
+              <Field label={t("passkeyName")} id="passkey-new-name" maxLength={40} value={name} onChange={(event) => setName(event.target.value)} placeholder={t("passkeyNamePlaceholder")} />
+              <p className="text-xs text-muted-foreground">{t("passkeyNameHint")}</p>
+              <Button className="min-h-10" type="button" disabled={working || !ready || !passkeyReady} onClick={() => void add()}>
+                {working && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}
+                {t("passkeyAdd")}
+              </Button>
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">{t("passkeysNote")}</p>
+          </>}
+        </CollapsibleContent>
+      </Collapsible>
+      <AlertDialog open={target !== null} onOpenChange={(value) => { if (!value && !working) setTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("passkeyRemoveTitle")}</AlertDialogTitle>
+            <AlertDialogDescription className="break-words">
+              {t("passkeyRemoveBody", { name: target?.name || t("passkeyUnnamed") })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-10" disabled={working}>{t("factorDialogBack")}</AlertDialogCancel>
+            <AlertDialogAction className="min-h-10" disabled={working || !ready} onClick={() => void remove()}>{t("passkeyRemoveConfirm")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </CardContent></Card>;
+}
 type EmailTransaction = {
   id: string;
   maskedNewEmail: string;
@@ -1161,5 +1374,5 @@ export function AccountCenter() {
   if (moved && (!user || moved.oldEmail === user.email)) return <div className="mx-auto max-w-2xl space-y-6"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><EmailMovedNotice moved={moved} /></div>;
   if (factorChange && !user) return <div className="mx-auto max-w-2xl space-y-6"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><FactorNotice state={factorChange} /></div>;
   if (!user) return <div className="mx-auto max-w-2xl space-y-4"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1>{loading ? <Skeleton className="h-48 w-full" /> : failed ? <><p role="alert">{t("actionFailed")}</p><Button className="min-h-10" onClick={() => void refresh()}>{t("retryAccount")}</Button></> : <><p>{t("sessionExpired")}</p><Button className="min-h-10" asChild><Link href={accountLink("login", "/account")}>{t("login")}</Link></Button></>}</div>;
-  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="two-factor" className="scroll-mt-24"><TwoFactorCard key={`two-factor:${user.id}`} onSignedOut={setFactorChange} /></section><section id="email" className="scroll-mt-24"><EmailCard key={`email:${user.id}`} email={user.email} onFreshness={handleFreshness} onMoved={setMoved} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="activity" className="scroll-mt-24"><ActivityCard key={`activity:${user.id}`} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section></div>;
+  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="two-factor" className="scroll-mt-24"><TwoFactorCard key={`two-factor:${user.id}`} onSignedOut={setFactorChange} /></section><section id="passkeys" className="scroll-mt-24"><PasskeysCard key={`passkeys:${user.id}`} /></section><section id="email" className="scroll-mt-24"><EmailCard key={`email:${user.id}`} email={user.email} onFreshness={handleFreshness} onMoved={setMoved} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="activity" className="scroll-mt-24"><ActivityCard key={`activity:${user.id}`} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section></div>;
 }

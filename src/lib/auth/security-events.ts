@@ -10,6 +10,8 @@ export const SECURITY_EVENT_KINDS = [
   "two_factor_enable",
   "two_factor_disable",
   "two_factor_recovery_codes_regenerated",
+  "passkey_register",
+  "passkey_remove",
 ] as const;
 export type SecurityEventKind = (typeof SECURITY_EVENT_KINDS)[number];
 

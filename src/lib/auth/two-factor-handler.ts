@@ -1,7 +1,7 @@
 import { accountSession } from "./identity";
 import { getAuth } from "./server";
 import { consumeLimits, privateKey } from "./limits";
-import { db } from "../db";
+import { recordSessionDevice } from "./session-device";
 import { FACTOR_ERRORS } from "./two-factor";
 
 function json(data: unknown, status = 200, cookies?: Headers) {
@@ -13,21 +13,6 @@ function fail(error: string, status: number) { return json({ error }, status); }
 
 const TOTP_CODE = /^\d{6}$/;
 const RECOVERY_CODE = /^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}$/;
-/**
- * The plugin creates the post-challenge session itself, and that call carries no
- * request context, so it lands with an empty user agent — which would make every
- * two-factor login read as "Unknown" in the sessions list and in the security
- * record. The request that completes the challenge *is* the sign-in, so the same
- * value the ordinary sign-in stores is written back here. A failure to do that is
- * presentation only and must never turn a completed sign-in into an error.
- */
-function attachDevice(request: Headers, cookies: string[]) {
-  const token = cookies.map((value) => /better-auth\.session_token=([^;.]+)/.exec(value)?.[1]).find(Boolean);
-  if (!token) return;
-  try {
-    db().prepare("UPDATE session SET userAgent=? WHERE token=?").run(request.get("user-agent") ?? "", token);
-  } catch { /* The session stands either way. */ }
-}
 
 /**
  * Completes a sign-in that is waiting on its second factor. There is deliberately no
@@ -101,7 +86,7 @@ export async function handleTwoFactor(request: Request) {
             : { error: "code_failed", status: 400 });
       return fail(mapped.error, mapped.status);
     }
-    attachDevice(request.headers, response.headers.getSetCookie());
+    recordSessionDevice(response.headers.getSetCookie(), request.headers.get("user-agent"));
     return json({ signedIn: true }, 200, response.headers);
   } catch {
     return fail("service_unavailable", 503);

@@ -627,6 +627,109 @@ with a confirmed stop, so an account with a running AI request either completes 
 or not at all, and the cross-tab `security` event fires so other windows drop the
 identity that just stopped being valid.
 
+#### Passkeys
+
+WebAuthn credentials on the shared account, from `@better-auth/passkey` 1.7.7 — the
+first-party package of the **same version line** as the locked `better-auth` 1.7.7, which
+no longer contains passkeys itself (PLANNING §14.7 records the verification). Adding
+passkeys therefore means adding one version-matched first-party package plus
+`@simplewebauthn/server`, not upgrading the authentication stack; `package.json`
+`overrides` pin `@better-auth/core`, `@better-auth/utils` and `better-call` to the
+versions already installed so npm cannot drift the stack sideways. Scope is deliberately
+narrow: passkeys are an **additional** way to sign in to an existing account. There is no
+passkey-first sign-up, no attestation trust (`fmt: "none"` is accepted, AAGUIDs are
+labelled but never allowlisted), no administrator view of other users' credentials, and
+no browser conditional/autofill mediation.
+
+`008-passkey.sql` is generated from the plugin and is purely additive: a `passkey` table
+(`name`, `publicKey`, `userId` with `ON DELETE CASCADE`, `credentialID`, `counter`,
+`deviceType`, `backedUp`, `transports`, `createdAt`, `aaguid`) with the plugin's two
+indexes, plus one hardening index of our own. `user` gains nothing, so accounts that
+predate passkeys are untouched and an older image simply ignores the table. The
+`credentialID` unique index is not in the generated plan: the plugin only *asks* the
+browser to exclude credentials the account already holds, which a non-conforming client
+can ignore, and a duplicated row would make "which credential signed in" ambiguous.
+`publicKey` and `credentialID` are public by construction and no private key exists on
+the server, in the database, or in a log.
+
+**The invariant, extended.** Every session on this account is created by one of exactly
+two ceremonies: a password plus the second factor, or a **user-verified passkey
+assertion**. A verified passkey counts as satisfying the second factor because it proves
+possession of a non-exportable private key, is bound to this RP ID and origin so it
+cannot be replayed against a phishing site, and is gated by a verification the server
+checks for itself. It does **not** weaken anything the password still protects: a
+passkey-created session is an ordinary session, so changing the password, committing an
+email change, disabling two-factor or regenerating recovery codes still demands the
+current password, and the operations that demand a live factor still demand a TOTP or
+recovery code — a passkey is never accepted there in place of one.
+
+The library does not enforce any of that on its own, and two gaps had to be closed in the
+wrapper rather than assumed away (measured in PLANNING §14.7): both verify endpoints
+hardcode `requireUserVerification: false`, so an assertion **without** the user-verified
+flag would otherwise sign the user in; and the two-factor after-hook matches only
+`/sign-in/email|username|phone-number`, so a passkey sign-in would otherwise walk past a
+enabled second factor without satisfying anything. The fix is the plugin's own
+`afterVerification` hooks, which run before any row is written or session issued: each one
+refuses unless `registrationInfo.userVerified` / `authenticationInfo.userVerified` is
+`true`, and registration additionally asks the authenticator for
+`userVerification: "required"` so credentials are bound to verification from the start.
+A refused ceremony leaves nothing behind — no passkey row, no session.
+
+**Challenges are server-issued, one-time and purpose-tagged.** `generate-*` stores an
+expected challenge in the `verification` table for 300 seconds and names it through a
+signed, HttpOnly `better-auth-passkey` cookie, and each verify step consumes it and
+rejects the other purpose, so a registration challenge cannot be spent as a login and a
+replayed response is refused. `rpID` and `expectedOrigin` are pinned from server
+configuration — the library would otherwise take the caller's own `Origin` header — and a
+wrong RP ID, wrong origin or unknown credential all fail without issuing a session.
+Because that cookie is per-browser rather than per-ceremony, starting a passkey sign-in
+invalidates an in-flight registration in the same browser; the UI restarts cleanly rather
+than pretending the older ceremony can still finish.
+
+`rpID` is derived from `APP_URL`'s hostname, so it is the registrable domain in production
+(`utils.lzhdev.com`) and `localhost` in a local preview. Browsers refuse an IP address as a
+relying-party id — a `SecurityError: This is an invalid domain` before any server call —
+so passkeys cannot work if the site is ever reached by bare IP, and loopback QA must use
+`http://localhost:<port>` rather than `127.0.0.1`.
+
+Every `/passkey/*` library path stays outside the public `/api/auth` allowlist, and the
+product surface is these wrapper routes only:
+
+| Route | Identity | Body fields | Effect |
+|---|---|---|---|
+| `GET /api/account/passkeys` | current identity | — | projected list: id, name, label, created, synced |
+| `POST /api/account/passkeys/register/start` | identity + fresh + password (+ factor when 2FA on) | `password`, `code`, `name` | WebAuthn creation options for this browser |
+| `POST /api/account/passkeys/register/finish` | same, with the challenge cookie | `response` | verifies, then stores the credential |
+| `POST /api/account/passkeys/rename` | identity + fresh + password | `password`, `id`, `name` | renames one own credential |
+| `POST /api/account/passkeys/remove` | identity + fresh + password (+ factor when 2FA on) | `password`, `code`, `id` | deletes one own credential |
+| `GET /api/passkey/options` | none | — | WebAuthn request options for sign-in |
+| `POST /api/passkey/verify` | none, valid challenge cookie | `response` | completes sign-in; returns only `{ signedIn: true }` |
+
+The management routes take the same origin, content-type and body-size checks as the rest
+of the account wrapper and forward only the fields above, so a client cannot reach the
+library's `createSession` flag on registration or supply its own origin. `name` is
+trimmed and capped, and the list is capped per account; the projection never carries
+`publicKey`, `credentialID` or `aaguid`. Rate limiting is purpose-scoped with
+`consumeLimits` — the sign-in ceremony has its own per-IP and per-challenge buckets,
+separate from password sign-in and from the two-factor challenge, so exhausting one never
+locks someone out of another route.
+
+**Losing a passkey cannot lock an account out.** Sign-up on this site is
+email-and-password only, so every account always has a password credential; passkeys are
+additive, and removing all of them still leaves the normal password (plus second factor,
+if enabled) path. The card says so where removal is offered. Conversely, registering a
+passkey never removes or weakens the password path, and there is no way to mark an
+account passkey-only.
+
+Passkey changes extend the confirmed security-event vocabulary with `passkey_register`
+and `passkey_remove` — results only. Renaming a credential is not a change in access and
+is not recorded, a refused ceremony records nothing, and no event row ever holds a
+credential identifier, public key or any other factor material.
+
+Registration, removal and rename run inside `withAccountChange` with a confirmed stop,
+like the other account-security mutations, and removal broadcasts the cross-tab
+`security` event so no window keeps showing a state the server just changed.
+
 #### Security activity
 
 A short, desensitized record of the account's own confirmed security changes
@@ -646,7 +749,7 @@ predate this table correctly show an empty list rather than an invented past.
 |---|---|
 | `id` | generated uuid, so a retry cannot collide with or overwrite an earlier row |
 | `user_id` | the subject, `ON DELETE CASCADE` |
-| `kind` | `password_change` \| `email_change` \| `session_revoke_one` \| `session_revoke_others` \| `two_factor_enable` \| `two_factor_disable` \| `two_factor_recovery_codes_regenerated`, enforced by CHECK |
+| `kind` | `password_change` \| `email_change` \| `session_revoke_one` \| `session_revoke_others` \| `two_factor_enable` \| `two_factor_disable` \| `two_factor_recovery_codes_regenerated` \| `passkey_register` \| `passkey_remove`, enforced by CHECK |
 | `occurred_at` | epoch milliseconds of the confirmed change |
 | `browser`, `system` | the two inferred labels from the existing `browserInfo` projection of the acting session's User-Agent — a controlled vocabulary, never the raw UA |
 | `masked_email` | `email_change` only: the target address with its local part masked |

@@ -1,7 +1,8 @@
 # Handover
 
 **Updated 2026-10-15 for the locally implemented PLANNING §14 batches A, B, C1, C2,
-the §14.7 security activity record and the §14.7 TOTP second factor.**
+the §14.7 security activity record, the §14.7 TOTP second factor and the §14.7 passkey
+capability.**
 The full account/UI acceptance below is dated **2026-10-09**; the
 documentation release
 uses normal CI/CD and read-only revision/health checks, with separate evidence. Runtime contracts:
@@ -23,12 +24,15 @@ data export) and **local technical verification, protocol design, implementation
 and simulated acceptance of C1** (secure email change). On 2026-10-14 the owner also
 authorized **local implementation of the minimal security activity record from
 PLANNING §14.7** and **local design, implementation and full recovery acceptance of the
-§14.7 TOTP second factor**. None of these approvals
-covers D, and none covers publication. Batches A, B, C2, C1, the activity record and
-TOTP are
+§14.7 TOTP second factor**. On 2026-10-15 the owner authorized **local evaluation,
+implementation and verification of the §14.7 passkey capability**, explicitly excluding
+production credential registration, a domain change, publication, real mail and paid AI
+calls. None of these approvals
+covers D, and none covers publication. Batches A, B, C2, C1, the activity record, TOTP and
+passkeys are
 implemented locally and unmerged; production still runs the §13 release. **No production
 account has two-factor enabled**, and enabling it for the owner account is separately
-unapproved. Exporting production
+unapproved; **no passkey has been registered anywhere but a disposable local fixture**. Exporting production
 data, account deletion, changing a real account's email, real mail sending and paid
 AI calls remain unapproved. Off-machine backup uploads and
 pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
@@ -109,17 +113,38 @@ unreachable from a browser, and the only second-factor surfaces are the new
 existing accounts are untouched and rollback needs no data restore. Nothing was pushed,
 merged or deployed, and no production account has two-factor enabled.
 
+**The §14.7 passkey capability is committed locally on this branch**
+(`feat(auth): sign in with passkeys`), on top of `1142983`: new
+`migrations/008-passkey.sql`, `src/lib/auth/passkey.ts`,
+`src/lib/auth/passkey-handler.ts`, `src/lib/auth/session-device.ts`,
+`src/lib/passkey-browser.ts`, `src/app/api/passkey/[...action]/route.ts`,
+`tests/passkey.test.cjs` and `tests/webauthn-fixture.cjs`, plus edits to `options.mjs`
+(the plugin itself, with two `afterVerification` hooks), `account-handler.ts`,
+`errors.ts`, `security-events.ts`, `two-factor-handler.ts` (its device backfill moved to
+the shared helper), `account-center.tsx`, `account-form.tsx`,
+`account-provider.tsx`, both `messages/*.json`, `package.json`/`package-lock.json` and the
+five docs. It is the **only batch in this plan that adds a runtime dependency**:
+`@better-auth/passkey` 1.7.7, the first-party package of the same version line, whose
+lockfile effect is 314 added lines and zero version changes, with `overrides` pinning
+`@better-auth/core`, `@better-auth/utils` and `better-call` to the versions already
+installed. `008-passkey.sql` is generated from that plugin and purely additive;
+`006-security-events.sql` gains two `kind` values in place, which is safe only because
+nothing has deployed that migration yet. No `/passkey/*` library path is reachable from
+`/api/auth`, and the production domain was not touched.
+
 PLANNING section 14 remains the canonical home for the improvement plan; §14.9,
-§14.10, §14.11, §14.12, §14.13 and §14.14 record what batches A, B, C2, C1, the
-activity record and the TOTP second factor actually changed.
+§14.10, §14.11, §14.12, §14.13, §14.14 and §14.15 record what batches A, B, C2, C1, the
+activity record, the TOTP second factor and passkeys actually changed.
 ARCHITECTURE §5/§7/§8 and DESIGN
-§5.10–§5.15 describe the implemented client contract (section anchors, the
+§5.10–§5.16 describe the implemented client contract (section anchors, the
 `reauth=1` copy variant, safe error codes and their per-section mapping in
 `src/lib/auth/errors.ts`, the two-layer theme keys, the preference priority, the
 personal usage wrapper, the export document contract, the two-code email-change
-protocol, the desensitized security event vocabulary with its retention window, and the
+protocol, the desensitized security event vocabulary with its retention window, the
 two-factor invariant, challenge surface, recovery-code rules and the
-`BETTER_AUTH_SECRET` stability requirement).
+`BETTER_AUTH_SECRET` stability requirement, and the passkey route table, the
+user-verification enforcement, the extended session invariant and the
+registrable-domain rpID constraint).
 
 [Documentation PR #8](https://github.com/sileneer/utils/pull/8) publishes the
 shared agent instructions and living-doc refresh, based on `70f5a78`, to `main`.
@@ -149,19 +174,22 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 - ARCHITECTURE §3 owns agent tools/SSE/message details; §5 owns public accounts,
   ownership, safe return paths, security lifecycle, preference/usage wrappers, the
   personal export contract, the two-code email-change protocol, the security activity
-  record, the TOTP second factor and future-module integration; §7 owns locale
+  record, the TOTP second factor, the passkey surface and future-module integration; §7
+  owns locale
   resolution; §8 owns runtime provider/env config, including the
   `BETTER_AUTH_SECRET` stability requirement; §10 owns administrator aggregates.
-- DESIGN §5.6–5.15 owns chat/source/account/admin patterns, the batch A
+- DESIGN §5.6–5.16 owns chat/source/account/admin patterns, the batch A
   account-operations clarifications, the batch B preferences/usage-card
   patterns, the C2 export card, the C1 email-change card, the security
-  activity card and the two-factor enrolment/challenge/recovery card. Account forms use
+  activity card, the two-factor enrolment/challenge/recovery card and the passkey
+  management/sign-in card. Account forms use
   registered primitives; there
   is no adopted `ui/form` component, and `ui/select` is now used for the preference
   and export-scope choices.
 - DEPLOYMENT §8/§11–12 owns release checks, service setup and backup operations.
 - PLANNING §11–14 owns decisions, deferred account features and the §14
-  improvement plan with its batch A/B/C1/C2 and security-activity implementation
+  improvement plan with its batch A/B/C1/C2, security-activity, two-factor and passkey
+  implementation
   results. GOTCHAS owns
   debugging lessons. AGENTS is the shared rulebook; CLAUDE imports it.
 
@@ -171,8 +199,9 @@ Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
 §14.9/§14.10/§14.11/§14.12) and await the owner's review and a separate publication
 decision; nothing may be merged or deployed on this authorization. Batches A, B, C2
 and C1 are committed, C1 as `4d08dec`. The §14.7 minimal security activity record is
-committed on top of it as `1590981` (§2, PLANNING §14.13), and the §14.7 TOTP second
-factor as `1142983` (§2, PLANNING §14.14). D remains an
+committed on top of it as `1590981` (§2, PLANNING §14.13), the §14.7 TOTP second
+factor as `1142983` (§2, PLANNING §14.14), and the §14.7 passkey capability on top of that
+(§2, PLANNING §14.15). D remains an
 unapproved proposal in §14. Do not
 start new features or publish any batch without subsequent authorization.
 
@@ -192,6 +221,29 @@ Two-factor leaves the deliberate open items that this authorization could not co
   TOTP secrets and recovery codes, so rotating it would leave every two-factor user
   unable to complete sign-in. Any future key-rotation procedure must be designed before
   the value changes (ARCHITECTURE §8).
+
+Passkeys leave their own deliberate open items:
+
+- **Every passkey result above comes from a CDP virtual authenticator**, not from a phone,
+  a synced account passkey or a hardware key. It proves the browser↔server path and the
+  rendered contract; it does not prove cross-device behaviour, a real Windows Hello /
+  Touch ID prompt, a password-manager-held credential, or anything on the production
+  domain. Registering a real passkey for the owner account is unapproved and would also be
+  the first thing to do *after* a publication, not before.
+- **The rpID is the hostname of `APP_URL`**, and browsers refuse an IP address as a
+  relying-party id. Production (`utils.lzhdev.com`) is a registrable domain and is
+  therefore fine, but this ties passkeys to the domain: a future domain change, or serving
+  the site by IP, silently breaks every registered credential. Worth a line in any future
+  migration plan.
+- A second passkey on a device that already holds one for this account is refused by the
+  authenticator itself, and WebAuthn gives no distinct error name for that, so the card
+  reports the browser's generic failure rather than "this device already has one". The
+  server-side `already_registered` answer only applies when the browser does send a
+  response. Changing that is a copy decision (DESIGN §5.16), not a security one.
+- The batch adds the site's first new runtime dependency since the stack was locked. Any
+  future `better-auth` bump must move `@better-auth/passkey` with it and re-check the
+  `overrides`; the plugin's peer range is `^1.7.7`, so npm will otherwise drift
+  `@better-auth/core` sideways (PLANNING §14.7 records the measured failure).
 
 C1 leaves one deliberate open item: **real mail delivery for the three
 `change-email*` purposes has never been exercised** — this authorization covered
@@ -308,6 +360,23 @@ then verified free, and the fixture database, generated secret, fixture password
 key and issued recovery codes are deleted with it. Screenshots and the throwaway
 `totp.cjs`/probe helpers stay local and ignored. No production cookie or session was
 exported, captured or minted, and no production account has two-factor enabled.
+
+The passkey pass used an eighth dedicated fixture database under
+`data/investigation/account-passkey-20261015/ui/` on its own loopback pair (3033 app, 3034
+outbox and Turnstile stub) with `APP_URL=http://localhost:3033`, because browsers refuse an
+IP address as a WebAuthn relying-party id. It kept the same persisted `auth-secret.txt`
+reasoning as the two-factor pass. Its browsers were **throwaway headless Chrome instances**
+started by the QA scripts themselves on debug ports 9333–9336 with a temporary profile each
+and a CDP virtual authenticator, so no real browser profile, security key or phone was
+touched; every instance was killed and its profile deleted by the script that started it,
+and this pass verified afterwards that no such process remained and that 3033/3034 were no
+longer listening. The launcher was stopped the same way, after its command line had been
+read back and confirmed. Fixture accounts, passwords and credentials are generated per run
+and never written into a file that survives it; the two intermediate run logs that had
+echoed a disposable password in a request-body dump were deleted once the pass was recorded,
+and the remaining log was checked to hold no credential value. Screenshots, the software
+authenticator fixture and the probe scripts stay local and ignored. No production cookie or
+session was exported, captured or minted, and no passkey was registered on any real account.
 
 ## 7. Verification and limits
 
@@ -757,3 +826,67 @@ not by waiting ten minutes, and the physical-device keyboard, password-manager a
 `one-time-code` and IME behaviour remain unverified. No real mail was involved (this
 feature sends none by design), no paid AI call was made, and nothing was merged, pushed or
 deployed. Nothing here is production or deployment acceptance.
+
+**Passkey local implementation verification (2026-10-15):** 168 regressions pass across
+eleven files, all green, including 17 new `tests/passkey.test.cjs` cases on their own
+disposable database and a self-contained software authenticator
+(`tests/webauthn-fixture.cjs`: CBOR encoder, COSE key, `none` attestation) rather than a
+test dependency. They cover: the generated table matching what the plugin asks for plus the
+one hardening index; registration being two steps, needing the password and storing a
+credential that actually signs in; a ceremony **without user verification** being refused
+and leaving no row and no session; challenges being one-time, purpose-bound (a registration
+answer cannot spend a login challenge or the reverse) and never minting an identity; wrong
+rpID, wrong origin and an unknown credential all refused; a duplicate credential answered
+as `already_registered` rather than a 500, with the server's `excludeCredentials` shape
+asserted because the client depends on it; the per-account list capped; every library
+`/passkey/*` path 404 from the public door; the sign-in surface accepting nothing but the
+credential; an already-signed-in browser unable to answer a login; credentials scoped to
+their own account, so another account's credential id cannot be renamed, removed or spent;
+rename needing the password and never touching the credential; removal leaving the password
+path working and recording exactly `passkey_register` + `passkey_remove` and nothing for the
+rename; with two-factor on, adding or removing needing the **live factor** as well; a
+verified passkey satisfying the second factor while the same session still cannot change the
+password, start an email change or disable the factor without it, and a password-only
+sign-in still facing the challenge; the list being security data needing a login inside
+24 hours; and nothing secret stored or returned.
+
+Browser QA used an eighth dedicated fixture database under
+`data/investigation/account-passkey-20261015/ui/` (3033 app, 3034 outbox and Turnstile
+stub), the same persisted runtime-generated auth secret pattern as the two-factor pass, AI
+disabled, and a **throwaway headless Chrome driven through CDP with a virtual
+authenticator** — its own temporary profile and debug port, killed and deleted at the end,
+never touching the owner's browser or any real device. Verified in the running UI: adding a
+passkey from the card produces the row with its chosen name, the "unrecognised
+authenticator" AAGUID label, the creation timestamp with its zone and the synced/single-device
+wording; renaming changes only the label; removal asks through a dialog that names the exact
+credential and states that the password still works; the count badge tracks the list;
+signing out and then clicking **Sign in with a passkey** yields a real session for that
+account; and the security activity card shows the register and the remove and nothing for
+the rename. Twenty-four combinations (en/zh × light/dark × 360/768/1280px) were rendered for
+the card **with two credentials listed** and for the login surface, with the applied
+`dark`/`light` class and `html[lang]` asserted on every run, no horizontal overflow and no
+clipped text; images were captured and read. axe-core reported **zero violations** on the
+passkeys card and on the login `main`. Keyboard order is trigger → per-row rename/remove →
+password → show-password → name → add (9 controls with two rows), each keeping the theme's
+focus ring. A passkey sign-in still worked after all 24 navigations.
+
+Four defects in this batch were browser-only and none of them was visible to a server test:
+`atob` rejects the unpadded base64url the server sends; `Object.entries()` on an
+`AuthenticatorResponse` yields `{}` because its fields are prototype getters, so the posted
+credential was empty; the outbound `transports` must stay an **array** because the plugin
+joins it; and the inbound `excludeCredentials[].transports` is an array, so calling
+`.split(",")` on it threw while building the options — which made **every registration after
+an account's first** fail before the prompt ever appeared, while all 17 server-side tests
+stayed green. The last one is the reason `tests/passkey.test.cjs` now asserts the shape of
+the server's own registration options, and GOTCHAS records the lesson.
+
+Limits of this record: the authenticator is **simulated hardware**. A CDP virtual
+authenticator proves the browser↔server path and the rendered contract; it is not a phone,
+not a synced account passkey, not Windows Hello or Touch ID's real prompt, not a
+password-manager credential and not a hardware key, and it proves nothing about cross-device
+behaviour. No passkey was registered on production and none was registered on the owner's
+account; the production rpID (`utils.lzhdev.com`) has therefore never been exercised, and
+the fixture had to move from `127.0.0.1` to `localhost` because browsers refuse an IP
+address as a relying-party id. The 300-second challenge expiry was exercised by aging the
+`verification` row, not by waiting. No real mail was sent (passkeys send none by design),
+no paid AI call was made, and nothing was merged, pushed or deployed.

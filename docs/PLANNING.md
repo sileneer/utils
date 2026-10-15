@@ -1220,6 +1220,55 @@ DESIGN §5.13。
      包装层因此把库的 429 原样映射为 `rate_limited`，挑战自己的 10 次/分钟桶再兜一层。
   9. 本方案不启用 `otpOptions.sendOTP`，因此第二因素只有 TOTP 与恢复码两种，不会为
      2FA 发任何邮件（`twoFactorMethods` 也只返回 `["totp"]`）。
+- **Passkey**：2026-10-15 完成锁定版本实测并按最小方案本地实施，契约见
+  ARCHITECTURE §5“Passkeys”，结果与未覆盖项见 §14.15。
+
+  **对锁定的 `better-auth@1.7.7` 与 `@better-auth/passkey@1.7.7` 的实测（一次性数据库 +
+  软件 authenticator 跑通完整流程，不读文档推断）**：
+
+  1. **1.7.7 的主包不含 passkey**：`better-auth/dist` 与 `@better-auth/core/dist` 里
+     `passkey` 只作为 `/passkey/verify-authentication` 出现在两个插件的路径匹配里，没有
+     任何端点、schema 或 WebAuthn 校验实现。passkey 在同版本线已被拆成独立的第一方包
+     `@better-auth/passkey`，其 peer 恰好要求 `better-auth@^1.7.7`、
+     `@better-auth/core@^1.7.7`、`better-call@1.4.0`、`@better-auth/utils@0.4.2`——全部
+     就是当前已装的版本。因此实施方式是**新增一个版本对齐的第一方包**，而不是升级认证栈；
+     `package.json` 的 `overrides` 把 core/utils/better-call 钉在现有版本，防止 npm 因为
+     peer 写的是 `^1.7.7` 而把 core 漂到 1.7.9（实测不加 overrides 时 `npm install` 直接
+     ERESOLVE 失败）。新增运行时依赖只有 `@simplewebauthn/server`（校验）与其 browser 包，
+     本仓库不导入 browser 包（见第 8 条）。
+  2. **schema 纯新增**：`getMigrations()` 只产出一张 `passkey` 表（`name`、`publicKey`、
+     `userId→user ON DELETE CASCADE`、`credentialID`、`counter`、`deviceType`、`backedUp`、
+     `transports`、`createdAt`、`aaguid`）与 userId/credentialID 两个索引，`user` 不加列，
+     unsafe changes 与 schema problems 均为空。
+  3. **挑战是服务端一次性**的：`generate-*` 写入一条 `verification`（值里带
+     expectedChallenge、type、userData），并把随机标识放进签名的
+     `better-auth-passkey` Cookie；有效期硬编码 300 秒。实测注册响应重放与断言重放都返回
+     `CHALLENGE_NOT_FOUND`，且注册/认证各自校验 `type`，两种用途不能互换。
+  4. **origin 与 rpID 真被校验**：把 `origin` 与 `rpID` 作为插件选项钉成站点自己的值后，
+     错 rpID、错 origin 的断言都返回 `AUTHENTICATION_FAILED`，不认识的凭证返回
+     `PASSKEY_NOT_FOUND`；`expectedOrigin` 缺省时会取请求的 Origin 头，因此**必须由包装层
+     钉死**，不能让调用方决定。
+  5. **两处必须由产品自己堵住的洞**：(a) 两个 verify 端点都写死
+     `requireUserVerification: false`，实测一个**没有 UV 标志的断言照样换到会话**；
+     (b) `verify-authentication` 不受 twoFactor 插件的 after hook 覆盖（那个 hook 只匹配
+     `/sign-in/email|username|phone-number`），实测 `twoFactorEnabled=1` 时 passkey 登录
+     直接返回会话、不产生 `twoFactorRedirect`。
+  6. **UV 可以在库里补上**：`registration/authentication.afterVerification` 都能拿到
+     `verification.registrationInfo.userVerified` / `verification.authenticationInfo.userVerified`
+     （simplewebauthn 13.3 暴露的真值），抛 `APIError` 会原样上抛且**发生在写库与建会话
+     之前**——实测被拒的注册留下 0 行、被拒的登录不产生任何会话。注册侧再配
+     `authenticatorSelection.userVerification: "required"`，让凭证从一开始就绑定 UV。
+  7. **重复凭证**：库只在注册选项里下发 `excludeCredentials`，那是给浏览器的提示；实测同
+     一把钥匙再注册一次会撞上 `008-passkey.sql` 追加的 `credentialID` 唯一索引并返回 500。
+     包装层因此先按 `response.id` 查一次给出明确答复，唯一索引仍是真正的保证。
+  8. **不引入客户端认证栈**：`@better-auth/passkey/client` 依赖
+     `createAuthClient`/nanostores/`@simplewebauthn/browser`，而本仓库前端从来只用 `fetch`
+     调自己的包装路由；为 passkey 单独引入一套客户端会扩大栈面，也绕开包装层的字段白名单。
+     因此 UI 直接调用 `navigator.credentials.create()/get()`，只做 base64url 与 ArrayBuffer
+     的转换。
+  9. **列表端点会返回 `publicKey`/`credentialID`/`aaguid`**：这些不是秘密，但产品界面不需要，
+     包装层只投影 id、名称、来源标签、时间与同步性。
+
 - **安全活动**：✅ 2026-10-14 已按最小方案本地实施，结果见 §14.13。现有登录会话不等于
   完整安全日志；新增的是少量脱敏的**已确认**成功事件（改密/改邮箱/撤销，且区分单个与
   批量），字段与保留时限先定契约，不展示精确定位/IP，不记录密码，也不从现有会话倒推
@@ -1458,3 +1507,64 @@ ARCHITECTURE §5“Security activity”，UI 模式在 DESIGN §5.14，这里只
   HMAC-SHA1 密钥，与库的口径一致），因此证明了「界面给的密钥能算出库接受的码」，但没有
   在物理手机上用某个具体 App 扫过/输过。密码管理器与浏览器对 `one-time-code` 自动填充的
   真实行为、手机键盘/IME、以及为生产 owner 账号开启二步验证，都仍待 owner 在真机上验收。
+
+### 14.15 Passkey 本地实施结果（2026-10-15）
+
+§14.7 的「Passkey」已按最小方案本地实施，**未合并、未部署、未注册任何生产凭证，也没有
+域名变更、真实邮件或付费调用**。范围只是「已有账号的一种额外登录方式」：不做 passkey
+优先注册、不信任 attestation（`fmt: "none"` 一律接受，AAGUID 只用于标签、永不白名单）、
+不做管理员视图、不做浏览器 conditional/autofill 中介。认证契约在 ARCHITECTURE §5
+“Passkeys”，界面模式在 DESIGN §5.16，这里只记取舍与实际结果。
+
+- 依赖变化的实际面只有一个版本对齐的第一方包：`package-lock.json` 是 **314 行新增、0 行
+  删除**，没有任何既有包换版本（新增的是 `@better-auth/passkey@1.7.7` 与其自带的
+  `@simplewebauthn/server@13.3.3`）。`overrides` 是为守住这个结论而加的，不是升级手段。
+  客户端不引入任何认证库，UI 直接调 `navigator.credentials`。
+- 组合规则被写成一条可测的不变式：**每个会话都由「密码 + 第二因素」或「已用户验证的
+  passkey 断言」之一建立**。已验证的 passkey 满足第二因素，但**不取代密码**：改密、提交
+  改邮箱、关闭二步验证、重新生成恢复码仍要当前密码，要求实时因素的地方仍要 TOTP 或恢复码，
+  passkey 不能顶替；反过来开启二步验证后，注册/移除 passkey 除密码外还要实时因素，否则
+  「拿到密码和 Cookie 的人可以自行加装一把后门钥匙」。库自身两处都不保证这些（不要求 UV、
+  passkey 登录不进 2FA after hook），已在 `afterVerification` 里补上，且实测被拒的仪式
+  不留任何行、不发任何会话。
+- **WebAuthn 的 user handle 是每次仪式随机生成的**（插件源码
+  `generateRandomString(32)`），账号绑定只存在于服务端 challenge 行的 `userData.id` 与
+  验证后的 `userId` 比对。因此 authenticator 里那个 handle 不含可跨账号关联的稳定标识，
+  满足「不增加隐式跨账号绑定」；代价是 resident key 的 handle 对服务端没有意义，登录必须
+  按 credentialID 回查，`user.id` 也**不能**当作跨设备线索。
+- schema 与回滚：`008-passkey.sql` 由插件 `getMigrations()` 生成、纯新增（`user` 不加列），
+  另加一条 `credentialID` 唯一索引作为插件之外的硬保证；`006-security-events.sql` 的
+  `kind` CHECK 就地加两个值（该迁移尚未在任何环境部署过，因此不需要新的 alter 迁移）。
+  回滚等于退回旧镜像，不恢复任何数据；已有账号既不受影响也不会因此无法登录。
+- **一个只有真浏览器才能暴露的缺陷**：账号已有第一把 passkey 后，第二把注册必然失败，
+  而服务器端为同一账号连发 10 把不同凭证都成功。原因是服务端下发的
+  `excludeCredentials[].transports` 是**数组**，客户端却对它 `.split(",")`，`TypeError`
+  发生在构造选项时、提示框出现前，被仪式包装器归成通用「失败」。已按实测形状修正，并把
+  该形状钉成 `tests/passkey.test.cjs` 里对 `register/start` 响应的断言——这条路径只存在于
+  浏览器，服务端测试是唯一能看见它的地方（GOTCHAS 记了同一条）。
+- 服务端回归 17 条（`tests/passkey.test.cjs` + 自建软件 authenticator `tests/webauthn-fixture.cjs`，
+  不引入 `@simplewebauthn` 的测试依赖）覆盖：两步注册与密码栅栏、无 UV 被拒且不留痕、
+  挑战一次性与用途绑定、错 rpID/错 origin/未知凭证、重复凭证、数量上限、库路径在公开门
+  外全部 404、登录面只接受凭证、已登录浏览器不能再答登录挑战、凭证按账号隔离、重命名、
+  移除后密码仍可用且只记一条事件、与二步验证的组合两条、列表需要近期登录、以及「任何
+  秘密都不被存储或回显」。
+- 浏览器验收用**一次性 headless Chrome + CDP 虚拟 authenticator**（独立临时 profile、独立
+  调试端口、跑完即删，只连回环 fixture）。实测：注册→列表出现行→改名→移除→安全活动两条
+  事件→用 passkey 单独登录成功；12 组 locale × theme × 宽度（360/768/1280）在**两行凭证**
+  状态下逐组断言实际生效的 theme class 与 `document.documentElement.lang`，卡片与登录页均
+  无横向溢出、无被裁切文本；axe-core（wcag2a/aa/2.1a/2.1aa）对 passkeys 卡片与登录主区各
+  **0 violations**；键盘顺序为触发器→每行重命名/移除→密码→显示密码→名称→添加，9 个控件
+  都有可见 focus ring；24 组导航之后再用 passkey 登录仍然成功。
+- **列表要两行必须换一台虚拟 authenticator**：同一台设备对同一账号+RP 的第二把凭证会按
+  exclude 提示直接拒绝，这正是 Windows Hello / Touch ID 的真实行为，因此「第二把 passkey」
+  在产品语义上等于「第二台设备」。此时界面显示的是浏览器给出的失败文案，而服务端的
+  `already_registered` 只在浏览器真的把响应发上来时才会命中——WebAuthn 对这种情况没有
+  独立错误名，包装层只能把它归到「取消/失败」一档。是否要为它另写文案，是一次 copy 决定，
+  不影响安全边界。
+- **未覆盖项**：真实手机、真实同步 passkey 与硬件安全密钥的验收都没有做；虚拟 authenticator
+  证明的是浏览器↔服务端链路，不是跨设备。生产域名（`utils.lzhdev.com`）下的 rpID/origin
+  行为未测——本仓库的 fixture 只能用 `localhost`，因为浏览器拒绝把 IP 地址当 rpID（这条
+  限制写进了 ARCHITECTURE §5）。密码管理器托管的 passkey、Windows Hello 实际提示流程、
+  iOS/Android 键盘与生物识别回退、以及「同一浏览器多账号」的真实选择器体验都未验证。
+  passkey 不改变 §14.14 的恢复故事：忘记设备仍只有 owner 自己掌握的密码与恢复码这条路，
+  本批没有、也不应新增任何人工后门。

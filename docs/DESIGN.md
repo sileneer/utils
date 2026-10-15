@@ -629,6 +629,62 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   §5.10 40px target apply. Long recovery codes and masked values wrap rather than
   forcing horizontal overflow.
 
+### 5.16 Passkeys — approved 2026-10-15
+
+- Passkeys are managed in one collapsed-by-default account-centre card on the batch A
+  disclosure pattern, with a `#passkeys` anchor in the summary navigation placed next to
+  the other security sections, and the sign-in affordance is a button **below** the
+  existing password form on `/login` — never a replacement for it and never competing
+  with it for the primary action. It reuses `Card`, `Collapsible`, `Alert`, `Badge`,
+  `Button`, `Field`, `PasswordField`, `Input` and the registered AlertDialog; **no new UI
+  dependency, primitive or token**, and no client-side authentication library: the
+  ceremony calls `navigator.credentials` directly and only converts between base64url and
+  `ArrayBuffer`.
+- The browser is asked for the ceremony **only** from an explicit user action, and every
+  outcome has its own state, because WebAuthn fails in several unrelated ways that look
+  identical if one message is reused: no `navigator.credentials` at all (unsupported
+  browser — the card explains that passkeys need a current browser and offers nothing
+  else), a non-secure context (the page says the address is why rather than blaming the
+  browser), the user dismissing the dialog (`NotAllowedError`) — which is reported as
+  **cancelled**, with no retry loop and no error styling, because dismissing is a normal
+  choice — a device with no enrollable authenticator, and a server-side refusal, which
+  keeps its own per-cause copy.
+- A passkey is named by the person using it, at the moment of registration, in a normal
+  labelled field with a length cap and a suggested default, because a credential the user
+  cannot tell apart from their other credentials cannot be safely removed later. The list
+  shows the chosen name, a best-effort provider label derived server-side from the
+  authenticator's AAGUID (shown as "unrecognised authenticator" when the AAGUID is the
+  all-zero privacy value, which Apple and others report — never as a guess), the creation
+  date in the browser's own zone with the zone named, and whether the credential is
+  **synced** to the account's other devices or held on this one alone, because that
+  changes what losing the device means. No public key, credential id or AAGUID is
+  rendered.
+- Removal is per-row, names the exact credential in the confirm dialog, and requires the
+  current password (plus a live second factor when two-factor is on) like every other
+  security mutation. The dialog states plainly that signing in with the password still
+  works afterwards, because on this site a password credential always exists — that
+  sentence is the removal safety story, and it must not be softened into "you can always
+  recover this".
+- The sign-in button is present on the login form even when the account has no passkey,
+  because the server cannot know which credential the browser holds; when there is
+  nothing to assert it reads **no passkey is available for this browser**, not "wrong".
+  A completed passkey sign-in is an ordinary session: the same private-resource rules and
+  the same sensitive-operation freshness apply, and the UI shows no different badge for
+  it.
+- Nothing about a passkey is persisted by the browser on this site's behalf: the challenge
+  lives in a server-side row addressed by an HttpOnly signed cookie, so no credential,
+  challenge, public key or credential id is written to localStorage, sessionStorage, a
+  cookie the page can read, a URL, a toast or an error message. The in-flight ceremony
+  object exists only in component state and is dropped when the step is closed.
+- Failure copy stays distinct per cause and never implies a password problem:
+  cancelled, expired challenge, challenge already used, unverified ceremony, unrecognised
+  credential, duplicate credential, credential limit reached, and a rejected password each
+  read differently. A failed passkey sign-in always leaves the password form usable and
+  never reports the account as locked.
+- Both locales, both themes, 360/768/1280px, keyboard operation, focus return and the
+  §5.10 40px target apply. Credential names are user text and wrap rather than forcing
+  horizontal overflow.
+
 ## 6. Motion
 
 - Micro-interactions (hover, focus, press): CSS transitions, `150ms ease-out`.

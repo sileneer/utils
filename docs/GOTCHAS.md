@@ -805,3 +805,18 @@ the boundary rather than just the card. **Fix** build the format from component 
 already does to get a zone label. When adding any timestamp that must name its zone,
 check the combination in a real browser: TypeScript accepts the options object and the
 unit tests never format a date.
+
+### A WebAuthn credential descriptor's transports is an array
+
+**Symptom** the first passkey on an account registers in a real browser and every later
+one fails with "the passkey prompt failed", with no rejection visible in the network log
+because the server never received a credential to reject. **Cause** the creation options
+arrive as `excludeCredentials: [{ id, transports: ["internal"] }]`, and the client
+converter called `.split(",")` on `transports`. An empty list never reaches that call, so
+the defect only appears once the account already holds a credential; the `TypeError` is
+thrown while building the options, before any prompt, and the ceremony wrapper reports its
+generic `failed`. **Fix** normalise `string | string[]` where the JSON enters the browser
+API and pin the server's shape with an assertion on `register/start` in
+`tests/passkey.test.cjs` — the failing path only exists in a browser, so that assertion is
+the only test that can see it. The outbound half runs the other way: `transports` must
+stay an **array** when posted, because the plugin joins it.

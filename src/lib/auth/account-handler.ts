@@ -8,6 +8,7 @@ import { buildExport, exportSummary, parseScope } from "./export";
 import { verifyChallenge } from "./turnstile";
 import { readSecurityEvents, recordSecurityEvent, RETENTION_DAYS } from "./security-events";
 import { proveFactor, revokeAllSessions, translateFactorError, twoFactorStatus } from "./two-factor";
+import { handlePasskeyManagement, passkeyListResponse } from "./passkey-handler";
 import {
   applyEmailChange,
   cancelEmailChange,
@@ -264,9 +265,10 @@ async function handleTwoFactorManagement(
 export async function handleAccount(request: Request) {
   try {
     const path = new URL(request.url).pathname.slice("/api/account".length);
-    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary", "/email", "/activity", "/2fa"],
+    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary", "/email", "/activity", "/2fa", "/passkeys"],
       writes = ["/profile", "/password", "/sessions/revoke", "/preferences", "/email/start", "/email/resend", "/email/verify", "/email/cancel",
-        "/2fa/enable", "/2fa/confirm", "/2fa/disable", "/2fa/recovery-codes"];
+        "/2fa/enable", "/2fa/confirm", "/2fa/disable", "/2fa/recovery-codes",
+        "/passkeys/register/start", "/passkeys/register/finish", "/passkeys/rename", "/passkeys/remove"];
     if (!(request.method === "GET" ? reads : request.method === "POST" ? writes : []).includes(path)) return fail("not_found", 404);
     const ip = process.env.TRUST_CLOUDFLARE_IP === "1" ? request.headers.get("cf-connecting-ip") || "unknown" : "local";
     const headers = new Headers(request.headers);
@@ -319,6 +321,10 @@ export async function handleAccount(request: Request) {
       // same way and is scoped to the caller in SQL rather than by any parameter.
       if (path === "/activity")
         return json({ events: readSecurityEvents(identity.user.id), retentionDays: RETENTION_DAYS });
+      // Which credentials can open this account is security state, so the passkey list
+      // shares the sessions/activity gate and is projected: no key, credential id or
+      // AAGUID crosses the wire.
+      if (path === "/passkeys") return json(passkeyListResponse(identity.user.id));
       const sessions = await auth.api.listSessions({ headers });
       return json({ sessions: sessions.map((s) => ({
         id: s.id, current: s.id === identity.session.id,
@@ -331,7 +337,10 @@ export async function handleAccount(request: Request) {
     let body;
     try {
       const raw = await request.text();
-      if (raw.length > 4096) return fail("bad_request", 400);
+      // A WebAuthn registration carries an attestation object whose size depends on the
+      // authenticator's chosen format, so that one route gets a larger cap; every other
+      // write stays bounded by the same 4 KiB as the rest of the site.
+      if (raw.length > (path === "/passkeys/register/finish" ? 16_384 : 4096)) return fail("bad_request", 400);
       body = JSON.parse(raw);
     } catch { return fail("bad_request", 400); }
     if (!body || typeof body !== "object" || Array.isArray(body)) return fail("bad_request", 400);
@@ -348,6 +357,10 @@ export async function handleAccount(request: Request) {
       "/2fa/confirm": ["code"],
       "/2fa/disable": ["password", "code"],
       "/2fa/recovery-codes": ["password", "code"],
+      "/passkeys/register/start": ["password", "code", "name"],
+      "/passkeys/register/finish": ["response", "name"],
+      "/passkeys/rename": ["password", "id", "name"],
+      "/passkeys/remove": ["password", "code", "id"],
     };
     const allowed = fields[path];
     if (!allowed || Object.keys(body).some((key) => !allowed.includes(key))) return fail("bad_request", 400);
@@ -384,6 +397,17 @@ export async function handleAccount(request: Request) {
       return await handleEmailChange(path, headers, auth, identity, ip, origin, body);
     if (path.startsWith("/2fa/"))
       return await handleTwoFactorManagement(path, headers, auth, identity, ip, body);
+    if (path.startsWith("/passkeys/")) {
+      const result = await handlePasskeyManagement(path, headers, auth, identity, ip, body);
+      // One confirmed ceremony or deletion, one event. A refused or failed ceremony
+      // reaches here as an error response and records nothing, and a rename is not a
+      // change in access so it is not recorded either.
+      if (result.ok && path === "/passkeys/register/finish")
+        safeRecord({ userId: identity.user.id, kind: "passkey_register", ...actingDevice(identity) });
+      if (result.ok && path === "/passkeys/remove")
+        safeRecord({ userId: identity.user.id, kind: "passkey_remove", ...actingDevice(identity) });
+      return result;
+    }
     const password = path === "/password" ? body.currentPassword : body.password;
     if (typeof password !== "string" || !password || password.length > 128) return fail("bad_request", 400);
     if (path === "/password" && (typeof body.newPassword !== "string" || body.newPassword.length < 8 || body.newPassword.length > 128 || !/[A-Za-z]/.test(body.newPassword) || !/[0-9]/.test(body.newPassword))) return fail("bad_request", 400);

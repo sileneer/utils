@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -24,6 +24,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PasswordField } from "./password-field";
 import { Challenge } from "./challenge";
+import {
+  CeremonyError,
+  passkeySupport,
+  requestPasskey,
+} from "@/lib/passkey-browser";
 
 type Mode = "login" | "register" | "verify" | "reset";
 type Values = { email: string; password: string; otp: string; name: string };
@@ -110,6 +115,12 @@ export function AccountForm({
       /* Storage optional. */
     }
   }, [setValue]);
+  // A passkey button is only meaningful once the browser's own capability is known, and
+  // that never changes during a page's life: render nothing until after hydration rather
+  // than guessing twice and flashing.
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
+  const [passkeyReady] = useState(() => passkeySupport().available);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   useEffect(() => {
     if (!wait) return;
     const timer = setTimeout(() => setWait((v) => Math.max(0, v - 1)), 1000);
@@ -154,7 +165,9 @@ export function AccountForm({
       setChallenge((n) => n + 1);
     }
   }
-  function failure(error: unknown) {
+  /** `passkey` picks the passkey wording for the codes the two surfaces share: a spent
+   * challenge means a different thing after a passkey prompt than after a TOTP one. */
+  function failure(error: unknown, passkey = false) {
     const code = error instanceof Error ? error.message : "";
     setError(
       t(
@@ -169,12 +182,17 @@ export function AccountForm({
             network_unknown: "networkFailed",
             // Each second-factor failure is its own fact; a dead challenge or an
             // exhausted budget never reads like a wrong password.
-            challenge_gone: "factorChallengeGone",
+            challenge_gone: passkey ? "passkeyChallengeGone" : "factorChallengeGone",
             attempts_exhausted: "factorAttemptsExhausted",
             locked: "factorLocked",
             code_failed: "factorCodeWrong",
             recovery_failed: "factorRecoveryWrong",
             signed_in: "factorSignedIn",
+            // A passkey sign-in can fail for its own reasons, none of which is a
+            // wrong password.
+            assertion_failed: "passkeyAssertionFailed",
+            not_user_verified: "passkeyNotVerified",
+            not_found: "passkeyAssertionFailed",
           } as Record<string, string>
         )[code] || "failed",
       ),
@@ -291,6 +309,41 @@ export function AccountForm({
       failure(error);
     } finally {
       setResending(false);
+    }
+  }
+  /**
+   * Signs in with a passkey the browser already holds. Nothing here asks who the user
+   * is: the credential names the account, and the server decides whether it opens one.
+   */
+  async function signInWithPasskey() {
+    if (pending.current) return;
+    setError("");
+    setNotice("");
+    pending.current = true;
+    setPasskeyBusy(true);
+    try {
+      let response: Response;
+      try {
+        response = await fetch("/api/passkey/options", { cache: "no-store" });
+      } catch {
+        throw new Error("network_unknown");
+      }
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(typeof payload.error === "string" ? payload.error : "auth_failed");
+      }
+      const credential = await requestPasskey(await response.json());
+      await post("/api/passkey/verify", { response: credential });
+      notifyAccountChange();
+      setValue("password", "");
+      router.push(destination);
+      router.refresh();
+    } catch (error) {
+      if (error instanceof CeremonyError) setError(t("passkeyCeremony_" + error.reason));
+      else failure(error, true);
+    } finally {
+      pending.current = false;
+      setPasskeyBusy(false);
     }
   }
   const needsChallenge =
@@ -571,6 +624,30 @@ export function AccountForm({
                             : mode,
                     )}
               </Button>
+              {mode === "login" && !reauthMode && mounted && (
+                <div className="space-y-2">
+                  {!passkeyReady && (
+                    <p className="text-xs text-muted-foreground">{t("passkeyUnavailable")}</p>
+                  )}
+                  {passkeyReady && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 w-full"
+                        disabled={passkeyBusy || isSubmitting}
+                        onClick={() => void signInWithPasskey()}
+                      >
+                        {passkeyBusy && (
+                          <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                        )}
+                        {t("passkeySignIn")}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">{t("passkeySignInHint")}</p>
+                    </>
+                  )}
+                </div>
+              )}
               {(mode === "verify" || (mode === "reset" && resetStep)) && (
                 <Button
                   type="button"

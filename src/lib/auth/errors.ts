@@ -8,6 +8,7 @@ export type AccountErrorScope =
   | "sessions"
   | "email"
   | "twoFactor"
+  | "passkeys"
   | "auth";
 /** True when the server outcome is unknown, so state must be re-read before the
  * user decides whether to retry. */
@@ -28,11 +29,26 @@ const FACTOR_KEYS: Record<string, string> = {
   signed_in: "factorSignedIn",
   bad_request: "factorCodeFormat",
 };
+/** The passkey vocabulary: each refusal names the thing that actually stopped. */
+const PASSKEY_KEYS: Record<string, string> = {
+  password_wrong: "passkeyPasswordWrong",
+  challenge_gone: "passkeyChallengeGone",
+  assertion_failed: "passkeyAssertionFailed",
+  not_user_verified: "passkeyNotVerified",
+  registration_failed: "passkeyRegistrationFailed",
+  already_registered: "passkeyDuplicate",
+  limit_reached: "passkeyLimit",
+  not_found: "passkeyGone",
+  signed_in: "passkeySignedIn",
+  bad_request: "passkeyInvalid",
+  unauthorized: "sessionExpired",
+};
 export function accountErrorKey(
   code: string,
   scope: AccountErrorScope = "auth",
 ): string {
   if (scope === "twoFactor" && FACTOR_KEYS[code]) return FACTOR_KEYS[code];
+  if (scope === "passkeys" && PASSKEY_KEYS[code]) return PASSKEY_KEYS[code];
   switch (code) {
     case "rate_limited":
       return scope === "email" ? "emailLimited" : "limited";

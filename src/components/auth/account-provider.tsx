@@ -131,11 +131,14 @@ export async function accountAction<T = unknown>(path: string, body: object): Pr
     // so it stays in that tier; committing revokes every session and must clear
     // the known identity exactly like a logout. Issuing a setup key or replacing
     // the recovery-code set changes no session either; confirming or turning the
-    // second factor off revokes every login, including this one.
+    // second factor off revokes every login, including this one. Passkeys are the
+    // same: adding, renaming or removing one never ends a live session, so other
+    // windows only re-resolve — the sessions card is where a live login is revoked.
     path === "/api/account/profile" || path === "/api/account/preferences" ||
     path === "/api/account/email/start" || path === "/api/account/email/resend" ||
     path === "/api/account/email/cancel" || path === "/api/account/2fa/enable" ||
-    path === "/api/account/2fa/recovery-codes" ? "profile"
+    path === "/api/account/2fa/recovery-codes" ||
+    path.startsWith("/api/account/passkeys/") ? "profile"
       : path === "/api/account/password" || path === "/api/account/sessions/revoke" ? "session"
       : "security",
   );
