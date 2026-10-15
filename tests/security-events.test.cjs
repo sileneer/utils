@@ -316,6 +316,7 @@ test("the recorded vocabulary is closed and the projection carries only agreed f
   const person = await create("vocabulary@example.test");
   assert.deepEqual(SECURITY_EVENT_KINDS, [
     "password_change", "email_change", "session_revoke_one", "session_revoke_others",
+    "two_factor_enable", "two_factor_disable", "two_factor_recovery_codes_regenerated",
   ], "the vocabulary is the one ARCHITECTURE §5 registers");
   for (const kind of ["login", "sign_in", "note", "logout", "password"])
     assert.throws(() => recordSecurityEvent({ userId: person.id, kind }), /invalid_event_kind/, kind);

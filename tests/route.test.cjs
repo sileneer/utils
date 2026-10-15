@@ -27,7 +27,7 @@ test.before(async () => {
   db.close();
   database
     .getDatabase()
-    .prepare("INSERT INTO user VALUES (?,?,?,?,?,?,?,?,?)")
+    .prepare("INSERT INTO user (id,name,email,emailVerified,image,createdAt,updatedAt,role,status) VALUES (?,?,?,?,?,?,?,?,?)")
     .run(
       "owner",
       "Owner",
@@ -435,7 +435,7 @@ test("selected native session resumes explicitly; archived chats reject before q
 });
 test("cross-user history and writes rejected; quota guard prevents upstream invocation", async () => {
   const db = database.getDatabase();
-  db.prepare("INSERT INTO user VALUES (?,?,?,?,?,?,?,?,?)").run(
+  db.prepare("INSERT INTO user (id,name,email,emailVerified,image,createdAt,updatedAt,role,status) VALUES (?,?,?,?,?,?,?,?,?)").run(
     "other",
     "Other",
     "other@example.test",

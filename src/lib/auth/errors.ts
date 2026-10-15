@@ -7,16 +7,32 @@ export type AccountErrorScope =
   | "preferences"
   | "sessions"
   | "email"
+  | "twoFactor"
   | "auth";
 /** True when the server outcome is unknown, so state must be re-read before the
  * user decides whether to retry. */
 export function isUnconfirmedError(error: unknown): boolean {
   return error instanceof Error && error.message === "network_unknown";
 }
+/** The two-factor vocabulary is shared by the sign-in challenge and the account
+ * card, so one dead challenge or one wrong code reads the same in both places. */
+const FACTOR_KEYS: Record<string, string> = {
+  password_wrong: "factorPasswordWrong",
+  code_failed: "factorCodeWrong",
+  recovery_failed: "factorRecoveryWrong",
+  challenge_gone: "factorChallengeGone",
+  attempts_exhausted: "factorAttemptsExhausted",
+  locked: "factorLocked",
+  not_enabled: "factorNotEnabled",
+  already_enabled: "factorAlreadyEnabled",
+  signed_in: "factorSignedIn",
+  bad_request: "factorCodeFormat",
+};
 export function accountErrorKey(
   code: string,
   scope: AccountErrorScope = "auth",
 ): string {
+  if (scope === "twoFactor" && FACTOR_KEYS[code]) return FACTOR_KEYS[code];
   switch (code) {
     case "rate_limited":
       return scope === "email" ? "emailLimited" : "limited";

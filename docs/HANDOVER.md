@@ -1,13 +1,13 @@
 # Handover
 
-**Updated 2026-10-14 for the locally implemented PLANNING §14 batches A and B
-(account operations, preferences and the personal usage overview).**
+**Updated 2026-10-15 for the locally implemented PLANNING §14 batches A, B, C1, C2,
+the §14.7 security activity record and the §14.7 TOTP second factor.**
 The full account/UI acceptance below is dated **2026-10-09**; the
 documentation release
 uses normal CI/CD and read-only revision/health checks, with separate evidence. Runtime contracts:
 [ARCHITECTURE](ARCHITECTURE.md); operations: [DEPLOYMENT](DEPLOYMENT.md);
 UI: [DESIGN](DESIGN.md); decisions: [PLANNING](PLANNING.md) §11–13; improvement plan
-and batch A/B results: [PLANNING](PLANNING.md) §14.
+and batch results: [PLANNING](PLANNING.md) §14.
 
 ## 1. Authorization
 
@@ -22,9 +22,13 @@ overview), **local implementation and isolated verification of C2** (personal
 data export) and **local technical verification, protocol design, implementation
 and simulated acceptance of C1** (secure email change). On 2026-10-14 the owner also
 authorized **local implementation of the minimal security activity record from
-PLANNING §14.7**. None of these approvals
-covers D, and none covers publication. Batches A, B, C2, C1 and the activity record are
-implemented locally and unmerged; production still runs the §13 release. Exporting production
+PLANNING §14.7** and **local design, implementation and full recovery acceptance of the
+§14.7 TOTP second factor**. None of these approvals
+covers D, and none covers publication. Batches A, B, C2, C1, the activity record and
+TOTP are
+implemented locally and unmerged; production still runs the §13 release. **No production
+account has two-factor enabled**, and enabling it for the owner account is separately
+unapproved. Exporting production
 data, account deletion, changing a real account's email, real mail sending and paid
 AI calls remain unapproved. Off-machine backup uploads and
 pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
@@ -89,15 +93,33 @@ deleted after each QA pass.
 adds no dependency, env, Docker or CI change, does not widen the `/api/auth` allowlist,
 and changes no existing table.
 
+**The §14.7 TOTP second factor is committed locally as `PENDING`**
+(`feat(auth): add a TOTP second factor`), on top of `1590981`: new
+`migrations/007-two-factor.sql`, `src/lib/auth/two-factor.ts`,
+`src/lib/auth/two-factor-handler.ts`, `src/app/api/2fa/[...action]/route.ts` and
+`tests/two-factor.test.cjs`, plus edits to `options.mjs` (the plugin itself),
+`handler.ts` (sign-in now reports `twoFactorRequired`), `account-handler.ts`,
+`account-center.tsx`, `account-form.tsx`, `account-provider.tsx`, `errors.ts`, both
+`messages/*.json` and the four docs. It adds no dependency and no env change, and it
+does **not** widen the `/api/auth` allowlist: every `/two-factor/*` library path stays
+unreachable from a browser, and the only second-factor surfaces are the new
+`/api/2fa/verify`, `/api/2fa/recovery` and the four `/api/account/2fa/*` wrapper routes.
+`007-two-factor.sql` is generated verbatim from the locked plugin and is purely additive
+(`user.twoFactorEnabled` default 0 plus the `twoFactor` table and its two indexes), so
+existing accounts are untouched and rollback needs no data restore. Nothing was pushed,
+merged or deployed, and no production account has two-factor enabled.
+
 PLANNING section 14 remains the canonical home for the improvement plan; §14.9,
-§14.10, §14.11, §14.12 and §14.13 record what batches A, B, C2, C1 and the activity
-record actually changed.
-ARCHITECTURE §5/§7 and DESIGN
-§5.10–§5.14 describe the implemented client contract (section anchors, the
+§14.10, §14.11, §14.12, §14.13 and §14.14 record what batches A, B, C2, C1, the
+activity record and the TOTP second factor actually changed.
+ARCHITECTURE §5/§7/§8 and DESIGN
+§5.10–§5.15 describe the implemented client contract (section anchors, the
 `reauth=1` copy variant, safe error codes and their per-section mapping in
 `src/lib/auth/errors.ts`, the two-layer theme keys, the preference priority, the
 personal usage wrapper, the export document contract, the two-code email-change
-protocol and the desensitized security event vocabulary with its retention window).
+protocol, the desensitized security event vocabulary with its retention window, and the
+two-factor invariant, challenge surface, recovery-code rules and the
+`BETTER_AUTH_SECRET` stability requirement).
 
 [Documentation PR #8](https://github.com/sileneer/utils/pull/8) publishes the
 shared agent instructions and living-doc refresh, based on `70f5a78`, to `main`.
@@ -127,12 +149,13 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 - ARCHITECTURE §3 owns agent tools/SSE/message details; §5 owns public accounts,
   ownership, safe return paths, security lifecycle, preference/usage wrappers, the
   personal export contract, the two-code email-change protocol, the security activity
-  record and future-module integration; §7 owns locale resolution; §8 owns runtime
-  provider/env config; §10 owns administrator aggregates.
-- DESIGN §5.6–5.14 owns chat/source/account/admin patterns, the batch A
+  record, the TOTP second factor and future-module integration; §7 owns locale
+  resolution; §8 owns runtime provider/env config, including the
+  `BETTER_AUTH_SECRET` stability requirement; §10 owns administrator aggregates.
+- DESIGN §5.6–5.15 owns chat/source/account/admin patterns, the batch A
   account-operations clarifications, the batch B preferences/usage-card
-  patterns, the C2 export card, the C1 email-change card and the security
-  activity card. Account forms use
+  patterns, the C2 export card, the C1 email-change card, the security
+  activity card and the two-factor enrolment/challenge/recovery card. Account forms use
   registered primitives; there
   is no adopted `ui/form` component, and `ui/select` is now used for the preference
   and export-scope choices.
@@ -148,9 +171,27 @@ Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
 §14.9/§14.10/§14.11/§14.12) and await the owner's review and a separate publication
 decision; nothing may be merged or deployed on this authorization. Batches A, B, C2
 and C1 are committed, C1 as `4d08dec`. The §14.7 minimal security activity record is
-committed on top of it as `1590981` (§2, PLANNING §14.13). D remains an
+committed on top of it as `1590981` (§2, PLANNING §14.13), and the §14.7 TOTP second
+factor as `PENDING` (§2, PLANNING §14.14). D remains an
 unapproved proposal in §14. Do not
 start new features or publish any batch without subsequent authorization.
+
+Two-factor leaves the deliberate open items that this authorization could not cover:
+
+- **No real device or real authenticator app was used.** Every code in the browser pass
+  was computed in-page from the base32 setup key the card displays (base32-decode, then
+  HMAC-SHA1 over those bytes — the same construction the locked library verifies with),
+  which proves the displayed key yields codes the server accepts, but not that a specific
+  phone app does. On-device enrolment, its keyboard/IME behaviour and password-manager
+  autofill of `one-time-code` remain to be accepted by the owner on real hardware.
+- **Enabling two-factor for the owner's own production account is unapproved and has not
+  been done**, and it should not be done from an agent session: the owner types the
+  password and codes on the site, and the consequence (losing the device *and* every
+  recovery code has no self-service or support path) deserves a deliberate first run.
+- `BETTER_AUTH_SECRET` is now key material, not a regenerable value: it encrypts stored
+  TOTP secrets and recovery codes, so rotating it would leave every two-factor user
+  unable to complete sign-in. Any future key-rotation procedure must be designed before
+  the value changes (ARCHITECTURE §8).
 
 C1 leaves one deliberate open item: **real mail delivery for the three
 `change-email*` purposes has never been exercised** — this authorization covered
@@ -253,6 +294,20 @@ stale-login state could be seen against the real server. Both operate only on th
 throwaway database and neither deletes application data. Screenshots are
 outside Git. The owner
 logged in normally; no production cookies were exported, captured or minted.
+
+The two-factor pass used a seventh dedicated fixture database under
+`data/investigation/account-totp-20261014/ui/` on its own loopback pair (3023 app, 3024
+outbox and Turnstile stub), with AI disabled, no provider credential and intercepted
+mail/challenge. That launcher keeps a runtime-generated `auth-secret.txt` instead of
+drawing a new secret each start, because the plugin encrypts the stored TOTP secret and
+recovery codes with `BETTER_AUTH_SECRET` and a regenerated value would silently make the
+fixture account unable to sign in — the same reason production rotation is now a designed
+change rather than a fix (ARCHITECTURE §8). The launcher was stopped only after its
+command line had been read back and confirmed to be the fixture launcher, both ports were
+then verified free, and the fixture database, generated secret, fixture password, setup
+key and issued recovery codes are deleted with it. Screenshots and the throwaway
+`totp.cjs`/probe helpers stay local and ignored. No production cookie or session was
+exported, captured or minted, and no production account has two-factor enabled.
 
 ## 7. Verification and limits
 
@@ -623,3 +678,82 @@ emulation, not a physical device. No production account was touched, no real not
 mail was sent, no new-device or unusual-location detection was added, and no paid AI call
 was made; both allowances are unchanged. Nothing here is production or deployment
 acceptance.
+
+**Two-factor local implementation verification (2026-10-15):** 151 regressions pass
+across ten files, all green, including 21 new `tests/two-factor.test.cjs` cases on their
+own disposable database. They cover: the migration matching what the locked plugin asks
+for and an account predating 2FA being untouched by it; `enable` issuing a secret and ten
+recovery codes while enabling nothing; `confirm` revoking every session and recording
+exactly one event; a pending challenge being **no identity anywhere** — every account read
+401, `/api/agent/conversations` and `/api/agent/stop` 401, the session view returning no
+conversation and no user, and chat refusing to reach the model — with those same routes
+answering normally once the code is accepted; the challenge-completed login still naming
+its own device; a challenge being single-use, expiring on its own, and a wrong code
+minting no session; failures accumulating across challenges until ten lock the account,
+after which even a **correct** code is refused; the plugin's own three-per-ten-seconds cap
+reporting as throttling rather than as a wrong code and consuming neither the challenge
+nor its budget; the clock window accepting one period either side and rejecting two;
+recovery codes each working once and never standing in for a TOTP or the reverse;
+regeneration invalidating the whole previous set and demanding the live factor; disabling
+needing the password **and** the factor and then signing everything out; a recovery code
+substituting for a lost device; **neither a password reset nor a password change bypassing
+the factor**; no library `/two-factor/*` path being reachable from the public door; the
+challenge surface rejecting `trustDevice`, `disableSession` and any extra field and never
+issuing a trust-device cookie; an already-signed-in window being unable to answer a
+challenge, which is exactly the branch where the library applies no attempt limit; factor
+material never stored or recorded in the clear; management writes needing a login inside
+24 hours while status does not; two accounts keeping their factors apart; and the email
+change still working with the factor on and leaving it on.
+
+Browser QA used a fresh loopback fixture database (3023 app, 3024 outbox and Turnstile
+stub), a persisted runtime-generated auth secret, intercepted mail and AI disabled.
+Verified in the running UI: an account with no second factor still signs straight in;
+enrolment runs as three labelled steps with the card reading **Not confirmed** until the
+code is accepted, the confirm action held until the "I have stored these codes" toggle is
+pressed, and the setup key, provisioning URI and plaintext codes gone from the DOM the
+moment enrolment completes; enabling and disabling each replace the signed-in page with
+their own outcome notice; a real sign-in stops at the challenge, where `/api/account`
+answers `{"user":null}`, sessions and conversations answer 401 and the agent session view
+reports `authed: false` with no messages — and the same fetches succeed once a code
+computed **in the browser from the displayed base32 key** is accepted; a spent recovery
+code is refused with its own wording while the challenge stays open; a recovery code signs
+in at the challenge; replacing the codes keeps the session alive and shows exactly one new
+set; disabling demands the factor as well as the password and then signs everything out; a
+**second window** sitting on a signed-in account page cleared itself to "log in again"
+through the cross-tab broadcast the moment the first window disabled the factor; wrong
+code, throttled and exhausted states each read differently, and the exhausted state removes
+the code fields and offers only a fresh sign-in. Twenty-four combinations (en/zh ×
+light/dark × 360/768/1280px) were rendered for the two new surfaces — the account card and
+the sign-in challenge — with **the applied `dark`/`light` class and `html[lang]` asserted
+on every run**, no horizontal overflow and no interactive target below 40px. Images were
+captured and read for the challenge step (three widths in both locales and themes, plus the
+throttled state), the enrolment panel with its key and code list, the enabled card, both
+outcome notices and the reissued-codes panel. axe-core 4.10.2 reported zero violations and
+zero incomplete checks on the two-factor section during enrolment and on the whole login
+card at the challenge step. Real Tab moved code field → verify button (44px,
+`:focus-visible` matching with the theme ring shadow) → recovery field, and Enter inside the
+code field completed the sign-in.
+
+Five defects were found only by looking and measuring, not by asserting: the
+reissued-codes panel had no branch for an already-enabled account, so the card rendered
+**empty** after a regeneration; the login form's "you are already signed in" banner stayed
+above the challenge and contradicted it, and the challenge wording claimed the browser had
+no session at all rather than that *this request* had none; the 52-character setup key was
+unreadable at 360px in a single-line input, so it is now a wrapping selectable field with
+its own copy control; the plugin creates the post-challenge session without request
+context, which would have made **every** two-factor login read as "Unknown" in the
+sessions list and the security record, so the wrapper writes the login's own user agent
+back; and the plugin's three-per-ten-seconds cap surfaced as "wrong code" — measured, the
+challenge closed on the eighth bunched submission rather than the fifth, because the
+attempts that hit the cap never reached the counter — so a library 429 is now reported as
+throttling and the contract text states the measured bound.
+
+Limits of this record: **no real phone or authenticator app was used.** Every code came
+from an in-page RFC 6238 computation over the base32 key the card displays, which proves
+the displayed key yields codes the server accepts but is not on-device acceptance; the
+owner's own production account has not been enrolled and enrolling it is separately
+unapproved. The 600-second challenge expiry was exercised by aging the row in the fixture,
+not by waiting ten minutes, and the physical-device keyboard, password-manager autofill of
+`one-time-code` and IME behaviour remain unverified. No real mail was involved (this
+feature sends none by design), no paid AI call was made, and nothing was merged, pushed or
+deployed. Nothing here is production or deployment acceptance.

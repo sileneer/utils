@@ -6,7 +6,7 @@
 CREATE TABLE security_events (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('password_change','email_change','session_revoke_one','session_revoke_others')),
+  kind TEXT NOT NULL CHECK (kind IN ('password_change','email_change','session_revoke_one','session_revoke_others','two_factor_enable','two_factor_disable','two_factor_recovery_codes_regenerated')),
   occurred_at INTEGER NOT NULL,
   browser TEXT,
   system TEXT,

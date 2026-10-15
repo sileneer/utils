@@ -94,7 +94,7 @@ function databaseCheck() {
   if (process.argv[1] === "seed") {
     const now = Date.now();
     // Disposable account/chat records only; no credentials or login session.
-    db.prepare('INSERT INTO user VALUES (?,?,?,?,?,?,?,?,?)').run(
+    db.prepare('INSERT INTO user (id,name,email,emailVerified,image,createdAt,updatedAt,role,status) VALUES (?,?,?,?,?,?,?,?,?)').run(
       "image-smoke-owner", "Image smoke", "image-smoke@example.test", 1, null,
       now, now, "user", "active",
     );

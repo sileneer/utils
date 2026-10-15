@@ -12,6 +12,7 @@ import { accountLink } from "@/lib/auth/navigation";
 import { ACCOUNT_EVENT, ACCOUNT_STORAGE } from "@/lib/auth/events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,6 +31,7 @@ import type { Availability } from "@/lib/chat/history";
 import type { Preferences as AccountPreferences } from "@/lib/auth/preferences";
 import type { ExportSummary } from "@/lib/auth/export";
 import type { SecurityEvent } from "@/lib/auth/security-events";
+import type { TwoFactorStatus } from "@/lib/auth/two-factor";
 
 type LoginSession = { id: string; current: boolean; createdAt: string; expiresAt: string; browser: string; system: string };
 function Field({ label, error, id, ...props }: React.ComponentProps<typeof Input> & { label: string; error?: string; id: string }) {
@@ -42,6 +44,7 @@ function Summary({ user }: { user: AccountUser }) {
     { id: "profile", label: t("profile") },
     { id: "preferences", label: t("preferences") },
     { id: "security", label: t("security") },
+    { id: "two-factor", label: t("twoFactorNav") },
     { id: "email", label: t("emailNav") },
     { id: "sessions", label: t("sessions") },
     { id: "activity", label: t("activityNav") },
@@ -545,6 +548,279 @@ function ExportCard({ onFreshness }: { onFreshness: (stale: boolean) => void }) 
     </Collapsible>
   </CardContent></Card>;
 }
+/** TOTP second factor (DESIGN §5.15). Enrolment is two steps and the first one
+ * enables nothing; a secret, a provisioning URI and the plaintext codes live only in
+ * this component's state, for as long as the step that received them is open. */
+type FactorStep = "idle" | "loading" | "reauth" | "failed";
+const TOTP_FORMAT = /^\d{6}$/;
+const RECOVERY_FORMAT = /^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}$/;
+function setupKeyOf(uri: string) {
+  try {
+    return new URL(uri).searchParams.get("secret") ?? "";
+  } catch {
+    // An unreadable URI is stated as such; the secret is never guessed at.
+    return "";
+  }
+}
+function FactorNotice({ state }: { state: "enabled" | "disabled" }) {
+  const t = useTranslations("account");
+  return <Card role="region" aria-label={t(state === "enabled" ? "factorEnabledTitle" : "factorDisabledTitle")}>
+    <CardHeader><CardTitle><h2>{t(state === "enabled" ? "factorEnabledTitle" : "factorDisabledTitle")}</h2></CardTitle></CardHeader>
+    <CardContent className="space-y-4">
+      <p role="status" className="text-sm font-medium">{t(state === "enabled" ? "factorNowOn" : "factorNowOff")}</p>
+      <p className="text-sm text-muted-foreground">{t("factorSignedOutAll")}</p>
+      <Button className="min-h-10" asChild><Link href={accountLink("login", "/")}>{t("loginAgain")}</Link></Button>
+    </CardContent>
+  </Card>;
+}
+/** The plaintext list is shown in exactly two situations — finishing enrolment and
+ * replacing the set — and both read the same way, because the save-it-yourself
+ * consequence is identical. */
+function RecoveryCodes({ codes, copied, onCopy, heading }: { codes: string[]; copied: boolean; onCopy: () => void; heading: string }) {
+  const t = useTranslations("account");
+  return <div className="space-y-2">
+    <h3 className="text-sm font-medium">{heading}</h3>
+    <p className="text-sm">{t("factorCodesShownOnce")}</p>
+    <p className="text-xs text-muted-foreground">{t("factorCodesSave")}</p>
+    <ul className="grid gap-1 rounded-md border bg-muted/40 p-3 font-mono text-sm">
+      {codes.map((value, index) => <li key={index} className="break-all">{value}</li>)}
+    </ul>
+    <Button variant="outline" className="min-h-10" type="button" onClick={onCopy}>{copied ? t("factorCopied") : t("factorCopyCodes")}</Button>
+  </div>;
+}
+function TwoFactorCard({ onSignedOut }: { onSignedOut: (state: "enabled" | "disabled") => void }) {
+  const t = useTranslations("account");
+  const failure = useAccountError("twoFactor");
+  const [open, setOpen] = useState(false);
+  const [factor, setFactor] = useState<TwoFactorStatus>();
+  const [status, setStatus] = useState<FactorStep>("idle");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [stepUp, setStepUp] = useState("");
+  const [secret, setSecret] = useState("");
+  const [codes, setCodes] = useState<string[]>([]);
+  const [stored, setStored] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [dialog, setDialog] = useState<"commit" | "regenerate" | "disable" | null>(null);
+  const [error, setError] = useState("");
+  const [working, setWorking] = useState(false);
+  const busy = useRef(false);
+  const load = useCallback(async () => {
+    setStatus("loading");
+    try {
+      const response = await fetch("/api/account/2fa", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+      if (response.status === 403) { setFactor(undefined); setStatus("reauth"); return; }
+      if (!response.ok) { setFactor(undefined); setStatus("failed"); return; }
+      const data: { twoFactor?: TwoFactorStatus } = await response.json();
+      if (!data.twoFactor) { setFactor(undefined); setStatus("failed"); return; }
+      setFactor(data.twoFactor);
+      setStatus("idle");
+    } catch { setFactor(undefined); setStatus("failed"); }
+  }, []);
+  useEffect(() => {
+    if (open && factor === undefined && status !== "failed") queueMicrotask(() => void load());
+  }, [open, factor, status, load]);
+  // Closing the step is what forgets the factor material: the setup key and the
+  // plaintext codes have no second copy anywhere.
+  const changeOpen = (value: boolean) => {
+    setOpen(value);
+    if (value) return;
+    setSecret("");
+    setCodes([]);
+    setPassword("");
+    setCode("");
+    setStepUp("");
+    setStored(false);
+    setCopied(false);
+    setCopiedKey(false);
+    setDialog(null);
+    setError("");
+  };
+  const send = async (route: string, body: Record<string, unknown>) => {
+    if (busy.current) return null;
+    busy.current = true;
+    setWorking(true);
+    setError("");
+    try {
+      return await accountAction<Record<string, unknown>>(`/api/account/2fa/${route}`, body);
+    } catch (raised) {
+      setError(failure(raised));
+      if (isUnconfirmedError(raised)) void load();
+      return null;
+    } finally {
+      busy.current = false;
+      setWorking(false);
+    }
+  };
+  const codesOf = (result: Record<string, unknown> | null) =>
+    result && Array.isArray(result.backupCodes) ? (result.backupCodes as unknown[]).map(String) : [];
+  const start = async (again: boolean) => {
+    if (!password) return;
+    const issued = await send("enable", { password });
+    const list = codesOf(issued);
+    if (!issued || list.length === 0) {
+      if (issued) setError(t("factorNoCodesIssued"));
+      return;
+    }
+    setPassword("");
+    setCode("");
+    setStored(false);
+    setCopied(false);
+    setSecret(setupKeyOf(typeof issued.totpURI === "string" ? issued.totpURI : ""));
+    setCodes(list);
+    // The row is now pending, and a pending enrolment is not protection.
+    if (again) setFactor((value) => (value ? { ...value, pending: true } : value));
+    else void load();
+  };
+  const confirmEnable = async () => {
+    const result = await send("confirm", { code });
+    setCode("");
+    if (!result) return;
+    setSecret("");
+    setCodes([]);
+    if (result.signedOut === true) onSignedOut("enabled");
+    else void load();
+  };
+  const stepUpAction = async (route: "disable" | "recovery-codes") => {
+    const result = await send(route, { password, code: stepUp });
+    setPassword("");
+    setStepUp("");
+    if (!result) return;
+    if (route === "disable") {
+      setSecret("");
+      setCodes([]);
+      if (result.disabled === true) onSignedOut("disabled");
+      return;
+    }
+    // A new set replaces the old one; the codes for it exist only in this response.
+    setCodes(codesOf(result));
+    setStored(false);
+    setCopied(false);
+    void load();
+  };
+  const copyCodes = async () => {
+    try {
+      await navigator.clipboard.writeText(codes.join("\n"));
+      setCopied(true);
+    } catch {
+      // A blocked clipboard is not a failure of the codes: the list stays on screen.
+      setCopied(false);
+    }
+  };
+  const copyKey = async () => {
+    try {
+      await navigator.clipboard.writeText(secret);
+      setCopiedKey(true);
+    } catch {
+      setCopiedKey(false);
+    }
+  };
+  const protectedReady = Boolean(password) && (TOTP_FORMAT.test(stepUp) || RECOVERY_FORMAT.test(stepUp));
+  const enrolling = codes.length > 0 || secret !== "";
+  const badge = factor === undefined ? null
+    : factor.enabled ? t("factorStateOn")
+    : factor.pending ? t("factorStatePending")
+    : t("factorStateOff");
+  return <Card><CardHeader><CardTitle><h2>{t("twoFactor")}</h2></CardTitle><CardDescription>{t("twoFactorDescription")}</CardDescription></CardHeader>
+    <CardContent className="space-y-4">
+      <Collapsible open={open} onOpenChange={changeOpen}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className="min-h-10 w-full flex-wrap justify-between gap-2 text-left">
+            <span className="shrink-0">{open ? t("factorCollapse") : t("factorLoad")}</span>
+            {badge && <Badge variant={factor?.enabled ? "default" : "secondary"}>{badge}</Badge>}
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-4 pt-4">
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {status === "loading" && <Skeleton className="h-24 w-full" />}
+          {status === "failed" && <Alert><AlertDescription className="space-y-2"><p>{t("factorLoadFailed")}</p><Button variant="outline" className="min-h-10" onClick={() => void load()}>{t("activityRetry")}</Button></AlertDescription></Alert>}
+          {status === "reauth" && <Alert><AlertDescription className="space-y-2"><p>{t("reauth")}</p><Button variant="outline" className="min-h-10" asChild><Link href={accountLink("login", "/account#two-factor", true)}>{t("refreshLogin")}</Link></Button></AlertDescription></Alert>}
+          {status !== "loading" && status !== "reauth" && factor && <>
+            {!factor.enabled && !enrolling && <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">{factor.pending ? t("factorPending") : t("factorOff")}</p>
+              {factor.pending && <p className="text-sm text-muted-foreground">{t("factorPendingAgain")}</p>}
+              <PasswordField label={t("currentPassword")} id="factor-current-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
+              <p className="text-xs text-muted-foreground">{t("factorStartHint")}</p>
+              <Button className="min-h-10" type="button" disabled={working || !password} onClick={() => void start(factor.pending)}>
+                {working && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}
+                {factor.pending ? t("factorStartAgain") : t("factorStart")}
+              </Button>
+            </div>}
+            {enrolling && !factor.enabled && <div className="space-y-5">
+              <p role="status" className="text-sm font-medium">{t("factorEnrolling")}</p>
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">{t("factorSetupHeading")}</h3>
+                {secret
+                  ? <div className="space-y-2">
+                    <Label htmlFor="factor-setup-key">{t("factorSetupKey")}</Label>
+                    {/* A wrapping, selectable field: the whole key has to be readable at
+                        360px, because it is what the user types into their app by hand. */}
+                    <Textarea id="factor-setup-key" readOnly rows={2} value={secret} className="w-full break-all font-mono select-all" onFocus={(event) => event.target.select()} />
+                    <Button variant="outline" className="min-h-10" type="button" onClick={() => void copyKey()}>{copiedKey ? t("factorKeyCopied") : t("factorKeyCopy")}</Button>
+                    <p className="text-xs text-muted-foreground">{t("factorSetupKeyHint")}</p>
+                  </div>
+                  : <p className="text-sm text-destructive">{t("factorNoSecret")}</p>}
+              </div>
+              <RecoveryCodes codes={codes} copied={copied} onCopy={() => void copyCodes()} heading={t("factorCodesHeading")} />
+              {/* A toggle button rather than a checkbox: the row stays a 40px
+                  target and the label is the control's own accessible name. */}
+              <Button variant={stored ? "secondary" : "outline"} className="min-h-10 w-full justify-start text-left" type="button" aria-pressed={stored} onClick={() => setStored((value) => !value)}>
+                {t("factorCodesAck")}
+              </Button>
+              <Alert><AlertDescription>{t("factorIrreversible")}</AlertDescription></Alert>
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">{t("factorConfirmHeading")}</h3>
+                <Field label={t("factorCode")} id="factor-confirm-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />
+                <p className="text-xs text-muted-foreground">{t("factorCodeHint")}</p>
+              </div>
+              <p className="text-sm text-muted-foreground">{t("factorEffect")}</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button className="min-h-10" type="button" disabled={working || !stored || !TOTP_FORMAT.test(code)} onClick={() => setDialog("commit")}>{t("factorConfirmAction")}</Button>
+                <Button variant="ghost" className="min-h-10" type="button" disabled={working} onClick={() => changeOpen(false)}>{t("factorDismiss")}</Button>
+              </div>
+            </div>}
+            {factor.enabled && codes.length > 0 && <div className="space-y-4">
+              <p role="status" className="text-sm font-medium">{t("factorReplaced")}</p>
+              <RecoveryCodes codes={codes} copied={copied} onCopy={() => void copyCodes()} heading={t("factorCodesHeadingAgain")} />
+              <p className="text-xs text-muted-foreground">{t("factorOldCodesGone")}</p>
+              <Button variant="outline" className="min-h-10" type="button" onClick={() => { setCodes([]); setCopied(false); }}>{t("factorCodesDone")}</Button>
+            </div>}
+            {factor.enabled && codes.length === 0 && <div className="space-y-4">
+              <p className="text-sm font-medium">{t("factorOn")}</p>
+              <p className="text-sm text-muted-foreground">{t("factorEverySignIn")}</p>
+              <p className="text-sm text-muted-foreground">{t("factorCodesLeft", { count: factor.codesRemaining })}</p>
+              {factor.codesRemaining === 0 && <Alert><AlertDescription>{t("factorNoCodesLeft")}</AlertDescription></Alert>}
+              <p className="text-xs leading-relaxed text-muted-foreground">{t("factorProtectNote")}</p>
+              <PasswordField label={t("currentPassword")} id="factor-stepup-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
+              <Field label={t("factorStepUpCode")} id="factor-stepup-code" autoComplete="off" maxLength={11} value={stepUp} onChange={(event) => setStepUp(event.target.value)} error={stepUp && !protectedReady ? t("factorCodeFormat") : undefined} />
+              <p className="text-xs text-muted-foreground">{t("factorStepUpHint")}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" className="min-h-10" type="button" disabled={working || !protectedReady} onClick={() => setDialog("regenerate")}>{t("factorRegenerate")}</Button>
+                <Button variant="outline" className="min-h-10" type="button" disabled={working || !protectedReady} onClick={() => setDialog("disable")}>{t("factorDisable")}</Button>
+              </div>
+            </div>}
+          </>}
+        </CollapsibleContent>
+      </Collapsible>
+      <AlertDialog open={dialog !== null} onOpenChange={(value) => { if (!value && !working) setDialog(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t(`factor${dialog === "commit" ? "Commit" : dialog === "disable" ? "Disable" : "Regenerate"}Title`)}</AlertDialogTitle>
+            <AlertDialogDescription>{t(`factor${dialog === "commit" ? "Commit" : dialog === "disable" ? "Disable" : "Regenerate"}Body`)}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-10" disabled={working}>{t("factorDialogBack")}</AlertDialogCancel>
+            <AlertDialogAction className="min-h-10" onClick={() => {
+              if (dialog === "commit") void confirmEnable();
+              else if (dialog === "disable") void stepUpAction("disable");
+              else if (dialog === "regenerate") void stepUpAction("recovery-codes");
+            }}>{t(`factor${dialog === "commit" ? "Commit" : dialog === "disable" ? "Disable" : "Regenerate"}Confirm`)}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </CardContent></Card>;
+}
 type EmailTransaction = {
   id: string;
   maskedNewEmail: string;
@@ -875,11 +1151,15 @@ export function AccountCenter() {
   const t = useTranslations("account");
   const [staleSession, setStaleSession] = useState(false);
   const [moved, setMoved] = useState<EmailMoved | null>(null);
+  // Turning the factor on or off revokes every session, so the outcome outranks the
+  // signed-in page exactly like an email commit does.
+  const [factorChange, setFactorChange] = useState<"enabled" | "disabled" | null>(null);
   const handleFreshness = useCallback((stale: boolean) => setStaleSession(stale), []);
   // Right after a commit the identity is gone, so the result outranks the signed-in
   // page. A different login clears it: only the account that retired `oldEmail`
   // should still see that commit's outcome.
   if (moved && (!user || moved.oldEmail === user.email)) return <div className="mx-auto max-w-2xl space-y-6"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><EmailMovedNotice moved={moved} /></div>;
+  if (factorChange && !user) return <div className="mx-auto max-w-2xl space-y-6"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><FactorNotice state={factorChange} /></div>;
   if (!user) return <div className="mx-auto max-w-2xl space-y-4"><h1 className="font-display text-3xl font-semibold">{t("center")}</h1>{loading ? <Skeleton className="h-48 w-full" /> : failed ? <><p role="alert">{t("actionFailed")}</p><Button className="min-h-10" onClick={() => void refresh()}>{t("retryAccount")}</Button></> : <><p>{t("sessionExpired")}</p><Button className="min-h-10" asChild><Link href={accountLink("login", "/account")}>{t("login")}</Link></Button></>}</div>;
-  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="email" className="scroll-mt-24"><EmailCard key={`email:${user.id}`} email={user.email} onFreshness={handleFreshness} onMoved={setMoved} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="activity" className="scroll-mt-24"><ActivityCard key={`activity:${user.id}`} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section></div>;
+  return <div className="mx-auto max-w-2xl space-y-6"><div><h1 className="font-display text-3xl font-semibold">{t("center")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("centerDescription")}</p></div>{failed && <Alert><AlertDescription>{t("actionFailed")} <Button className="min-h-10" variant="outline" onClick={() => void refresh()}>{t("retryAccount")}</Button></AlertDescription></Alert>}<Summary user={user} /><section id="profile" className="scroll-mt-24"><Profile key={`profile:${user.id}`} user={user} /></section><section id="preferences" className="scroll-mt-24">{preferences ? <PreferencesCard key={`preferences:${user.id}`} saved={preferences} /> : <Skeleton className="h-64 w-full" />}</section><section id="security" className="scroll-mt-24"><Password key={`password:${user.id}`} reauthNeeded={staleSession} /></section><section id="two-factor" className="scroll-mt-24"><TwoFactorCard key={`two-factor:${user.id}`} onSignedOut={setFactorChange} /></section><section id="email" className="scroll-mt-24"><EmailCard key={`email:${user.id}`} email={user.email} onFreshness={handleFreshness} onMoved={setMoved} /></section><section id="sessions" className="scroll-mt-24"><Sessions key={`sessions:${user.id}`} onFreshness={handleFreshness} /></section><section id="activity" className="scroll-mt-24"><ActivityCard key={`activity:${user.id}`} /></section><section id="usage" className="scroll-mt-24"><UsageCard key={`usage:${user.id}`} /></section><section id="export" className="scroll-mt-24"><ExportCard key={`export:${user.id}`} onFreshness={handleFreshness} /></section></div>;
 }

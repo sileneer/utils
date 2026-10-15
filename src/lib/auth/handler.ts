@@ -181,6 +181,18 @@ export async function handleAuth(request: Request) {
         });
         for (const cookie of response.headers.getSetCookie())
           resultHeaders.append("set-cookie", cookie);
+        // A 2FA-enabled account has no session at this point: the library deletes the
+        // one the credential check created and issues a short-lived challenge cookie
+        // instead. Answering `success` here would send the client into a signed-in UI
+        // for an identity that does not exist, so the pending state is its own result.
+        if (route === "/sign-in/email") {
+          const payload = await response.json().catch(() => ({}));
+          if (payload?.twoFactorRedirect === true)
+            return new Response(JSON.stringify({ twoFactorRequired: true }), {
+              status: 200,
+              headers: resultHeaders,
+            });
+        }
         return new Response(JSON.stringify({ success: true }), {
           status: 200,
           headers: resultHeaders,

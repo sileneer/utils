@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { emailOTP } from "better-auth/plugins";
+import { emailOTP, twoFactor } from "better-auth/plugins";
 
 /** Shared with schema generation; no secrets or database opened at import time. */
 export function authOptions(database, secret, sendVerificationOTP) {
@@ -74,6 +74,14 @@ export function authOptions(database, secret, sendVerificationOTP) {
             createHmac("sha256", secret).update(otp).digest("hex"),
         },
         sendVerificationOTP,
+      }),
+      // TOTP and recovery codes only. No otpOptions, so no second factor ever sends
+      // mail and `twoFactorMethods` can only ever list totp; no skipVerificationOnEnable,
+      // so enrolment stays incomplete until an authenticator code is proven.
+      twoFactor({
+        issuer: "Utils",
+        totpOptions: { period: 30, digits: 6 },
+        backupCodeOptions: { amount: 10, length: 10 },
       }),
     ],
   };

@@ -7,6 +7,7 @@ import { isLanguage, isTheme, readPreferences, writePreferences } from "./prefer
 import { buildExport, exportSummary, parseScope } from "./export";
 import { verifyChallenge } from "./turnstile";
 import { readSecurityEvents, recordSecurityEvent, RETENTION_DAYS } from "./security-events";
+import { proveFactor, revokeAllSessions, translateFactorError, twoFactorStatus } from "./two-factor";
 import {
   applyEmailChange,
   cancelEmailChange,
@@ -152,11 +153,120 @@ async function handleEmailChange(
     return json({ changed: true, signedOut: true, changedTo: result.changedTo, notified });
   });
 }
+async function factorAttempt(action: () => Promise<Response>) {
+  try {
+    return await action();
+  } catch (error) {
+    if (error instanceof Error && error.message === "bad_request") return fail("bad_request", 400);
+    const mapped = translateFactorError(error);
+    return fail(mapped.error, mapped.status);
+  }
+}
+/**
+ * Enrolment, confirmation, disable and recovery-code regeneration. Every write here
+ * needs a current identity, a login inside 24 hours and the current password, and
+ * everything after enrolment also needs the second factor itself — a stolen password
+ * plus a stolen cookie must not be able to switch the factor off.
+ */
+async function handleTwoFactorManagement(
+  path: string,
+  headers: Headers,
+  auth: Auth,
+  identity: Identity,
+  ip: string,
+  body: Record<string, unknown>,
+) {
+  const userId = identity.user.id;
+  const cookie = headers.get("cookie") ?? "";
+  if (!consumeLimits([{ key: `ip:${privateKey(ip)}:2fa-manage`, max: 10, window: 60_000 }]))
+    return fail("rate_limited", 429);
+  const password = typeof body.password === "string" ? body.password : "";
+  const code = typeof body.code === "string" ? body.code.trim() : "";
+  const status = await twoFactorStatus(userId);
+  const confirmIdentity = async () => {
+    try {
+      await auth.api.verifyPassword({ headers, body: { password } });
+    } catch {
+      return fail("password_wrong", 400);
+    }
+    if ((await accountSession(headers))?.session.id !== identity.session.id) return fail("unauthorized", 401);
+    return null;
+  };
+
+  if (path === "/2fa/enable") {
+    if (!password || password.length > 128) return fail("bad_request", 400);
+    if (status.enabled) return fail("already_enabled", 409);
+    const refused = await confirmIdentity();
+    if (refused) return refused;
+    return factorAttempt(async () => {
+      // Re-running this over a pending enrolment replaces the unconfirmed secret, so an
+      // abandoned step is recoverable without ever weakening the account: nothing is
+      // enabled until a code from the new device is proven.
+      const issued = await auth.api.enableTwoFactor({ headers, body: { password, method: "totp" } }) as
+        { totpURI?: string; backupCodes?: string[] };
+      // The provisioning URI and the plaintext codes exist in this response and nowhere
+      // else: they are never logged, never re-read, never stored by the client.
+      return json({ totpURI: issued.totpURI ?? "", backupCodes: issued.backupCodes ?? [] });
+    });
+  }
+
+  if (path === "/2fa/confirm") {
+    if (!code) return fail("bad_request", 400);
+    if (status.enabled) return fail("already_enabled", 409);
+    if (!status.pending) return fail("not_enabled", 409);
+    return factorAttempt(async () => {
+      let affected = 0;
+      await withAccountChange(userId, async () => {
+        await beforePasswordWrite();
+        await proveFactor(cookie, code);
+        // Every session goes, including this one, so no login that never faced a
+        // challenge survives the moment the factor turns on.
+        affected = revokeAllSessions(userId);
+      }, false);
+      safeRecord({ userId, kind: "two_factor_enable", ...actingDevice(identity) });
+      return json({ enabled: true, signedOut: true, sessionsAffected: affected });
+    });
+  }
+
+  if (!password || password.length > 128 || !code) return fail("bad_request", 400);
+  if (!status.enabled) return fail("not_enabled", 409);
+  const refused = await confirmIdentity();
+  if (refused) return refused;
+
+  if (path === "/2fa/disable") {
+    return factorAttempt(async () => {
+      let affected = 0;
+      await withAccountChange(userId, async () => {
+        await beforePasswordWrite();
+        await proveFactor(cookie, code);
+        await auth.api.disableTwoFactor({ headers, body: { password } });
+        affected = revokeAllSessions(userId);
+      }, false);
+      safeRecord({ userId, kind: "two_factor_disable", ...actingDevice(identity) });
+      return json({ disabled: true, signedOut: true, sessionsAffected: affected });
+    });
+  }
+
+  return factorAttempt(async () => {
+    let issued: { backupCodes?: string[] } | undefined;
+    await withAccountChange(userId, async () => {
+      await beforePasswordWrite();
+      // Proving the factor with a recovery code spends it, and the set that replaces
+      // it invalidates every code issued before — including any the user never saved.
+      await proveFactor(cookie, code);
+      issued = await auth.api.generateBackupCodes({ headers, body: { password } }) as
+        { backupCodes?: string[] };
+    }, false);
+    safeRecord({ userId, kind: "two_factor_recovery_codes_regenerated", ...actingDevice(identity) });
+    return json({ backupCodes: issued?.backupCodes ?? [] });
+  });
+}
 export async function handleAccount(request: Request) {
   try {
     const path = new URL(request.url).pathname.slice("/api/account".length);
-    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary", "/email", "/activity"],
-      writes = ["/profile", "/password", "/sessions/revoke", "/preferences", "/email/start", "/email/resend", "/email/verify", "/email/cancel"];
+    const reads = ["", "/sessions", "/preferences", "/usage", "/export", "/export/summary", "/email", "/activity", "/2fa"],
+      writes = ["/profile", "/password", "/sessions/revoke", "/preferences", "/email/start", "/email/resend", "/email/verify", "/email/cancel",
+        "/2fa/enable", "/2fa/confirm", "/2fa/disable", "/2fa/recovery-codes"];
     if (!(request.method === "GET" ? reads : request.method === "POST" ? writes : []).includes(path)) return fail("not_found", 404);
     const ip = process.env.TRUST_CLOUDFLARE_IP === "1" ? request.headers.get("cf-connecting-ip") || "unknown" : "local";
     const headers = new Headers(request.headers);
@@ -170,6 +280,9 @@ export async function handleAccount(request: Request) {
       // login may still choose its theme and see its own usage.
       if (path === "/preferences") return json({ preferences: readPreferences(identity.user.id) });
       if (path === "/usage") return json({ usage: availability(identity.user.id) });
+      // "Is my second factor on" is not itself a security mutation, so it stays
+      // readable without the freshness gate; every write on the path has it.
+      if (path === "/2fa") return json({ twoFactor: await twoFactorStatus(identity.user.id) });
       if (Date.now() - new Date(identity.session.createdAt).getTime() >= 86_400_000) return fail("reauth_required", 403);
       // Reading a whole history is a sensitive read, so it shares session
       // listing's freshAge gate and re-checks the login after assembly.
@@ -231,6 +344,10 @@ export async function handleAccount(request: Request) {
       "/email/resend": ["id", "side", "turnstileToken"],
       "/email/verify": ["id", "oldCode", "newCode"],
       "/email/cancel": ["id"],
+      "/2fa/enable": ["password"],
+      "/2fa/confirm": ["code"],
+      "/2fa/disable": ["password", "code"],
+      "/2fa/recovery-codes": ["password", "code"],
     };
     const allowed = fields[path];
     if (!allowed || Object.keys(body).some((key) => !allowed.includes(key))) return fail("bad_request", 400);
@@ -265,6 +382,8 @@ export async function handleAccount(request: Request) {
     if (Date.now() - new Date(identity.session.createdAt).getTime() >= 86_400_000) return fail("reauth_required", 403);
     if (path.startsWith("/email/"))
       return await handleEmailChange(path, headers, auth, identity, ip, origin, body);
+    if (path.startsWith("/2fa/"))
+      return await handleTwoFactorManagement(path, headers, auth, identity, ip, body);
     const password = path === "/password" ? body.currentPassword : body.password;
     if (typeof password !== "string" || !password || password.length > 128) return fail("bad_request", 400);
     if (path === "/password" && (typeof body.newPassword !== "string" || body.newPassword.length < 8 || body.newPassword.length > 128 || !/[A-Za-z]/.test(body.newPassword) || !/[0-9]/.test(body.newPassword))) return fail("bad_request", 400);

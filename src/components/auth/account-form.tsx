@@ -27,6 +27,10 @@ import { Challenge } from "./challenge";
 
 type Mode = "login" | "register" | "verify" | "reset";
 type Values = { email: string; password: string; otp: string; name: string };
+/** Mirrors the plugin's `twoFactorCookieMaxAge`, after which the challenge is gone
+ * and only a fresh sign-in can mint another one. */
+const FACTOR_WINDOW = 600;
+const RECOVERY_FORMAT = /^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}$/;
 export function AccountForm({
   mode,
   returnTo = "/",
@@ -52,6 +56,13 @@ export function AccountForm({
     [notice, setNotice] = useState("");
   const [wait, setWait] = useState(0),
     [resending, setResending] = useState(false);
+  // The sign-in stopped at the second factor: no session exists until it is answered.
+  const [factorStep, setFactorStep] = useState(false);
+  const [factorEmail, setFactorEmail] = useState("");
+  const [factorWait, setFactorWait] = useState(0),
+    [factorBusy, setFactorBusy] = useState(false);
+  const [totp, setTotp] = useState(""),
+    [recovery, setRecovery] = useState("");
   // Guards against a same-frame repeat click or held Enter key; `disabled` only
   // applies after a render, and every action here is a security-sensitive write.
   const pending = useRef(false);
@@ -104,31 +115,40 @@ export function AccountForm({
     const timer = setTimeout(() => setWait((v) => Math.max(0, v - 1)), 1000);
     return () => clearTimeout(timer);
   }, [wait]);
+  useEffect(() => {
+    if (!factorWait) return;
+    const timer = setTimeout(() => setFactorWait((v) => Math.max(0, v - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [factorWait]);
+  async function post(url: string, body: object): Promise<Record<string, unknown>> {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(40_000),
+      });
+    } catch {
+      // Offline/timeout/abort: no confirmed server outcome.
+      throw new Error("network_unknown");
+    }
+    let data: Record<string, unknown> = {};
+    try {
+      data = await response.json();
+    } catch {
+      /* Edge/proxy responses may not be JSON. */
+    }
+    if (!response.ok)
+      throw new Error(
+        (typeof data.error === "string" && data.error) ||
+          (response.status === 429 ? "rate_limited" : "auth_failed"),
+      );
+    return data;
+  }
   async function request(path: string, body: object) {
     try {
-      let response: Response;
-      try {
-        response = await fetch(`/api/auth/${path}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(40_000),
-        });
-      } catch {
-        // Offline/timeout/abort: no confirmed server outcome.
-        throw new Error("network_unknown");
-      }
-      let data: { error?: string } = {};
-      try {
-        data = await response.json();
-      } catch {
-        /* Edge/proxy responses may not be JSON. */
-      }
-      if (!response.ok)
-        throw new Error(
-          data.error ||
-            (response.status === 429 ? "rate_limited" : "auth_failed"),
-        );
+      return await post(`/api/auth/${path}`, body);
     } finally {
       setToken("");
       setChallenge((n) => n + 1);
@@ -147,10 +167,25 @@ export function AccountForm({
             stop_unconfirmed: "securityFailed",
             account_busy: "securityFailed",
             network_unknown: "networkFailed",
+            // Each second-factor failure is its own fact; a dead challenge or an
+            // exhausted budget never reads like a wrong password.
+            challenge_gone: "factorChallengeGone",
+            attempts_exhausted: "factorAttemptsExhausted",
+            locked: "factorLocked",
+            code_failed: "factorCodeWrong",
+            recovery_failed: "factorRecoveryWrong",
+            signed_in: "factorSignedIn",
           } as Record<string, string>
         )[code] || "failed",
       ),
     );
+  }
+  function startFactor(address: string) {
+    setFactorEmail(address);
+    setFactorStep(true);
+    setFactorWait(FACTOR_WINDOW);
+    setTotp("");
+    setRecovery("");
   }
   async function submit(values: Values) {
     if (pending.current) return;
@@ -174,7 +209,17 @@ export function AccountForm({
         setValue("password", "");
         router.push(accountLink("verify-email", destination));
       } else if (mode === "login") {
-        await request("sign-in/email", { email, password: values.password });
+        const result = await request("sign-in/email", {
+          email,
+          password: values.password,
+        });
+        if (result.twoFactorRequired === true) {
+          // The credential step created no usable identity; the challenge cookie is
+          // the only state, and it expires on its own.
+          setValue("password", "");
+          startFactor(email);
+          return;
+        }
         notifyAccountChange();
         setValue("password", "");
         router.push(destination);
@@ -251,6 +296,54 @@ export function AccountForm({
   const needsChallenge =
     mode === "register" || mode === "verify" || mode === "reset";
   const sending = mode === "register" || (mode === "reset" && !resetStep);
+  /** Leave the challenge with every credential cleared; the next attempt is a
+   * fresh sign-in, not a retry of the same code. */
+  function endFactor() {
+    setFactorStep(false);
+    setFactorWait(0);
+    setTotp("");
+    setRecovery("");
+    setFactorEmail("");
+    setError("");
+    setNotice("");
+  }
+  async function answerFactor(url: string, code: string) {
+    if (pending.current) return;
+    setError("");
+    setNotice("");
+    pending.current = true;
+    setFactorBusy(true);
+    try {
+      await post(url, { code });
+      notifyAccountChange();
+      endFactor();
+      router.push(destination);
+      router.refresh();
+    } catch (raised) {
+      const cause = raised instanceof Error ? raised.message : "";
+      failure(raised);
+      setTotp("");
+      setRecovery("");
+      // The challenge itself is gone, so the countdown is stopped at zero rather
+      // than left counting down to a step that can no longer be completed.
+      if (
+        cause === "challenge_gone" ||
+        cause === "attempts_exhausted" ||
+        cause === "signed_in" ||
+        cause === "not_found"
+      )
+        setFactorWait(0);
+    } finally {
+      pending.current = false;
+      setFactorBusy(false);
+    }
+  }
+  // A dead or expired challenge leaves only a restart: saying "try the code again"
+  // would imply the same one can still be spent.
+  const factorExpired = factorWait <= 0;
+  const factorClock = `${Math.floor(Math.max(0, factorWait) / 60)}:${String(
+    Math.max(0, factorWait) % 60,
+  ).padStart(2, "0")}`;
   function field(
     name: keyof Values,
     label: string,
@@ -283,14 +376,24 @@ export function AccountForm({
     <Card className="mx-auto w-full max-w-md">
       <CardHeader>
         <CardTitle className="text-2xl">
-          <h1>{reauthMode ? t("reauthTitle") : t(`${mode}Title`)}</h1>
+          <h1>
+            {reauthMode
+              ? t("reauthTitle")
+              : factorStep
+                ? t("factorTitle")
+                : t(`${mode}Title`)}
+          </h1>
         </CardTitle>
         <CardDescription>
-          {reauthMode ? t("reauthDescription") : t(`${mode}Description`)}
+          {reauthMode
+            ? t("reauthDescription")
+            : factorStep
+              ? t("factorDescription")
+              : t(`${mode}Description`)}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {user && (mode === "login" || mode === "register") && !reauthMode && <div className="space-y-2"><p className="text-sm">{t("signedIn", { name: user.name })}</p><Button variant="outline" asChild><Link href={destination}>{t("continue")}</Link></Button></div>}
+        {user && (mode === "login" || mode === "register") && !reauthMode && !factorStep && <div className="space-y-2"><p className="text-sm">{t("signedIn", { name: user.name })}</p><Button variant="outline" asChild><Link href={destination}>{t("continue")}</Link></Button></div>}
         {user && reauthMode && <p className="text-sm text-muted-foreground">{t("reauthSignedIn", { name: user.name })}</p>}
         {!config ? (
           <Skeleton className="h-24 w-full" />
@@ -302,6 +405,73 @@ export function AccountForm({
             <Button asChild className="h-11 w-full">
               <Link href={accountLink("login", destination)}>{t("login")}</Link>
             </Button>
+          </div>
+        ) : factorStep ? (
+          <div className="space-y-5">
+            <p className="break-all text-sm">{t("factorAccount", { email: factorEmail })}</p>
+            <p className="text-sm text-muted-foreground">{t("factorNoSession")}</p>
+            {error && (
+              <p role="alert" className="text-sm text-destructive">{error}</p>
+            )}
+            {factorExpired ? (
+              <div className="space-y-4">
+                <p role="status" className="text-sm text-destructive">{t("factorGone")}</p>
+                <Button variant="outline" className="h-11 w-full" onClick={endFactor}>{t("factorRestart")}</Button>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">{t("factorExpiresIn", { time: factorClock })}</p>
+                <form
+                  className="space-y-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (/^\d{6}$/.test(totp)) void answerFactor("/api/2fa/verify", totp);
+                  }}
+                >
+                  <div className="space-y-2">
+                    <Label htmlFor="account-factor-code">{t("factorCode")}</Label>
+                    <Input
+                      id="account-factor-code"
+                      className="h-11"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      value={totp}
+                      onChange={(event) => setTotp(event.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">{t("factorCodeHint")}</p>
+                  </div>
+                  <Button type="submit" className="h-11 w-full" disabled={factorBusy || !/^\d{6}$/.test(totp)}>
+                    {factorBusy && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}
+                    {t("factorVerify")}
+                  </Button>
+                </form>
+                <form
+                  className="space-y-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (RECOVERY_FORMAT.test(recovery.trim())) void answerFactor("/api/2fa/recovery", recovery.trim());
+                  }}
+                >
+                  <div className="space-y-2">
+                    <Label htmlFor="account-recovery-code">{t("factorRecovery")}</Label>
+                    <Input
+                      id="account-recovery-code"
+                      className="h-11"
+                      autoComplete="off"
+                      maxLength={11}
+                      value={recovery}
+                      onChange={(event) => setRecovery(event.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">{t("factorRecoveryHint")}</p>
+                  </div>
+                  <Button type="submit" variant="outline" className="h-11 w-full" disabled={factorBusy || !RECOVERY_FORMAT.test(recovery.trim())}>
+                    {factorBusy && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}
+                    {t("factorRecoveryAction")}
+                  </Button>
+                </form>
+              </>
+            )}
           </div>
         ) : (
           <>

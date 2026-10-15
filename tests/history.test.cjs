@@ -64,7 +64,7 @@ test.before(async () => {
     db.prepare("INSERT INTO schema_migrations VALUES (?,?)").run(file, 1);
   }
   for (const owner of ["owner", "other"])
-    db.prepare("INSERT INTO user VALUES (?,?,?,?,?,?,?,?,?)").run(
+    db.prepare("INSERT INTO user (id,name,email,emailVerified,image,createdAt,updatedAt,role,status) VALUES (?,?,?,?,?,?,?,?,?)").run(
       owner,
       "Disposable QA",
       owner + "@example.test",

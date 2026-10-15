@@ -257,7 +257,10 @@ data, which remain server-only columns on `user`. `005-email-change.sql` adds
 §5; it is independent of the `verification` table so a change-email code can never
 collide with a registration or reset code. `006-security-events.sql` adds
 `security_events`, the short desensitized record of confirmed security changes also
-described in §5. Legacy conversation
+described in §5. `007-two-factor.sql` adds `user.twoFactorEnabled` and the `twoFactor`
+table, generated from the plugin's own schema rather than hand-designed; it is purely
+additive and defaults the new column to 0, so every existing account keeps signing in
+exactly as before. Legacy conversation
 columns stay unchanged so old-image positional writes remain compatible. A
 missing title override falls back to the first user question (100 characters);
 no model is called to name conversations. User role/status are server-only
@@ -497,6 +500,133 @@ localStorage/sessionStorage: the card links directly to the endpoint so the file
 goes to the download manager. Import, cross-account merge and any delete-on-export
 behaviour are explicitly out of scope.
 
+#### Two-factor authentication
+
+TOTP second factor on the shared account, from the `twoFactor` plugin of the locked
+Better Auth 1.7.7. PLANNING §14.7 records the verification of that plugin's real
+behaviour; this section is the product contract built on it. Scope is deliberately
+narrow: **TOTP and recovery codes only**. No email/SMS second factor (`otpOptions` is
+left unconfigured, so no 2FA mail is ever sent), no passkey, and **no "trust this
+device"** — the library accepts a client-supplied `trustDevice` flag that would mint a
+30-day second-factor bypass, so the wrapper never sends it and no surface offers it.
+
+**The invariant everything else rests on:** a session row for an account with
+`twoFactorEnabled` exists only if the second factor was satisfied when that session was
+created. The library guarantees the forward direction itself — on a sign-in for an
+enabled account the credential session is deleted and replaced by a 600-second
+`better-auth.two_factor` challenge cookie, and `getSession` on that cookie resolves to
+no identity. The remaining gap is history: sessions minted *before* enrolment never saw
+a challenge. Enrolment therefore **revokes every other session** as it completes, so the
+invariant holds from the moment 2FA turns on. Because of this invariant, identity
+resolution (`identity.ts`, `server.ts`) does not re-check the factor per request — any
+session it can find has already passed it.
+
+`007-two-factor.sql` is generated from the plugin rather than hand-designed: it adds
+`user.twoFactorEnabled` (nullable, `default 0`, so every existing account keeps signing
+in normally after the migration) and the `twoFactor` table (`id`, `secret`,
+`backupCodes`, `userId` with `ON DELETE CASCADE`, `verified`, `failedVerificationCount`,
+`lockedUntil`) with the plugin's two indexes. It is purely additive, so an image
+predating 2FA simply ignores both and rollback needs no data restore; re-deploying an
+older image cannot resurrect or orphan anything.
+
+**Enrolment is two steps and nothing is enabled by the first.** `enable` requires a
+current verified active identity, a login inside 24 hours and the current password; it
+stores the secret and a fresh set of recovery codes with `verified = 0` and leaves
+`twoFactorEnabled` false, so an abandoned enrolment cannot lock anyone out and cannot
+weaken the account. `confirm` requires the same identity plus a valid code from the new
+device; only then does the library flip `verified` and `twoFactorEnabled`, and the
+wrapper immediately revokes every other session inside the account fence. The response
+carries the provisioning secret and the plaintext recovery codes exactly once; they are
+never logged, never placed in a URL, and never written to browser storage (see DESIGN
+§5.15 for how the UI holds them).
+
+**Management mutations require the factor, not just the password.** After the first
+enrolment, `disable` and recovery-code regeneration each demand a fresh session, the
+current password **and** a live second factor — a current TOTP code or one unused
+recovery code, distinguished by shape (six digits versus `xxxxx-xxxxx`). Without that,
+anyone holding a password and a stolen cookie could silently remove the second factor.
+Regeneration replaces the whole list, so every previously issued code stops working at
+that instant.
+
+**Recovery codes** are the library's: ten codes, `xxxxx-xxxxx`, stored symmetrically
+encrypted with the server secret, single-use by removing the matched value under a
+compare-and-set on the previous ciphertext, so a concurrent double-spend is refused
+rather than accepted twice. The server can decrypt them by design, which is why they are
+treated as a full second factor and why a spent code can never be replayed.
+
+**Losing the device and every recovery code has no self-service path.** Disabling
+requires the factor, and there is no support bypass, no automatic downgrade, no
+server-side re-send of codes to the account's email, and no way for a logged-in client
+to assert that the challenge was completed. This is stated in the UI before enrolment
+completes, because it is the one irreversible consequence of turning 2FA on. Restoring
+such an account would need an explicit owner decision and a designed offline procedure;
+neither exists in this build.
+
+**The challenge** is the library's own: a signed `better-auth.two_factor` cookie naming a
+`verification` row that expires after 600 seconds and is consumed on success, so a
+replayed challenge is rejected rather than re-used. Five wrong codes consume the
+challenge and force a fresh sign-in; separately the plugin counts consecutive failed
+verifications per account across challenges and factors and locks the factor for 15
+minutes at ten. A failed or expired challenge never establishes an identity, so it can
+reach no private resource and no AI route, and it can therefore never stop another
+user's running request.
+
+Those two budgets are not the whole throttle, and the difference is visible to the user.
+The plugin also caps **every** `/two-factor/` route at three requests per ten seconds, so
+a burst of guesses is refused before the five-attempt counter has advanced — measured on
+the locked version, the challenge closes on the eighth submission when attempts are
+bunched, not the fifth. That refusal is a 429 from the library and the wrapper reports it
+as `rate_limited`, never as a wrong code: presenting a working authenticator's code as
+incorrect is both false and an invitation to keep guessing. The wrapper's own buckets
+(ten per minute per challenge, ten per minute per IP) sit underneath it, so the number of
+codes one challenge can ever be tested with is bounded twice over.
+
+The session a completed challenge produces is created by the plugin itself, and that
+call carries no request context, so it would land with an empty user agent and every
+two-factor login would read as "Unknown" in the login-sessions list and in the security
+record. The wrapper writes the sign-in request's own `User-Agent` onto that session
+before answering — the request that finishes the challenge is the login, so this is the
+same value an ordinary sign-in stores, not a claim about a device.
+
+Every `/two-factor/*` path stays outside the public `/api/auth` allowlist, and the
+library's session-present verify branch — which returns the current token and applies no
+attempt throttling — is never reachable from a browser. The product surface is these
+wrapper routes only:
+
+| Route | Identity | Body fields | Effect |
+|---|---|---|---|
+| `POST /api/auth/sign-in/email` (existing) | none | unchanged | now answers `twoFactorRequired` instead of a false success |
+| `POST /api/2fa/verify` | no session, valid challenge cookie | `code` | completes sign-in with a TOTP code |
+| `POST /api/2fa/recovery` | no session, valid challenge cookie | `code` | completes sign-in with one recovery code |
+| `GET /api/account/2fa` | current identity | — | status only: enabled, codes remaining |
+| `POST /api/account/2fa/enable` | identity + fresh + password | `password` | stores an unverified secret and codes |
+| `POST /api/account/2fa/confirm` | identity + fresh | `code` | enables, rotates, revokes other sessions |
+| `POST /api/account/2fa/disable` | identity + fresh + password + factor | `password`, `code` | removes the factor and revokes sessions |
+| `POST /api/account/2fa/recovery-codes` | identity + fresh + password + factor | `password`, `code` | replaces the code set |
+
+The `verify` and `recovery` routes take the same origin, content-type and body-size
+checks as the public auth door, accept no other field, and return only
+`{ signedIn: true }` — never the library's token or user object, and never a session
+token. `GET /api/account/2fa` is deliberately readable without the 24-hour freshness
+gate, like preferences and usage, because "is my second factor on" is not itself a
+security mutation; every write on the path is gated.
+
+Rate limiting is purpose-scoped with `consumeLimits`: per-IP and per-account buckets on
+the challenge routes separate from the sign-in buckets, and separate per-account buckets
+for the management writes, so a blocked password form cannot throttle someone out of
+their own challenge and vice versa.
+
+Two-factor changes extend the confirmed security-event vocabulary with
+`two_factor_enable`, `two_factor_disable` and
+`two_factor_recovery_codes_regenerated` — results only. Failures, wrong codes and
+lockouts are not recorded, and no event row ever holds a secret, a code or a factor
+identifier.
+
+Enrolment, confirmation, disable and regeneration all run inside `withAccountChange`
+with a confirmed stop, so an account with a running AI request either completes cleanly
+or not at all, and the cross-tab `security` event fires so other windows drop the
+identity that just stopped being valid.
+
 #### Security activity
 
 A short, desensitized record of the account's own confirmed security changes
@@ -516,7 +646,7 @@ predate this table correctly show an empty list rather than an invented past.
 |---|---|
 | `id` | generated uuid, so a retry cannot collide with or overwrite an earlier row |
 | `user_id` | the subject, `ON DELETE CASCADE` |
-| `kind` | `password_change` \| `email_change` \| `session_revoke_one` \| `session_revoke_others`, enforced by CHECK |
+| `kind` | `password_change` \| `email_change` \| `session_revoke_one` \| `session_revoke_others` \| `two_factor_enable` \| `two_factor_disable` \| `two_factor_recovery_codes_regenerated`, enforced by CHECK |
 | `occurred_at` | epoch milliseconds of the confirmed change |
 | `browser`, `system` | the two inferred labels from the existing `browserInfo` projection of the acting session's User-Agent — a controlled vocabulary, never the raw UA |
 | `masked_email` | `email_change` only: the target address with its local part masked |
@@ -727,7 +857,7 @@ values live in `/opt/utils/.env` (chmod 600) on the server.
 | `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL` | SDK | optional auxiliary-slot overrides; absent slots follow the selected main chat model |
 | `APP_URL` | auth | fixed trusted origin/base URL; production `https://utils.lzhdev.com`, local default `http://localhost:3000` |
 | `DATABASE_PATH` | database | default `<cwd>/data/utils.sqlite`; production `/app/data/utils.sqlite` |
-| `BETTER_AUTH_SECRET` | auth, OTP/metadata digests | server-generated random secret, at least 32 characters |
+| `BETTER_AUTH_SECRET` | auth, OTP/metadata digests | server-generated random secret, at least 32 characters; **must never change once an account exists** — it also encrypts stored TOTP secrets and recovery codes, so a rotation would leave every two-factor user unable to complete sign-in |
 | `BREVO_API_KEY` | mail | ordinary transactional HTTP API key |
 | `MAIL_FROM`, `MAIL_REPLY_TO` | mail | authenticated sender email (required); real reply inbox (optional) |
 | `MAIL_FROM_NAME` | mail | optional sender display name matching the chosen Brevo sender; defaults to `Utils` |

@@ -7,6 +7,9 @@ export const SECURITY_EVENT_KINDS = [
   "email_change",
   "session_revoke_one",
   "session_revoke_others",
+  "two_factor_enable",
+  "two_factor_disable",
+  "two_factor_recovery_codes_regenerated",
 ] as const;
 export type SecurityEventKind = (typeof SECURITY_EVENT_KINDS)[number];
 

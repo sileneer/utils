@@ -552,6 +552,83 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   target apply; long masked addresses and device labels must wrap rather than force
   horizontal overflow.
 
+### 5.15 Two-factor authentication — TOTP approved 2026-10-14
+
+- The **sign-in challenge is a step of the existing login form, not a new route**.
+  `safeReturnTo` allowlists the destinations a login may return to, and adding a
+  `/two-factor` page would mean widening that list for no benefit; the form already
+  owns a multi-step shape from the reset flow. When sign-in answers `twoFactorRequired`
+  the form swaps to the challenge step in place — the credentials are never re-asked,
+  and the step states plainly that no session exists until the code is accepted.
+- The challenge step offers exactly two ways in — an authenticator code and a recovery
+  code — as separate labelled inputs, because they are different credentials with
+  different consequences (one is reusable, the other is spent). No "trust this device"
+  control exists anywhere in the product, and the copy says the challenge must be
+  completed on every sign-in.
+- Six-digit code inputs reuse the registered `Field`/`Input` with
+  `inputMode="numeric"`, `autoComplete="one-time-code"` and `maxLength={6}`; the
+  recovery-code input takes the `xxxxx-xxxxx` form instead and must not inherit the
+  numeric constraints. A visible countdown mirrors the server's 600-second window and,
+  when it lapses, says the sign-in must be restarted rather than pretending a retry of
+  the same code can work.
+- Enrolment, recovery-code regeneration and disabling live in one collapsed-by-default
+  account-centre card on the batch A disclosure pattern, with a `#two-factor` anchor in
+  the summary navigation, placed with the other security sections. It reuses `Card`,
+  `Collapsible`, `Alert`, `Badge`, `Button`, `Field`, `PasswordField`, `Input`,
+  `Textarea` and the registered AlertDialog; **no new dependency, primitive or token**.
+- Enrolment is shown as an explicit two-step sequence with the second step gated: the
+  secret and the recovery codes are revealed first and the "enabled" action stays
+  unavailable until the user confirms they have stored the codes, because they are
+  shown once and cannot be recovered afterwards. That confirmation is a `Button` with
+  `aria-pressed` rather than a checkbox, so the row keeps the §5.10 40px target and the
+  sentence is the control's own accessible name. Until the code is confirmed the card
+  must say the second factor is **not yet on** — an abandoned enrolment is not
+  protection.
+- **No QR code is offered.** Rendering one would need a new dependency, so the card
+  shows the setup key for manual entry in an authenticator app and says so, rather than
+  implying a scanner is supported. The key is a wrapping, selectable `Textarea` with its
+  own copy control, never a single-line field: a 52-character secret has to be readable
+  in full at 360px, because reading it is the only way to enter it. This is a known
+  functional limitation of the card, not an omission to discover later.
+- Factor material is held in component state only, for the lifetime of that one
+  expanded step: the secret, the provisioning URI and the plaintext recovery codes
+  never enter localStorage or sessionStorage, a URL, a query string, a toast, an error
+  message or a rendered status line. They are cleared when the step is closed, when
+  enrolment completes or fails, and when the account identity changes. The status view
+  reports only whether 2FA is on and how many recovery codes remain.
+- Recovery codes are presented as a list the user is told to save themselves, with a
+  copy-all control and an explicit statement that the server cannot resend them; each
+  regeneration replaces the set and invalidates the previous one, which the confirm
+  dialog says before acting.
+- Disabling and regenerating both confirm through the AlertDialog pattern and both ask
+  for the current password **and** a live second factor, so the dialog explains that a
+  code from the authenticator or one unused recovery code is required.
+- The irreversible consequence is stated before enrolment completes, not after: losing
+  the device and every recovery code means self-service cannot restore access, and
+  there is no support bypass. The card says this in one plain sentence rather than
+  burying it in help text.
+- Failure copy stays distinct per cause and never implies the factor was turned off or
+  that a session exists: wrong code, spent challenge, expired challenge, exhausted
+  attempt budget, account-level temporary lock, already-enabled, and a rejected
+  password each read differently. A wrong code at the challenge must not fall back to
+  "check your email and password". The plugin's own three-per-ten-seconds cap on its
+  routes is reported as **too many attempts**, never as a wrong code — telling someone
+  their authenticator is wrong when the answer is to wait sends them back to guessing.
+- Enabling, disabling and regenerating all broadcast the cross-tab `security` event, so
+  no window keeps showing a signed-in page for an identity the server just revoked.
+  Confirming and disabling also end *this* window's session, so their result is a
+  page-level notice in the §5.13 shape — the card that raised it no longer has the
+  identity it was describing, and "your login has expired" would misreport a change the
+  user just made on purpose.
+- The challenge step replaces the credential form in place, so the login form's "you are
+  already signed in" banner is suppressed while it is open: another window's live
+  session is not this request's business, and showing both reads as a contradiction. The
+  challenge copy therefore speaks about **this request** granting no access, not about
+  the browser having no session.
+- Both locales, both themes, 360/768/1280px, keyboard operation, focus return and the
+  §5.10 40px target apply. Long recovery codes and masked values wrap rather than
+  forcing horizontal overflow.
+
 ## 6. Motion
 
 - Micro-interactions (hover, focus, press): CSS transitions, `150ms ease-out`.
