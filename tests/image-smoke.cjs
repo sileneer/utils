@@ -35,6 +35,9 @@ function artifactCheck() {
   }
   visit("/app");
   assert.ok(!fs.existsSync("/app/tests"), "QA fixtures in image");
+  // Startup migrations import these before the Next route bundles exist. A route
+  // build can succeed while this untraced CommonJS dependency chain is missing.
+  assert.equal(typeof require("/app/src/lib/auth/deletion.cjs").reconcileDeletions, "function");
   const Database = require("better-sqlite3"), db = new Database(":memory:");
   assert.equal(db.prepare("SELECT sqlite_version() version").get().version, "3.53.4");
   db.close();
@@ -88,7 +91,8 @@ async function routeCheck() {
 function databaseCheck() {
   const assert = require("node:assert/strict"), fs = require("node:fs");
   const { open, databasePath } = require("./src/lib/database.cjs"), db = open();
-  assert.equal(db.prepare("SELECT count(*) n FROM schema_migrations").get().n, 3);
+  assert.deepEqual(db.prepare("SELECT version FROM schema_migrations ORDER BY version").all().map((row) => row.version),
+    fs.readdirSync("/app/migrations").filter((file) => file.endsWith(".sql")).sort());
   assert.equal(db.pragma("journal_mode", { simple: true }), "wal");
   assert.equal(fs.statSync(databasePath()).mode & 0o777, 0o600);
   if (process.argv[1] === "seed") {
@@ -121,7 +125,8 @@ function backupCheck() {
   const db = new Database(restored);
   assert.equal(db.pragma("integrity_check", { simple: true }), "ok");
   assert.deepEqual(db.pragma("foreign_key_check"), []);
-  assert.equal(db.prepare("SELECT count(*) n FROM schema_migrations").get().n, 3);
+  assert.deepEqual(db.prepare("SELECT version FROM schema_migrations ORDER BY version").all().map((row) => row.version),
+    fs.readdirSync("/app/migrations").filter((file) => file.endsWith(".sql")).sort());
   assert.equal(db.prepare("SELECT owner_user_id FROM conversations WHERE id=?").get("image-smoke-chat").owner_user_id, "image-smoke-owner");
   assert.equal(db.prepare("SELECT content FROM messages WHERE id=?").get("image-smoke-message").content, "Image smoke persistence marker");
   db.close();

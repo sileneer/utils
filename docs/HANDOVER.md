@@ -60,6 +60,10 @@ table, schema change or production action was introduced by these fixes. Git ini
 reported two stat-only test changes; the unrelated `tests/preferences.test.cjs` content
 still matches HEAD and is excluded from staging. The fixes are committed as `6f7cd03`
 (`fix(auth): resolve account security review findings`), followed by the handover record.
+The first PR image run exposed a missing untraced startup dependency; the packaging
+follow-up explicitly carries deletion/keying CommonJS modules in Docker and verifies the
+actual migration filenames in live and restored image data. Application/UI code is unchanged
+by that follow-up.
 The exact PR head, URL and Actions result are kept in ignored
 `data/investigation/account-fixes-20261015/pr-receipt.json`; re-check that receipt and
 GitHub before relying on the remote status. The branch has not been merged.
@@ -518,6 +522,14 @@ Evidence: ignored `data/investigation/account-fixes-20261015/` (`tests.log`, `li
 Windows binary was missing, so this run used the already bundled Playwright/Chrome.
 This remains emulation/virtual WebAuthn, with no real mail, paid AI, physical-device or
 production acceptance. Exact-head CI/image status is recorded separately in the §2 receipt.
+
+The first PR run, `38800631193` on `7128069`, passed Linux lint/tests and built the image,
+but image startup failed because raw CLI migration dependencies were absent. This is a
+failed initial acceptance, not a release. Docker packaging now copies the missing modules;
+image artifact checks require them before startup, and persistence/backup checks compare
+all migration filenames rather than the obsolete count of three. The corrected run and
+final PR/security/quality status are recorded in the same §2 receipt. Local Docker is
+unavailable; final-image acceptance is performed by the unchanged CI gate.
 
 **Historical initial review (2026-10-15, `fa95882`, superseded by the fixes above):** existing regressions
 passed **186/186**, TypeScript `--noEmit` passed, ESLint excluding `data/**` passed,

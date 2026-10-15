@@ -828,3 +828,13 @@ test deleting its disposable directory. **Cause** ESLint does not inherit Git ig
 **Fix** the ESLint global ignore now includes `data/**`; application code, maintained
 scripts and tracked tests still run through the ordinary full lint command. Keep dated
 older scoped-lint receipts separate from the current result.
+
+### A green Next build does not package CLI migration dependencies
+
+**Symptom** the final image passes native/artifact checks but exits before health;
+startup only reports a database startup failure. **Cause** migration scripts run outside
+Next's route trace. Adding `deletion.cjs` and its `keying.cjs` dependency to `migrate()`
+did not place their raw files in the runner. **Fix** carry the complete CommonJS chain
+explicitly in Dockerfile and require reconciliation in the image artifact check. Compare
+applied migration filenames against the image directory in persistence/restore checks;
+a historical literal count of three is not the current schema contract.

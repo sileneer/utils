@@ -43,6 +43,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/migrations ./migrations
 COPY --from=builder --chown=nextjs:nodejs /app/src/lib/database.cjs ./src/lib/database.cjs
+# Migration startup is outside Next's traced route graph. Carry its complete
+# CommonJS deletion/reconciliation dependency chain in the final image.
+COPY --from=builder --chown=nextjs:nodejs \
+    /app/src/lib/auth/deletion.cjs /app/src/lib/auth/keying.cjs ./src/lib/auth/
 # Explicitly carry the native SQLite binding and loader; verify in Linux CI.
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
 # The agent SDK resolves its platform CLI binary from a sibling optional
