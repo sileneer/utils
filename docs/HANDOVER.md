@@ -113,7 +113,7 @@ unreachable from a browser, and the only second-factor surfaces are the new
 existing accounts are untouched and rollback needs no data restore. Nothing was pushed,
 merged or deployed, and no production account has two-factor enabled.
 
-**The §14.7 passkey capability is committed locally on this branch**
+**The §14.7 passkey capability is committed locally as `058fb94`**
 (`feat(auth): sign in with passkeys`), on top of `1142983`: new
 `migrations/008-passkey.sql`, `src/lib/auth/passkey.ts`,
 `src/lib/auth/passkey-handler.ts`, `src/lib/auth/session-device.ts`,
@@ -200,8 +200,8 @@ Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
 decision; nothing may be merged or deployed on this authorization. Batches A, B, C2
 and C1 are committed, C1 as `4d08dec`. The §14.7 minimal security activity record is
 committed on top of it as `1590981` (§2, PLANNING §14.13), the §14.7 TOTP second
-factor as `1142983` (§2, PLANNING §14.14), and the §14.7 passkey capability on top of that
-(§2, PLANNING §14.15). D remains an
+factor as `1142983` (§2, PLANNING §14.14), and the §14.7 passkey capability as `058fb94`
+on top of those (§2, PLANNING §14.15). D remains an
 unapproved proposal in §14. Do not
 start new features or publish any batch without subsequent authorization.
 
