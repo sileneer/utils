@@ -58,8 +58,11 @@ for short mobile viewports. Canonical contracts are updated in ARCHITECTURE/DESI
 the owner's export decision and rationale are in PLANNING §14.17. No new dependency,
 table, schema change or production action was introduced by these fixes. Git initially
 reported two stat-only test changes; the unrelated `tests/preferences.test.cjs` content
-still matches HEAD and is excluded from staging. Commit/PR position will be recorded
-after packaging; the branch has not been merged.
+still matches HEAD and is excluded from staging. The fixes are committed as `6f7cd03`
+(`fix(auth): resolve account security review findings`), followed by the handover record.
+The exact PR head, URL and Actions result are kept in ignored
+`data/investigation/account-fixes-20261015/pr-receipt.json`; re-check that receipt and
+GitHub before relying on the remote status. The branch has not been merged.
 
 **Batch A is committed locally as `058ca4c`**
 (`feat(auth): clarify account operations and failure recovery`):
@@ -243,8 +246,9 @@ intent to execute on restart. Export preflight sums every materialized body/cont
 usage JSON in UTF-8 bytes. Large-account deletion has the owner's explicit opt-out from
 the complete-export prerequisite, preserving every other gate and never mislabelling a
 segment as complete. Security-card reads stop on reauthentication/failure, and step-up
-inputs accept both TOTP and recovery-code shapes. The remaining action is feature-branch
-PR/CI acceptance and a separate owner decision before any merge or rollout; real devices,
+inputs accept both TOTP and recovery-code shapes. Keep the feature branch unmerged;
+before any authorized rollout re-check the exact PR head and all CI/image gates (receipt
+in §2). A separate owner decision is still required before merge or rollout; real devices,
 real mail, production accounts and real retained-data deletion remain outside this pass.
 
 Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
@@ -392,6 +396,8 @@ are disposable, and the Playwright runner closes its Chrome instance in `finally
 Only this pass's preview command line may be stopped; unrelated previews and owner files
 remain untouched. The final fixture's recovery account was deleted only after its explicit
 UI confirmation. Screenshots and databases remain private QA evidence, never staged.
+The runner closed its browser; the verified preview process was stopped and ports
+3037/3038 were checked closed before packaging.
 
 The disposable port-3001 preview and both owned QA browsers were stopped/closed
 at release completion. The 2026-10-13 disposable account preview and its named
@@ -511,7 +517,7 @@ Evidence: ignored `data/investigation/account-fixes-20261015/` (`tests.log`, `li
 `build.log`, `browser-receipt.json`, `contrast.log`, `screens/`). Agent-browser's installed
 Windows binary was missing, so this run used the already bundled Playwright/Chrome.
 This remains emulation/virtual WebAuthn, with no real mail, paid AI, physical-device or
-production acceptance. CI/image status is recorded separately when the PR run completes.
+production acceptance. Exact-head CI/image status is recorded separately in the §2 receipt.
 
 **Historical initial review (2026-10-15, `fa95882`, superseded by the fixes above):** existing regressions
 passed **186/186**, TypeScript `--noEmit` passed, ESLint excluding `data/**` passed,
