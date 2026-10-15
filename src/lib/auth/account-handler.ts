@@ -373,7 +373,7 @@ export async function handleAccount(request: Request) {
       "/passkeys/remove": ["password", "code", "id"],
       "/deletion/request": ["password", "code"],
       "/deletion/withdraw": ["password", "code"],
-      "/deletion/complete": ["password", "code", "confirm"],
+      "/deletion/complete": ["password", "code", "confirm", "skipExport"],
     };
     const allowed = fields[path];
     if (!allowed || Object.keys(body).some((key) => !allowed.includes(key))) return fail("bad_request", 400);

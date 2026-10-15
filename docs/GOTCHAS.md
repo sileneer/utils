@@ -820,3 +820,11 @@ API and pin the server's shape with an assertion on `register/start` in
 `tests/passkey.test.cjs` — the failing path only exists in a browser, so that assertion is
 the only test that can see it. The outbound half runs the other way: `transports` must
 stay an **array** when posted, because the plugin joins it.
+
+### Private runtime volumes are not ESLint source
+
+**Symptom** default lint reports CommonJS imports in ignored QA evidence, or races a
+test deleting its disposable directory. **Cause** ESLint does not inherit Git ignores.
+**Fix** the ESLint global ignore now includes `data/**`; application code, maintained
+scripts and tracked tests still run through the ordinary full lint command. Keep dated
+older scoped-lint receipts separate from the current result.

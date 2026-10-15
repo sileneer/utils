@@ -318,6 +318,40 @@ test("downloads are private attachments and exporting changes nothing", async ()
   assert.deepEqual(tableState(), before);
 });
 
+test("preflight sums UTF-8 bytes of every message, context, title and usage record", async () => {
+  const cookie = await login(owner);
+  const first = turn(), second = turn();
+  const title = "多字节标题🙂", content = ["问", "第二条回答🙂"];
+  const context = { text: "上下文", revision: "release-abc" };
+  const usage = { details: { tokens: { input: 1, output: 2 } } };
+  const id = seed(owner.id, { title,
+    messages: [
+      { turnId: first, role: "user", content: content[0], context },
+      { turnId: second, role: "assistant", content: content[1] },
+    ], usage: [{ turnId: second, status: "complete", usage }],
+  });
+  try {
+    const summary = (await (await exportGet(`/summary?conversation=${id}`, cookie)).json()).summary;
+    assert.equal(summary.counts.contentBytes,
+      [title, ...content, JSON.stringify(context), JSON.stringify(usage)]
+        .reduce((sum, value) => sum + Buffer.byteLength(value, "utf8"), 0));
+    assert.equal(summary.complete, true);
+    const large = "汉".repeat(Math.ceil(EXPORT_LIMITS.contentBytes / 3));
+    database.getDatabase().prepare("UPDATE messages SET content=? WHERE conversation_id=? AND position=1")
+      .run(large, id);
+    const refused = await exportGet(`?conversation=${id}`, cookie);
+    assert.equal(refused.status, 413, "later messages must be checked before materializing an export");
+    const body = await refused.json();
+    assert.equal(body.summary.complete, false);
+    assert.equal(body.summary.truncatedReason, "contentSize");
+    assert.ok(body.summary.counts.contentBytes > EXPORT_LIMITS.contentBytes);
+    assert.ok(!refused.headers.get("content-disposition"));
+  } finally {
+    database.getDatabase().prepare("DELETE FROM conversations WHERE id=?").run(id);
+    database.getDatabase().prepare("DELETE FROM ai_usage WHERE user_id=? AND turn_id=?").run(owner.id, second);
+  }
+});
+
 test("a revoked login cannot continue reading the previous account's data", async () => {
   const cookie = await login(owner);
   assert.equal((await exportGet("", cookie)).status, 200);

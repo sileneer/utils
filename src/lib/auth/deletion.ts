@@ -56,7 +56,8 @@ export function deletionView(userId: string): DeletionView {
 
 /**
  * Only a whole-account export counts. A narrowed one is a subset of the data, and the
- * precondition exists so nobody ends their account without holding the copy of it.
+ * default precondition offers a complete copy first. Proceeding without that copy
+ * requires the separate, explicit acknowledgement on the final deletion request.
  */
 export function markExportDelivered(userId: string, scope: { conversation?: string; from?: number; to?: number }) {
   if (scope.conversation !== undefined || scope.from !== undefined || scope.to !== undefined) return;
@@ -70,6 +71,7 @@ export function lastAdministratorStanding(userId: string) {
 
 export type DeletionOutcome =
   | { deleted: true; transcripts: string[]; outstanding: string[] }
+  | { deleted: false; error: "last_admin" }
   | { deleted: false; alreadyGone: true };
 
 /**
@@ -79,8 +81,9 @@ export type DeletionOutcome =
  */
 export function deleteAccount(userId: string): DeletionOutcome {
   const result = executeDeletion(db(), userId) as {
-    deleted?: unknown; transcripts?: unknown; outstanding?: unknown;
+    deleted?: unknown; error?: unknown; transcripts?: unknown; outstanding?: unknown;
   };
+  if (result.error === "last_admin") return { deleted: false, error: "last_admin" };
   if (result.deleted !== true) return { deleted: false, alreadyGone: true };
   const list = (value: unknown) => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
   return { deleted: true, transcripts: list(result.transcripts), outstanding: list(result.outstanding) };

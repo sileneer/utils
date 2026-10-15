@@ -12,7 +12,8 @@
 -- when an unclaimed request lapses back to no request at all. Both are stored rather than
 -- derived so that changing the two durations can never silently move the goalposts of a
 -- request that is already open. `exported_at` records that a full personal-data export was
--- generated *after* the request, which the final step requires; it stays null until then.
+-- generated *after* the request; it stays null until then. A final request may separately
+-- acknowledge proceeding without that copy; this never changes the export timestamp.
 --
 -- The row references `user(id)` with a cascade on purpose: a completed deletion removes the
 -- request along with the identity, and a withdrawal deletes the row directly. Nothing here

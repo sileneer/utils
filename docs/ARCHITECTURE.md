@@ -467,10 +467,13 @@ the login was revoked, rotated or switched meanwhile, so a dead identity cannot
 keep streaming an earlier user's data.
 
 First release is bounded on purpose, with no queue, background job or unbounded
-read: at most 200 conversations, 2000 messages and 8 MiB of serialized output per
-response, counted before the body is built. Anything above that is reported as a
-partial export — `complete: false`, `truncated: true` and a reason — and the caller
-must request per-conversation or per-date segments. A segment always states its own
+read: at most 200 conversations and 2000 messages per response, with a 6 MiB preflight
+ceiling summing UTF-8 bytes of all message bodies, source-context JSON, titles and
+selected usage JSON. Summary suggestions fetch only the first 100 question characters.
+The serialized document has a separate 8 MiB ceiling checked after assembly. An
+over-limit request returns 413 with no attachment, `complete: false` and a reason;
+it does not return a silently truncated file. The caller can request per-conversation
+or per-date segments. A segment always states its own
 scope and is never described as a full snapshot; whole-account export at database
 scale needs the separately designed controlled background job, private staging and
 expiry from PLANNING §14.6 before it can be claimed.
@@ -908,7 +911,7 @@ subtree at all, so it can never be part of a deletion.
 | `conversation_meta`, `messages` | delete (cascade from `conversations`) | titles, archive state, every message body |
 | `conversations` | **explicit delete** | no cascade exists; deleting these first is what makes the `user` delete possible |
 | `ai_usage` | **explicit delete** | no cascade exists; per-turn usage rows and their token JSON |
-| `verification` | delete by identifier and by value | email-OTP/reset identifiers embed the **plaintext normalized email**, and two-factor/passkey rows carry the user id in `value`; leaving either would keep the address alive in the database after the account is gone |
+| `verification` | delete by exact OTP identifiers, scalar user id and guarded JSON user id | OTP digests and factor user ids are plain text, while passkey ceremonies carry JSON; only `json_valid` values are passed to `json_extract`. Email characters never act as SQL wildcards |
 | `limits` | delete by keyed digest | rows whose HMAC covers this email (both forms) or this user id; the IP-keyed buckets are not attributable to an account and stay, because they protect the site rather than describe the person |
 | `rateLimit` (library) | retain | keys are `ip\|path`, never an identity, and the library expires them |
 | `mail_requests` | **anonymize, do not delete** | `email_hash` becomes a fixed deletion marker while `purpose`, `created_at`, `status` and `provider_id` stay, so the global daily mail budget keeps counting what it actually sent without continuing to describe a deleted person. No mail body or OTP was ever stored |
@@ -922,6 +925,9 @@ subtree at all, so it can never be part of a deletion.
 transaction, children before `user`, so the operation is all-or-nothing and
 `foreign_keys = ON` is the enforcement: a store this list ever misses makes the `user`
 delete throw and the whole transaction roll back, rather than leaving an orphan behind.
+The last-administrator check runs inside this same write transaction, before the durable
+intent is appended, so overlapping requests for different users cannot delete all admins
+and a refused request leaves no intent for startup to execute.
 `foreign_key_check` is asserted after the deletion for exactly that reason. The file sweep
 cannot join that transaction, so it happens after the commit and its outstanding paths are
 carried in the durable intent record below until they succeed.
@@ -941,10 +947,16 @@ lapse and eligibility are computed from those timestamps whenever the state is r
 background job, scheduler or cron is needed and nothing can be deleted by a timer nobody is
 watching. Withdrawal deletes the row and leaves the account exactly as it was, because the
 cooling-off period touches no data. The final step is a second, explicit ceremony that is
-refused before `eligible_at`, refused after `expires_at`, and refused unless a full export
-was generated after the request.
+refused before `eligible_at` and after `expires_at`. By default it is also refused unless
+a full export was generated after the request. The owner's 2026-10-15 review-fix decision
+allows proceeding without a full copy only with `skipExport: true` in the final request.
+The field must be a literal boolean; absent/false retains the default refusal. The UI
+requires a separate, initially unselected acknowledgement inside the final dialog and
+retains scoped-export entries for large accounts. This neither stamps `exported_at` nor
+claims that a segment or a waived export is complete. Every other deletion gate is unchanged.
 
-**The durable intent record.** Before the transaction, one line is appended and fsynced to
+**The durable intent record.** Inside the immediate transaction, after the administrator
+gate and before data removal, one line is appended and fsynced to
 `deleted-accounts.jsonl` beside the database file: the user id, the keyed email digest, the
 timestamp and the transcript paths that were owed. The file is not part of any SQLite
 backup, which is what makes it useful: at migration time — the same `migrate()` every entry
@@ -971,7 +983,9 @@ second concurrent attempt returns `account_busy` rather than queueing.
 AND emailVerified = 1` row cannot self-delete, because that predicate is exactly what
 `/admin` requires and promotion is a CLI-only, owner-operated command with no demotion path.
 The refusal says so and points at promoting another verified active account first; it is not
-overridable from the browser.
+overridable from the browser. Startup reconciliation honours an already recorded,
+authorized intent even if a restored snapshot contains fewer administrators; the fresh
+request check is never used to resurrect a previously deleted identity.
 
 **Backups.** A completed deletion does not touch any existing backup, and this feature
 never prunes one. Restoring a pre-deletion backup therefore re-introduces the identity until

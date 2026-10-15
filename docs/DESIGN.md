@@ -91,7 +91,7 @@ Paste-ready block for `globals.css` (shadcn v4 convention; adjust only through t
   --accent: oklch(0.30 0.06 295);
   --accent-foreground: oklch(0.90 0.05 295);
   --destructive: oklch(0.65 0.20 25);
-  --destructive-foreground: oklch(0.97 0.01 25);
+  --destructive-foreground: oklch(0.16 0.015 250);
   --border: oklch(0.28 0.02 250);
   --input: oklch(0.28 0.02 250);
   --ring: oklch(0.60 0.10 195);
@@ -142,6 +142,10 @@ Rules:
 ### 4.2 Usage rules
 
 - **Buttons**: `default` = primary action (one per view) · `secondary` = supporting actions · `outline` = actions on cards/neutral surfaces · `ghost` = icon buttons/toolbar actions · `destructive` = irreversible actions. Size `sm` in dense tool UIs; default elsewhere. All icon-only buttons need `aria-label` + a `Tooltip`.
+- Destructive buttons use the solid semantic destructive background and its contrast
+  foreground in both themes (dark foreground in dark mode). Hover adds a shadow without
+  fading either color; the former tinted background failed small-text contrast. Both
+  destructive tokens are registered in Tailwind's inline theme.
 - **Forms**: use react-hook-form + zod with existing Input/Label primitives and project wrappers. Every control has a visible Label; inline errors are associated with `aria-describedby` and invalid controls with `aria-invalid`. Submit shows pending feedback and is disabled while pending. Validate on submit, then revalidate corrected fields. Server validation remains authoritative.
 - **Feedback**: success/error → `sonner` toast (there is exactly one `<Toaster />` in the root layout). Waiting data → `Skeleton`, never spinners-in-cards. Empty states → centered lucide icon + one-line explanation + primary CTA. Errors → route-level `error.tsx` with a retry button; destructive `Alert` for user-fixable problems.
 - **Overlays**: `Dialog` for focused single tasks, `Sheet` for mobile settings panels, `Popover`/`DropdownMenu` for secondary controls. Confirm destructive actions with an `AlertDialog`.
@@ -684,6 +688,10 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
 - Both locales, both themes, 360/768/1280px, keyboard operation, focus return and the
   §5.10 40px target apply. Credential names are user text and wrap rather than forcing
   horizontal overflow.
+- Passkey and deletion step-up fields accept either a six-digit authenticator code or
+  an eleven-character unused recovery code, with the existing factor hint beside the
+  field. Initial security-card reads run once per opening attempt: loading, failure and
+  reauthentication are terminal until the user chooses a recovery action, never retry loops.
 
 ### 5.17 Account deletion — approved 2026-10-15
 
@@ -694,10 +702,13 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   field; **no new UI primitive, token or dependency**, and the destructive action uses the
   registered `destructive` button variant rather than a bespoke red.
 - **The export comes first, inside the card.** The pending state renders the export entry
-  point and states that a full export must be generated before deletion can be confirmed —
-  not as a suggestion but as the visible precondition, with its own line reporting whether
-  an export has been produced since the request. A person who cannot export cannot delete,
-  which is the opposite of the failure mode this card exists to avoid.
+  point, whether a full export was generated since the request, and an explicit refresh
+  action after a download. Large accounts can save the existing scoped segments. As
+  approved during the 2026-10-15 review fixes, the final dialog also offers an initially
+  unselected acknowledgement that the person is proceeding without a complete export.
+  It reuses the recovery-code card's labelled, 40px `Button` toggle with `aria-pressed`;
+  no new primitive. Without a full export or this explicit acknowledgement, final
+  submission is disabled. This choice lives only in the open dialog and resets on close.
 - Three states, each rendered distinctly, and no fourth: **none** (the request form with the
   impact statement), **pending** (the date the final step unlocks, the date the request
   lapses, the export precondition, and a withdraw action), and **refused** (a distinct
@@ -720,6 +731,9 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   cancel button return focus to the control that opened it, the destructive button is not
   the default focus target, and the dialog cannot be dismissed by clicking outside it while
   a deletion is in flight.
+- The deletion confirmation stays within `100dvh - 2rem` and scrolls vertically when its
+  copy and fields exceed a short/mobile viewport. Both the acknowledgement and the final
+  destructive action remain keyboard-reachable; wrapping never widens the viewport.
 - On completion the client clears **its own** leftovers — the deleted account's chat session,
   model and draft keys and the pending-verification email in `sessionStorage` — then routes
   to the signed-out site with a neutral notice. It does not clear the device theme keys,

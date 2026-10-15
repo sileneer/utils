@@ -50,6 +50,7 @@ export async function handleDeletion(
   const confirm = typeof body.confirm === "string" ? body.confirm.trim() : "";
   if (path === "/deletion/complete" && (confirm.length < 3 || confirm.length > 320))
     return fail("bad_request", 400);
+  if ("skipExport" in body && typeof body.skipExport !== "boolean") return fail("bad_request", 400);
 
   const factor = await twoFactorStatus(userId);
   if (factor.enabled && !code) return fail("bad_request", 400);
@@ -91,7 +92,7 @@ export async function handleDeletion(
 
   if (state.status !== "pending") return fail("not_requested", 409);
   if (!state.eligible) return fail("cooling_off", 409);
-  if (!state.exportedAt) return fail("export_required", 409);
+  if (!state.exportedAt && body.skipExport !== true) return fail("export_required", 409);
   if (confirm.toLowerCase() !== identity.user.email.trim().toLowerCase()) return fail("confirm_mismatch", 400);
   if (lastAdministratorStanding(userId)) return fail("last_admin", 409);
 
@@ -102,8 +103,10 @@ export async function handleDeletion(
     // carry the confirmation over to whatever the browser is looking at now.
     if ((await accountSession(headers))?.session.id !== identity.session.id) return fail("unauthorized", 401);
     const again = deletionView(userId);
-    if (again.status !== "pending" || !again.eligible || !again.exportedAt) return fail("not_requested", 409);
+    if (again.status !== "pending" || !again.eligible) return fail("not_requested", 409);
+    if (!again.exportedAt && body.skipExport !== true) return fail("export_required", 409);
     const result = deleteAccount(userId);
+    if (!result.deleted && "error" in result) return fail(result.error, 409);
     if (!result.deleted) return fail("not_found", 404);
     // The caller's own login went with the account, so the client has nothing left to read;
     // `outstanding` is only ever a count of files the next start will finish removing.

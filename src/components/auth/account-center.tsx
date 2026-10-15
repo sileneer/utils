@@ -628,7 +628,7 @@ function TwoFactorCard({ onSignedOut }: { onSignedOut: (state: "enabled" | "disa
     } catch { setFactor(undefined); setStatus("failed"); }
   }, []);
   useEffect(() => {
-    if (open && factor === undefined && status !== "failed") queueMicrotask(() => void load());
+    if (open && factor === undefined && status === "idle") queueMicrotask(() => void load());
   }, [open, factor, status, load]);
   // Closing the step is what forgets the factor material: the setup key and the
   // plaintext codes have no second copy anywhere.
@@ -868,7 +868,7 @@ function PasskeysCard() {
     } catch { setStatus("failed"); }
   }, []);
   useEffect(() => {
-    if (open && passkeys === undefined && status !== "failed") queueMicrotask(() => void load());
+    if (open && passkeys === undefined && status === "idle") queueMicrotask(() => void load());
   }, [open, passkeys, status, load]);
   // Decided after mount: `window` is absent during the server render, and guessing
   // either way would flash the wrong message.
@@ -965,7 +965,7 @@ function PasskeysCard() {
   const stamp = (ms: number) => new Intl.DateTimeFormat(locale, {
     year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short",
   }).format(new Date(ms));
-  const ready = Boolean(password) && (!factorOn || Boolean(code));
+  const ready = Boolean(password) && (!factorOn || TOTP_FORMAT.test(code.trim()) || RECOVERY_FORMAT.test(code.trim()));
   return <Card><CardHeader><CardTitle><h2>{t("passkeys")}</h2></CardTitle><CardDescription>{t("passkeysDescription")}</CardDescription></CardHeader>
     <CardContent className="space-y-4">
       <Collapsible open={open} onOpenChange={changeOpen}>
@@ -1008,7 +1008,7 @@ function PasskeysCard() {
               {mounted && !passkeyReady && <Alert><AlertDescription>{t("passkeyUnsupported")}</AlertDescription></Alert>}
               <p className="text-xs text-muted-foreground">{t("passkeysStepUp")}</p>
               <PasswordField label={t("currentPassword")} id="passkey-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
-              {factorOn && <Field label={t("passkeyFactorCode")} id="passkey-factor-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />}
+              {factorOn && <div className="space-y-2"><Field label={t("passkeyFactorCode")} id="passkey-factor-code" autoComplete="one-time-code" maxLength={11} value={code} onChange={(event) => setCode(event.target.value)} aria-describedby="passkey-factor-hint" /><p id="passkey-factor-hint" className="text-xs text-muted-foreground">{t("factorStepUpHint")}</p></div>}
               <Field label={t("passkeyName")} id="passkey-new-name" maxLength={40} value={name} onChange={(event) => setName(event.target.value)} placeholder={t("passkeyNamePlaceholder")} />
               <p className="text-xs text-muted-foreground">{t("passkeyNameHint")}</p>
               <Button className="min-h-10" type="button" disabled={working || !ready || !passkeyReady} onClick={() => void add()}>
@@ -1071,6 +1071,7 @@ function DeletionCard({ email, onDeleted }: { email: string; onDeleted: () => vo
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [skipExport, setSkipExport] = useState(false);
   const [working, setWorking] = useState(false);
   const busy = useRef(false);
   // A controlled dialog has no Radix trigger to fall back to, so focus is restored by hand.
@@ -1088,7 +1089,7 @@ function DeletionCard({ email, onDeleted }: { email: string; onDeleted: () => vo
     } catch { setStatus("failed"); }
   }, []);
   useEffect(() => {
-    if (open && state === undefined && status !== "failed") queueMicrotask(() => void load());
+    if (open && state === undefined && status === "idle") queueMicrotask(() => void load());
   }, [open, state, status, load]);
   useEffect(() => {
     if (!open) return;
@@ -1108,6 +1109,7 @@ function DeletionCard({ email, onDeleted }: { email: string; onDeleted: () => vo
     setError("");
     setNotice("");
     setConfirming(false);
+    setSkipExport(false);
   };
   const stepUp = (extra: Record<string, unknown> = {}) => ({ password, ...(factorOn && code ? { code } : {}), ...extra });
   const call = async (path: string, body: Record<string, unknown>) => {
@@ -1144,7 +1146,7 @@ function DeletionCard({ email, onDeleted }: { email: string; onDeleted: () => vo
     // The action would close the dialog as it fires, which is right for a confirmation and
     // wrong for a refusal: the reason has to stay next to the field that caused it.
     event?.preventDefault();
-    const result = await call("/api/account/deletion/complete", stepUp({ confirm: confirm.trim() }));
+    const result = await call("/api/account/deletion/complete", stepUp({ confirm: confirm.trim(), skipExport }));
     if (!result) {
       closeFocus.current = "trigger";
       return;
@@ -1157,9 +1159,9 @@ function DeletionCard({ email, onDeleted }: { email: string; onDeleted: () => vo
   const stamp = (ms: number) => new Intl.DateTimeFormat(locale, {
     year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short",
   }).format(new Date(ms));
-  const ready = Boolean(password) && (!factorOn || Boolean(code));
-  const canConfirm = ready && confirm.trim().length >= 3;
+  const ready = Boolean(password) && (!factorOn || TOTP_FORMAT.test(code.trim()) || RECOVERY_FORMAT.test(code.trim()));
   const pending = state?.status === "pending" ? state : null;
+  const canConfirm = ready && confirm.trim().length >= 3 && (Boolean(pending?.exportedAt) || skipExport);
   return <Card><CardHeader><CardTitle>
     <h2 ref={headingRef} tabIndex={-1} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("deletion")}</h2>
   </CardTitle><CardDescription>{t("deletionDescription")}</CardDescription></CardHeader>
@@ -1192,6 +1194,7 @@ function DeletionCard({ email, onDeleted }: { email: string; onDeleted: () => vo
               <p className="text-xs text-muted-foreground">{t("deletionExportHint")}</p>
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" className="min-h-10" asChild><a href="#export">{t("deletionExportLink")}</a></Button>
+                {pending && <Button variant="ghost" className="min-h-10" onClick={() => void load()}>{t("deletionExportRefresh")}</Button>}
                 {pending?.exportedAt
                   ? <p role="status" className="self-center text-sm text-muted-foreground">{t("deletionExportDone", { at: stamp(pending.exportedAt) })}</p>
                   : <p className="self-center text-sm text-muted-foreground">{t("deletionExportMissing")}</p>}
@@ -1204,21 +1207,21 @@ function DeletionCard({ email, onDeleted }: { email: string; onDeleted: () => vo
                 : t("deletionAvailableOn", { available: stamp(pending.eligibleAt), lapses: stamp(pending.expiresAt) })}</p>
               <div className="flex flex-wrap gap-2">
                 <PasswordField label={t("currentPassword")} id="deletion-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
-                {factorOn && <Field label={t("passkeyFactorCode")} id="deletion-factor-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />}
+                {factorOn && <div className="space-y-2"><Field label={t("passkeyFactorCode")} id="deletion-factor-code" autoComplete="one-time-code" maxLength={11} value={code} onChange={(event) => setCode(event.target.value)} aria-describedby="deletion-factor-hint" /><p id="deletion-factor-hint" className="text-xs text-muted-foreground">{t("factorStepUpHint")}</p></div>}
                 <Button variant="outline" className="min-h-10 self-end" disabled={working || !ready} onClick={() => void withdraw()}>{t("deletionWithdraw")}</Button>
                 {pending.eligible && <Button
                   ref={finalTrigger}
                   variant="destructive"
                   className="min-h-10 self-end"
-                  disabled={working || !ready || !pending.exportedAt}
-                  onClick={() => { closeFocus.current = "heading"; setError(""); setConfirming(true); }}
+                  disabled={working || !ready}
+                  onClick={() => { closeFocus.current = "heading"; setError(""); setSkipExport(false); setConfirming(true); }}
                 >{t("deletionFinalButton")}</Button>}
               </div>
               {!pending.exportedAt && <p className="text-xs text-muted-foreground">{t("deletionExportNeededHint")}</p>}
             </div> : <div className="space-y-3">
               <p className="text-xs text-muted-foreground">{t("deletionRequestHint")}</p>
               <PasswordField label={t("currentPassword")} id="deletion-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
-              {factorOn && <Field label={t("passkeyFactorCode")} id="deletion-factor-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />}
+              {factorOn && <div className="space-y-2"><Field label={t("passkeyFactorCode")} id="deletion-factor-code" autoComplete="one-time-code" maxLength={11} value={code} onChange={(event) => setCode(event.target.value)} aria-describedby="deletion-factor-hint" /><p id="deletion-factor-hint" className="text-xs text-muted-foreground">{t("factorStepUpHint")}</p></div>}
               <Button className="min-h-10" variant="outline" disabled={working || !ready} onClick={() => void request()}>{t("deletionRequest")}</Button>
             </div>}
           </>}
@@ -1226,9 +1229,12 @@ function DeletionCard({ email, onDeleted }: { email: string; onDeleted: () => vo
       </Collapsible>
       <AlertDialog open={confirming} onOpenChange={(value) => {
         if (value) return;
-        if (!working) { setConfirming(false); closeFocus.current = "trigger"; }
+        if (!working) { setConfirming(false); setSkipExport(false); closeFocus.current = "trigger"; }
       }}>
-        <AlertDialogContent onCloseAutoFocus={(event) => {
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto" onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          document.getElementById("deletion-confirm-password")?.focus();
+        }} onCloseAutoFocus={(event) => {
           event.preventDefault();
           if (closeFocus.current === "trigger" && finalTrigger.current?.isConnected) { finalTrigger.current.focus(); return; }
           headingRef.current?.focus();
@@ -1242,14 +1248,18 @@ function DeletionCard({ email, onDeleted }: { email: string; onDeleted: () => vo
           </AlertDialogHeader>
           <div className="space-y-3">
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            {!pending?.exportedAt && <div className="space-y-2">
+              <p id="deletion-skip-export-hint" className="text-sm text-muted-foreground">{t("deletionSkipExportHint")}</p>
+              <Button type="button" variant={skipExport ? "secondary" : "outline"} className="min-h-10 h-auto w-full justify-start whitespace-normal text-left" aria-pressed={skipExport} aria-describedby="deletion-skip-export-hint" disabled={working} onClick={() => setSkipExport((value) => !value)}>{t("deletionSkipExport")}</Button>
+            </div>}
             <PasswordField label={t("currentPassword")} id="deletion-confirm-password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
-            {factorOn && <Field label={t("passkeyFactorCode")} id="deletion-confirm-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />}
+            {factorOn && <div className="space-y-2"><Field label={t("passkeyFactorCode")} id="deletion-confirm-code" autoComplete="one-time-code" maxLength={11} value={code} onChange={(event) => setCode(event.target.value)} aria-describedby="deletion-confirm-factor-hint" /><p id="deletion-confirm-factor-hint" className="text-xs text-muted-foreground">{t("factorStepUpHint")}</p></div>}
             <Field label={t("deletionConfirmLabel")} id="deletion-confirm-email" type="email" autoComplete="off" maxLength={320} value={confirm} onChange={(event) => setConfirm(event.target.value)} />
             <p className="text-xs text-muted-foreground">{t("deletionConfirmHint", { email })}</p>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-10" disabled={working}>{t("factorDialogBack")}</AlertDialogCancel>
-            <AlertDialogAction className="min-h-10" disabled={working || !canConfirm} onClick={(event) => void complete(event)}>{t("deletionConfirmAction")}</AlertDialogAction>
+            <AlertDialogAction variant="destructive" className="min-h-10" disabled={working || !canConfirm} onClick={(event) => void complete(event)}>{t("deletionConfirmAction")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

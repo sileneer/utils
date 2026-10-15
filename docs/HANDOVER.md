@@ -31,8 +31,11 @@ calls. On 2026-10-15 the owner also authorized **local lifecycle design, isolate
 implementation and disposable-account verification of the §14.7 account deletion**,
 explicitly excluding deletion or anonymization of any production account or retained data,
 cleanup of existing retained files, backups or owner files, publication, real mail and paid
-AI calls. None of these approvals
-covers D, and none covers publication. Batches A, B, C2, C1, the activity record, TOTP,
+AI calls. On 2026-10-15 the owner requested fixes for the six commit-review findings
+and completion of the subsequent work, including local verification, commits and feature-branch
+PR preparation. The owner explicitly chose allowing deletion without a complete export only
+after a separate final-dialog acknowledgement. No approval covers merging `main` or a
+production rollout. Batches A, B, C2, C1, the activity record, TOTP,
 passkeys and deletion are
 implemented locally and unmerged; production still runs the §13 release. **No production
 account has two-factor enabled**, and enabling it for the owner account is separately
@@ -46,6 +49,17 @@ pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
 
 Current local branch: `codex/account-improvement-plan-20261013`, based on `e209d59`
 (the PR #8 squash merge). The checkout started clean.
+
+**Commit review and fixes, 2026-10-15:** the initial review covered 13 local commits
+through `fa95882` against `e209d59` (75 changed paths). All six findings are now fixed
+locally, with four additional real-library/SQLite regressions and fresh UI acceptance
+(§7). The fix also corrects destructive-button contrast and bounds the deletion dialog
+for short mobile viewports. Canonical contracts are updated in ARCHITECTURE/DESIGN;
+the owner's export decision and rationale are in PLANNING §14.17. No new dependency,
+table, schema change or production action was introduced by these fixes. Git initially
+reported two stat-only test changes; the unrelated `tests/preferences.test.cjs` content
+still matches HEAD and is excluded from staging. Commit/PR position will be recorded
+after packaging; the branch has not been merged.
 
 **Batch A is committed locally as `058ca4c`**
 (`feat(auth): clarify account operations and failure recovery`):
@@ -222,6 +236,17 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 ## 4. Next actions
 
+**Review findings closed locally, 2026-10-15.** Verification deletion now matches exact
+OTP identifiers and guards JSON extraction. The global last-administrator invariant is
+checked inside the removal transaction before writing an intent; a refused race leaves no
+intent to execute on restart. Export preflight sums every materialized body/context/title/
+usage JSON in UTF-8 bytes. Large-account deletion has the owner's explicit opt-out from
+the complete-export prerequisite, preserving every other gate and never mislabelling a
+segment as complete. Security-card reads stop on reauthentication/failure, and step-up
+inputs accept both TOTP and recovery-code shapes. The remaining action is feature-branch
+PR/CI acceptance and a separate owner decision before any merge or rollout; real devices,
+real mail, production accounts and real retained-data deletion remain outside this pass.
+
 Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
 §14.9/§14.10/§14.11/§14.12) and await the owner's review and a separate publication
 decision; nothing may be merged or deployed on this authorization. Batches A, B, C2
@@ -229,9 +254,8 @@ and C1 are committed, C1 as `4d08dec`. The §14.7 minimal security activity reco
 committed on top of it as `1590981` (§2, PLANNING §14.13), the §14.7 TOTP second
 factor as `1142983` (§2, PLANNING §14.14), the §14.7 passkey capability as `058fb94`
 on top of those (§2, PLANNING §14.15), and the §14.7 account deletion as `86e52bb`
-on top of that (§2, PLANNING §14.16). D remains an
-unapproved proposal in §14. Do not
-start new features or publish any batch without subsequent authorization.
+on top of that (§2, PLANNING §14.16). Do not start additional features or merge/deploy
+any batch without subsequent authorization.
 
 Two-factor leaves the deliberate open items that this authorization could not cover:
 
@@ -361,6 +385,14 @@ These are dated acceptance results, not current row-count/health guarantees.
 
 ## 6. QA cleanup and private evidence
 
+The review-fix pass uses only ignored `data/investigation/account-fixes-20261015/`.
+Its launcher creates fresh UUID-named fixture databases and a fake home; credentials and
+factor secrets are generated in memory and never copied from production. Browser profiles
+are disposable, and the Playwright runner closes its Chrome instance in `finally`.
+Only this pass's preview command line may be stopped; unrelated previews and owner files
+remain untouched. The final fixture's recovery account was deleted only after its explicit
+UI confirmation. Screenshots and databases remain private QA evidence, never staged.
+
 The disposable port-3001 preview and both owned QA browsers were stopped/closed
 at release completion. The 2026-10-13 disposable account preview and its named
 QA browser were also stopped/closed after investigation. Batch A QA ran its own
@@ -452,6 +484,48 @@ application. Screenshots, the CDP drivers and the fixture databases stay local a
 touched, and no real SDK transcript was removed.**
 
 ## 7. Verification and limits
+
+**Review-fix acceptance (2026-10-15):** **190/190** offline tests passed (four new
+regressions cover mixed verification values/startup, overlapping admin deletions, UTF-8
+preflight and explicit export waiver). The normal full lint now passes with runtime
+`data/**` excluded in ESLint's own global ignores; no private helper was edited. Full
+`npm run build`, TypeScript and standalone sanitization pass using the existing Node
+24.19.0/npm installation with normal host permissions for its owner-protected SWC cache.
+No system ACL, dependency or secret configuration changed.
+
+Fresh headless Chrome covered both locales, both themes and 360×800/768×1000/1280×1000
+viewports (12 combinations). Every combination asserted the actual locale/theme, no
+horizontal overflow, a dialog within the viewport height, initial password focus, Escape
+focus return and reset of the export acknowledgement on reopening. Card and dialog axe
+checks have **0 violations**. Axe cannot parse the existing secondary-hover OKLCH
+`color-mix` value (one incomplete color-contrast check); browser canvas conversion and
+WCAG luminance calculation independently measured that selected acknowledgement hover
+at **12.71:1 light / 12.05:1 dark**. This is a documented tool limitation, not a claimed
+zero-incomplete run. Fresh screenshots/contact sheets were visually inspected.
+
+The real browser also completed recovery-code sign-in, virtual-authenticator passkey
+registration/removal with different unused recovery codes, deletion request, 201-conversation
+export waiver and final deletion with another recovery code; it verified explicit failed-read
+retry and exactly one request per stale-session Passkey/deletion card. No page errors.
+Evidence: ignored `data/investigation/account-fixes-20261015/` (`tests.log`, `lint.log`,
+`build.log`, `browser-receipt.json`, `contrast.log`, `screens/`). Agent-browser's installed
+Windows binary was missing, so this run used the already bundled Playwright/Chrome.
+This remains emulation/virtual WebAuthn, with no real mail, paid AI, physical-device or
+production acceptance. CI/image status is recorded separately when the PR run completes.
+
+**Historical initial review (2026-10-15, `fa95882`, superseded by the fixes above):** existing regressions
+passed **186/186**, TypeScript `--noEmit` passed, ESLint excluding `data/**` passed,
+and `git diff --check main...HEAD` passed. Full lint still reports 19 CommonJS-import
+errors in six existing ignored investigation helpers. The default npm shim has no
+selected nvm version, so checks used the bundled Node v24.19.0 directly. Full build
+stopped before compilation on SWC native-cache owner/DACL validation, including an
+isolated custom-cache attempt; there is no fresh successful full build or standalone
+sanitization from this review. No system permissions or dependencies were changed.
+The four isolated reproductions and detailed findings live under ignored
+`data/investigation/account-review-20261015/` (`review.md`, `reproduce.cjs`,
+`reproduce.log`, and individual check logs). No browser/device, Docker/CI, production,
+real-mail or paid-AI acceptance was performed; earlier receipts below remain dated
+historical evidence.
 
 **Previous feature/release acceptance (2026-10-09):** 75 regressions, including
 12 new real-library/SQLite account checks, local lint/full build/typecheck and

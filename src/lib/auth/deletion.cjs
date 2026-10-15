@@ -8,9 +8,9 @@
  * runtime exists, and it must execute exactly the same statements the browser-triggered
  * path does. A second copy of that list would be a second thing to get wrong.
  *
- * Nothing here decides *whether* a deletion is authorized — the caller completes the
- * password, second-factor, cooling-off, export and last-administrator gates first. This
- * module only performs an authorized removal, re-entrantly.
+ * The caller completes identity, factor, cooling-off and export gates. The final
+ * administrator invariant is checked here under the same write transaction as removal;
+ * only reconciliation of an already durable intent may bypass that fresh-request gate.
  */
 const fs = require("node:fs");
 const os = require("node:os");
@@ -156,7 +156,7 @@ function isAdministrator(database, userId) {
  * and `foreign_key_check` is asserted before the commit for the same reason. Only the file
  * sweep is outside the transaction, and what it could not finish stays recorded as owed.
  */
-function executeDeletion(database, userId, now = Date.now()) {
+function executeDeletion(database, userId, now = Date.now(), { reconciling = false } = {}) {
   const user = database.prepare("SELECT id, email FROM user WHERE id=?").get(userId);
   if (!user) return { deleted: false, alreadyGone: true };
   const emailHash = privateKey(user.email);
@@ -165,18 +165,27 @@ function executeDeletion(database, userId, now = Date.now()) {
   const normalizedHash = privateKey(String(user.email).trim().toLowerCase());
   const userHash = privateKey(userId);
   const transcripts = transcriptPaths(database, userId);
-  appendIntent({ userId, at: now, emailHash, transcripts });
-
-  database.transaction(() => {
+  const refused = database.transaction(() => {
+    // The account fence is per identity, so two administrators may reach this point
+    // concurrently. Serialize the global invariant with the deletion itself, after
+    // every asynchronous stop/proof, and never leave an intent for a refused request.
+    if (!reconciling && isAdministrator(database, userId) && administratorCount(database) <= 1)
+      return { deleted: false, error: "last_admin" };
+    appendIntent({ userId, at: now, emailHash, transcripts });
     // `verification` is the one table that can outlive the account while still naming it:
     // email-OTP identifiers embed the address in plaintext, and the two-factor and passkey
     // rows carry the user id in their value.
     database.prepare(
       `DELETE FROM verification
-        WHERE identifier LIKE ?
+        WHERE identifier IN (?, ?, ?)
            OR value = ?
-           OR json_extract(value, '$.userData.id') = ?`,
-    ).run("%-otp-" + user.email, userId, userId);
+           OR CASE WHEN json_valid(value) THEN json_extract(value, '$.userData.id') END = ?`,
+    ).run(
+      "email-verification-otp-" + user.email,
+      "forget-password-otp-" + user.email,
+      "sign-in-otp-" + user.email,
+      userId, userId,
+    );
     database.prepare(
       "DELETE FROM limits WHERE key LIKE ? OR key LIKE ? OR key LIKE ?",
     ).run("%" + emailHash + "%", "%" + normalizedHash + "%", "%" + userHash + "%");
@@ -194,6 +203,7 @@ function executeDeletion(database, userId, now = Date.now()) {
     const leftovers = database.prepare("PRAGMA foreign_key_check").all();
     if (leftovers.length) throw new Error("foreign_keys_left_after_delete");
   }).immediate();
+  if (refused) return refused;
 
   const outstanding = removeTranscripts(transcripts);
   appendIntent({ userId, at: Date.now(), emailHash, transcripts: outstanding });
@@ -213,7 +223,7 @@ function reconcileDeletions(database, now = Date.now()) {
   for (const intent of readIntents()) {
     if (database.prepare("SELECT id FROM user WHERE id=?").get(intent.userId)) {
       repaired.push({ userId: intent.userId, kind: "identity" });
-      executeDeletion(database, intent.userId, now);
+      executeDeletion(database, intent.userId, now, { reconciling: true });
       continue;
     }
     const owed = (intent.transcripts ?? []).filter((file) => fs.existsSync(file));

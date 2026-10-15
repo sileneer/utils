@@ -15,7 +15,7 @@ export const EXPORT_SCHEMA_VERSION = 1;
 export const EXPORT_LIMITS = {
   conversations: 200,
   messages: 2000,
-  /** Pre-flight ceiling on materialized message text. */
+  /** Pre-flight ceiling on all materialized text/JSON, measured as UTF-8 bytes. */
   contentBytes: 6 * 1024 * 1024,
   /** Final ceiling on the serialized document. */
   outputBytes: 8 * 1024 * 1024,
@@ -137,8 +137,15 @@ function readCounts(userId: string, scope: ExportScope): Counts {
   const aggregate = database.prepare(
     `SELECT count(*) conversations, min(c.updated_at) oldestAt, max(c.updated_at) newestAt,
         coalesce(sum((SELECT count(*) FROM messages m WHERE m.conversation_id=c.id)), 0) messages,
-        coalesce(sum((SELECT length(m.content) FROM messages m WHERE m.conversation_id=c.id)), 0) contentBytes
-     FROM conversations c WHERE ${filter}`,
+        coalesce(sum(
+          coalesce(length(CAST(t.title AS BLOB)), 0) +
+          coalesce((SELECT sum(length(CAST(m.content AS BLOB)) + coalesce(length(CAST(m.context_json AS BLOB)), 0))
+                    FROM messages m WHERE m.conversation_id=c.id), 0) +
+          coalesce((SELECT sum(coalesce(length(CAST(a.usage_json AS BLOB)), 0)) FROM ai_usage a
+                    WHERE a.user_id=c.owner_user_id AND a.turn_id IN
+                      (SELECT m.turn_id FROM messages m WHERE m.conversation_id=c.id)), 0)
+        ), 0) contentBytes
+     FROM conversations c LEFT JOIN conversation_meta t ON t.conversation_id=c.id WHERE ${filter}`,
   ).get(...values) as Pick<Counts, "conversations" | "messages" | "contentBytes"> & { oldestAt: number | null; newestAt: number | null };
   const usage = database.prepare(
     `SELECT count(*) n FROM ai_usage a
@@ -152,8 +159,8 @@ function readCounts(userId: string, scope: ExportScope): Counts {
 function suggestSegments(userId: string, scope: ExportScope): Segments {
   const { filter, values } = where(userId, scope);
   const rows = db().prepare(
-    `SELECT c.id, c.updated_at, t.title,
-        (SELECT m.content FROM messages m WHERE m.conversation_id=c.id AND m.role='user' ORDER BY m.position LIMIT 1) first_question
+    `SELECT c.id, c.updated_at, substr(t.title,1,100) title,
+        (SELECT substr(m.content,1,100) FROM messages m WHERE m.conversation_id=c.id AND m.role='user' ORDER BY m.position LIMIT 1) first_question
      FROM conversations c LEFT JOIN conversation_meta t ON t.conversation_id=c.id
      WHERE ${filter} ORDER BY c.updated_at DESC, c.id DESC LIMIT 40`,
   ).all(...values) as { id: string; updated_at: number; title: string | null; first_question: string | null }[];

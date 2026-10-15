@@ -193,7 +193,9 @@ test("requesting needs the current password, and the live factor when the accoun
   const { createHmac } = require("node:crypto");
   const { symmetricDecrypt } = await import("better-auth/crypto");
   clearBuckets();
-  assert.equal((await account("/2fa/enable", { password: person.password }, person.cookie)).status, 200);
+  const issued = await account("/2fa/enable", { password: person.password }, person.cookie);
+  assert.equal(issued.status, 200);
+  const recoveryCodes = (await issued.json()).backupCodes;
   const stored = db().prepare("SELECT secret FROM twoFactor WHERE userId=?").get(person.id).secret;
   const key = await symmetricDecrypt({ key: process.env.BETTER_AUTH_SECRET, data: stored });
   const totp = () => {
@@ -227,6 +229,16 @@ test("requesting needs the current password, and the live factor when the accoun
   clearBuckets();
   assert.equal((await account("/deletion/request", { password: person.password, code: totp() }, person.cookie)).status, 200);
   assert.equal(deletion.readDeletion(db(), person.id).status, "pending");
+  age(person, { eligibleAt: Date.now() - DAY });
+  clearBuckets();
+  const missingFactor = await account("/deletion/complete", {
+    password: person.password, confirm: person.email, skipExport: true,
+  }, person.cookie);
+  assert.equal(missingFactor.status, 400, "skipping export does not skip the factor");
+  clearBuckets();
+  assert.equal((await account("/deletion/complete", {
+    password: person.password, code: recoveryCodes[0], confirm: person.email, skipExport: true,
+  }, person.cookie)).status, 200, "an unused recovery code is a valid final-step factor");
 });
 
 test("the final step waits for the cooling-off and for a whole-account export", async () => {
@@ -258,6 +270,39 @@ test("the final step waits for the cooling-off and for a whole-account export", 
   clearBuckets();
   assert.equal((await complete(person)).status, 200);
   assert.equal(rowsFor(person).user, 0);
+});
+
+test("a large account may explicitly waive export without bypassing other deletion gates", async () => {
+  const person = await create("dl-large@example.test");
+  for (let index = 0; index < 201; index++) seed(person, { messages: 1, usage: 0 });
+  clearBuckets();
+  assert.equal((await account("/deletion/request", { password: person.password }, person.cookie)).status, 200);
+  const payload = { password: person.password, confirm: person.email, skipExport: true };
+  clearBuckets();
+  assert.equal((await account("/deletion/complete", payload, person.cookie)).status, 409,
+    "the cooling-off period is still required");
+  age(person, { eligibleAt: Date.now() - DAY });
+  assert.equal((await exportFull(person.cookie)).status, 413);
+  const first = db().prepare("SELECT id FROM conversations WHERE owner_user_id=? LIMIT 1").get(person.id).id;
+  assert.equal((await exportOne(person.cookie, first)).status, 200);
+  assert.equal(deletion.readDeletion(db(), person.id).exportedAt, null,
+    "a segment is never marked as a complete copy");
+  clearBuckets();
+  assert.deepEqual(await (await complete(person)).json(), { error: "export_required" });
+  for (const skipExport of [false, "true", 1]) {
+    clearBuckets();
+    assert.equal((await account("/deletion/complete", { ...payload, skipExport }, person.cookie)).status,
+      skipExport === false ? 409 : 400, "only the explicit boolean acknowledges the choice");
+  }
+  clearBuckets();
+  assert.equal((await account("/deletion/complete", { ...payload, confirm: "other@example.test" }, person.cookie)).status, 400);
+  clearBuckets();
+  assert.equal((await account("/deletion/complete", { ...payload, password: secret() }, person.cookie)).status, 400);
+  assert.equal(rowsFor(person).conversations, 201, "every refusal keeps the data");
+  clearBuckets();
+  assert.equal((await account("/deletion/complete", payload, person.cookie)).status, 200);
+  assert.equal(rowsFor(person).user, 0);
+  assert.deepEqual(db().prepare("PRAGMA foreign_key_check").all(), []);
 });
 
 test("the typed confirmation is checked against the server's own address, case aside", async () => {
@@ -336,6 +381,38 @@ test("two accounts keep their data apart when one of them goes", async () => {
   assert.deepEqual(await (await accountGet("/deletion", staying.cookie)).json(), { deletion: { status: "none" } });
 });
 
+test("deletion and startup preserve other accounts' non-JSON verification rows", async () => {
+  const leaving = await create("dl_otp@example.test");
+  const staying = await create("dlxotp@example.test");
+  for (const person of [leaving, staying]) {
+    clearBuckets();
+    assert.equal((await auth("email-otp/request-password-reset", {
+      email: person.email, turnstileToken: "local",
+    })).status, 200);
+  }
+  const verification = db().prepare("SELECT * FROM verification WHERE identifier=?")
+    .get("forget-password-otp-" + staying.email);
+  assert.equal(db().prepare("SELECT json_valid(?) valid").get(verification.value).valid, 0,
+    "the real library stores OTP digests as plain text");
+  const add = db().prepare("INSERT INTO verification VALUES (?,?,?,?,?,?)");
+  const now = new Date().toISOString(), expires = new Date(Date.now() + DAY).toISOString();
+  add.run(randomUUID(), "review-factor", staying.id, expires, now, now);
+  add.run(randomUUID(), "review-own-passkey", JSON.stringify({ userData: { id: leaving.id } }), expires, now, now);
+  add.run(randomUUID(), "review-other-passkey", JSON.stringify({ userData: { id: staying.id } }), expires, now, now);
+  const otherRows = db().prepare("SELECT * FROM verification WHERE identifier NOT IN (?,?) ORDER BY identifier")
+    .all("forget-password-otp-" + leaving.email, "review-own-passkey");
+  await deletable(leaving);
+  clearBuckets();
+  assert.equal((await complete(leaving)).status, 200);
+  assert.deepEqual(db().prepare("SELECT * FROM verification ORDER BY identifier").all(), otherRows,
+    "neither non-JSON values nor an underscore in the deleted email may widen the removal");
+  const restarted = await database.migrate();
+  restarted.close();
+  assert.equal(rowsFor(staying).user, 1, "startup reconciliation still serves the other identity");
+  db().prepare("DELETE FROM verification WHERE identifier IN (?,?,?)")
+    .run(verification.identifier, "review-factor", "review-other-passkey");
+});
+
 test("a withdrawal restores nothing, because the cooling-off took nothing away", async () => {
   const person = await create("dl-withdraw@example.test");
   seed(person);
@@ -366,6 +443,38 @@ test("an unclaimed request lapses back to no request and never fires", async () 
   assert.equal(await signedIn(person), person.email);
   clearBuckets();
   assert.equal((await complete(person)).status, 409, "there is nothing left to complete");
+});
+
+test("overlapping administrator deletions retain one administrator and no refused intent", async () => {
+  const first = await create("dl-race-admin1@example.test");
+  const second = await create("dl-race-admin2@example.test");
+  db().prepare("UPDATE user SET role='admin' WHERE id IN (?,?)").run(first.id, second.id);
+  try {
+    await deletable(first);
+    await deletable(second);
+    clearBuckets();
+    const query = { owner: first.id, turn: randomUUID(), abort: new AbortController() };
+    assert.equal(reserveQuery(query), true);
+    const stopping = new Promise((resolve) => query.abort.signal.addEventListener("abort", resolve, { once: true }));
+    const waiting = complete(first);
+    await stopping;
+    let finished;
+    try { finished = await complete(second); }
+    finally { releaseQuery(query); }
+    assert.equal(finished.status, 200);
+    const refused = await waiting;
+    assert.equal(refused.status, 409);
+    assert.deepEqual(await refused.json(), { error: "last_admin" });
+    assert.equal(deletion.administratorCount(db()), 1);
+    assert.equal(rowsFor(first).user, 1);
+    assert.ok(!deletion.readIntents().some((intent) => intent.userId === first.id),
+      "a refused removal cannot silently execute at the next startup");
+    const restarted = await database.migrate();
+    restarted.close();
+    assert.equal(rowsFor(first).user, 1);
+  } finally {
+    db().prepare("UPDATE user SET role='user' WHERE id IN (?,?)").run(first.id, second.id);
+  }
 });
 
 test("the last administrator cannot delete the account that keeps /admin reachable", async () => {
