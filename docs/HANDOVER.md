@@ -137,7 +137,7 @@ installed. `008-passkey.sql` is generated from that plugin and purely additive;
 nothing has deployed that migration yet. No `/passkey/*` library path is reachable from
 `/api/auth`, and the production domain was not touched.
 
-**The §14.7 account deletion is committed locally on this branch**
+**The §14.7 account deletion is committed locally as `86e52bb`**
 (`feat(auth): delete an account on its owner's request`), on top of `058fb94`: new
 `migrations/009-account-deletion.sql`, `src/lib/auth/deletion.cjs`,
 `src/lib/auth/deletion.ts`, `src/lib/auth/deletion-handler.ts`, `src/lib/auth/keying.cjs`,
@@ -228,8 +228,8 @@ decision; nothing may be merged or deployed on this authorization. Batches A, B,
 and C1 are committed, C1 as `4d08dec`. The §14.7 minimal security activity record is
 committed on top of it as `1590981` (§2, PLANNING §14.13), the §14.7 TOTP second
 factor as `1142983` (§2, PLANNING §14.14), the §14.7 passkey capability as `058fb94`
-on top of those (§2, PLANNING §14.15), and the §14.7 account deletion on top of that
-(§2, PLANNING §14.16). D remains an
+on top of those (§2, PLANNING §14.15), and the §14.7 account deletion as `86e52bb`
+on top of that (§2, PLANNING §14.16). D remains an
 unapproved proposal in §14. Do not
 start new features or publish any batch without subsequent authorization.
 
