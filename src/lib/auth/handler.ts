@@ -2,7 +2,9 @@ import { getAuth } from "./server";
 import { consumeLimits, privateKey } from "./limits";
 import { withMailOutcome } from "./mail";
 import { accountSession } from "./identity";
-import { withAccountChange, beforePasswordWrite } from "./lifecycle";
+import { withAccountChange, beforePasswordWrite, withAuthentication } from "./lifecycle";
+import { accountChangeVersion } from "../agent/active-query";
+import { verifyChallenge } from "./turnstile";
 import { db } from "../db";
 
 // Deliberately expose only password login and purpose-scoped verification/reset.
@@ -43,6 +45,7 @@ function json(error: string, status: number) {
   );
 }
 export async function handleAuth(request: Request) {
+  const authorizationVersion = accountChangeVersion();
   try {
     const auth = getAuth(),
       url = new URL(request.url),
@@ -107,39 +110,12 @@ export async function handleAuth(request: Request) {
       return json("rate_limited", 429);
     const sends = sendPaths.has(route);
     if (sends) {
-      if (
-        !process.env.BREVO_API_KEY ||
-        !process.env.MAIL_FROM ||
-        !process.env.TURNSTILE_SITE_KEY ||
-        !process.env.TURNSTILE_SECRET_KEY
-      )
+      if (!process.env.BREVO_API_KEY || !process.env.MAIL_FROM)
         return json("service_unavailable", 503);
-      if (
-        typeof body.turnstileToken !== "string" ||
-        body.turnstileToken.length > 2048
-      )
-        return json("challenge_failed", 403);
-      const result = await fetch(
-        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-        {
-          method: "POST",
-          signal: AbortSignal.timeout(10_000),
-          body: new URLSearchParams({
-            secret: process.env.TURNSTILE_SECRET_KEY,
-            response: body.turnstileToken,
-            ...(ip !== "local" && ip !== "unknown" ? { remoteip: ip } : {}),
-          }),
-        },
-      );
-      const verification = await result.json();
-      const testKey =
-        process.env.TURNSTILE_SITE_KEY === "1x00000000000000000000AA" &&
-        !origin.startsWith("https://");
-      if (
-        !verification.success ||
-        (!testKey && verification.hostname !== new URL(origin).hostname)
-      )
-        return json("challenge_failed", 403);
+      const challenge = await verifyChallenge(body.turnstileToken, ip, origin);
+      if (challenge === "unconfigured" || challenge === "unreachable")
+        return json("service_unavailable", 503);
+      if (challenge !== "ok") return json("challenge_failed", 403);
     }
     const forwarded = new Headers(request.headers);
     forwarded.set("x-utils-client-ip", ip);
@@ -176,7 +152,8 @@ export async function handleAuth(request: Request) {
           // Lock before invoking the OTP flow, but cancel only in its authorized
           // password-write hook. Invalid OTPs must never cancel a live request.
           response = user ? await withAccountChange(user.id, call, false) : await call();
-        } else response = await call();
+        } else response = route === "/sign-in/email"
+          ? await withAuthentication(authorizationVersion, call) : await call();
         if (route === "/sign-up/email") {
           // Sign-up sends no mail automatically, so sending failure is visible and
           // recoverable using the same resend path (without retaining passwords).
@@ -207,6 +184,18 @@ export async function handleAuth(request: Request) {
         });
         for (const cookie of response.headers.getSetCookie())
           resultHeaders.append("set-cookie", cookie);
+        // A 2FA-enabled account has no session at this point: the library deletes the
+        // one the credential check created and issues a short-lived challenge cookie
+        // instead. Answering `success` here would send the client into a signed-in UI
+        // for an identity that does not exist, so the pending state is its own result.
+        if (route === "/sign-in/email") {
+          const payload = await response.json().catch(() => ({}));
+          if (payload?.twoFactorRedirect === true)
+            return new Response(JSON.stringify({ twoFactorRequired: true }), {
+              status: 200,
+              headers: resultHeaders,
+            });
+        }
         return new Response(JSON.stringify({ success: true }), {
           status: 200,
           headers: resultHeaders,

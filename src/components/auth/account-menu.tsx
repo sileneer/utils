@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Activity, LogOut, UserRound } from "lucide-react";
+import { Activity, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,12 +11,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { accountLink, safeReturnTo } from "@/lib/auth/navigation";
-import { accountAction, useAccount } from "./account-provider";
+import { accountAction, useAccount, useAccountError } from "./account-provider";
 
 export function AccountMenu({ onlyAuthenticated = false }: { onlyAuthenticated?: boolean }) {
   const { user, loading, failed, refresh } = useAccount();
   const pathname = usePathname();
   const t = useTranslations("account");
+  const failure = useAccountError("auth");
   const menuTrigger = useRef<HTMLButtonElement | null>(null);
   const [destination, setDestination] = useState(pathname);
   const [confirm, setConfirm] = useState(false);
@@ -31,7 +32,7 @@ export function AccountMenu({ onlyAuthenticated = false }: { onlyAuthenticated?:
       await accountAction("/api/auth/sign-out", {});
       setConfirm(false);
       toast.success(t("loggedOut"));
-    } catch { setError(t("securityFailed")); }
+    } catch (error) { setError(failure(error)); }
     finally { setPending(false); }
   }
   return <>
@@ -49,6 +50,7 @@ export function AccountMenu({ onlyAuthenticated = false }: { onlyAuthenticated?:
           <DropdownMenuLabel className="max-w-64 break-words"><p>{user.name}</p><p className="text-xs font-normal text-muted-foreground">{user.email}</p></DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild className="min-h-10"><Link href="/account"><UserRound />{t("center")}</Link></DropdownMenuItem>
+          <DropdownMenuItem asChild className="min-h-10"><Link href="/account#security"><ShieldCheck />{t("security")}</Link></DropdownMenuItem>
           {user.isAdmin && <DropdownMenuItem asChild className="min-h-10"><Link href="/admin"><Activity />{t("operations")}</Link></DropdownMenuItem>}
           <DropdownMenuItem className="min-h-10" onSelect={() => setConfirm(true)}><LogOut />{t("logout")}</DropdownMenuItem>
         </> : failed ? <DropdownMenuItem onSelect={() => void refresh()} className="min-h-10">{t("retryAccount")}</DropdownMenuItem> : <>

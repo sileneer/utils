@@ -388,9 +388,12 @@ test("persisted atomic limits and per-user/global quotas; reservations released 
 test("versioned migration is repeatable; backup API restores integrity and user data", async () => {
   const db = database.getDatabase();
   await database.migrate(db);
+  const migrations = (
+    await fs.readdir(path.join(__dirname, "../migrations"))
+  ).filter((file) => file.endsWith(".sql")).length;
   assert.equal(
     db.prepare("SELECT count(*) n FROM schema_migrations").get().n,
-    3,
+    migrations,
   );
   const backup = path.join(directory, "restore.sqlite");
   await db.backup(backup);

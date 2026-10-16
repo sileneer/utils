@@ -247,7 +247,20 @@ Better Auth's generated schema is versioned in `migrations/001-auth.sql`:
 `user`, `account`, `session`, `verification`, `rateLimit`. Product schema is in
 `002-product.sql`: `conversations`, `messages`, `limits`, `mail_requests`,
 `ai_usage`. `003-chat-history.sql` adds optional `conversation_meta`
-(title/archived_at) and owner/time/usage indexes. Legacy conversation
+(title/archived_at) and owner/time/usage indexes. `004-account-preferences.sql`
+adds `user_preferences` (one row per `user.id`: nullable `theme`, nullable
+`language`, `updated_at`), the only product table touched by batch B. A null
+column means "no account choice" and falls through to the device layer; the
+table stores presentation settings only and holds no role, status or verified
+data, which remain server-only columns on `user`. `005-email-change.sql` adds
+`email_changes`, the transactional state for the email-change flow described in
+§5; it is independent of the `verification` table so a change-email code can never
+collide with a registration or reset code. `006-security-events.sql` adds
+`security_events`, the short desensitized record of confirmed security changes also
+described in §5. `007-two-factor.sql` adds `user.twoFactorEnabled` and the `twoFactor`
+table, generated from the plugin's own schema rather than hand-designed; it is purely
+additive and defaults the new column to 0, so every existing account keeps signing in
+exactly as before. Legacy conversation
 columns stay unchanged so old-image positional writes remain compatible. A
 missing title override falls back to the first user question (100 characters);
 no model is called to name conversations. User role/status are server-only
@@ -275,6 +288,15 @@ is ephemeral, even though the app's SQLite conversations survive. These private
 transcripts are never served to the browser. SQLite backups do not include them;
 on database-only restoration invalidate saved SDK IDs and rebuild from completed
 visible history rather than resuming an unavailable transcript.
+
+Native file ownership is independent of that resume pointer. `sdk-transcripts.jsonl`,
+beside the database (mode 600), appends and fsyncs `{userId, sdkSessionId}` at every
+observed SDK init before that id can be discarded. Startup backfills only existing
+explicit conversation-to-id mappings and validates the preserved ledger. It contains no
+message text or credentials and is not in SQLite backups. Keep it across database-only
+restores; failed/stopped/replaced sessions remain attributable even after resume ids are
+cleared. A conflicting owner is refused. Pre-existing files whose pointers were already
+lost cannot be safely attributed and remain retained for a separately authorized audit.
 
 GET /api/agent/session without id returns identity, personal availability and
 that owner's active turn when present; with id it returns their visible messages,
@@ -323,7 +345,473 @@ mutations require fresh login plus current-password verification. Origin, JSON,
 bounded bodies, per-account action limits and field allowlists apply. Generic
 Better Auth mutation/session endpoints remain blocked by the public auth facade.
 The wrapper forwards necessary Set-Cookie headers but discards raw library output.
-No schema migration or new credential store is needed.
+Batch A needed no schema migration or new credential store; batch B adds only the
+`user_preferences` table described in §5.
+
+Preferences and personal usage are account-scoped presentation and read surfaces,
+not security mutations: GET and POST `/api/account/preferences` and GET
+`/api/account/usage` require only a current verified active identity, the same
+freshness rule that gates session listing does not apply, and no password
+re-verification is demanded. POST /preferences accepts only `theme` and
+`language`, each either a permitted value (`system|light|dark`, `en|zh`) or an
+explicit null that clears the stored choice; unknown fields, other roles/status
+writes and oversized bodies are rejected by the existing allowlist, origin, JSON
+and per-account-path limit checks. The response projects only the stored columns.
+
+GET /api/account/usage returns exactly the existing `availability(user.id)`
+projection — enabled, used, limit, remaining, resetAt and the ready/busy/quota/
+disabled service state — computed by the same `usage.ts` rules the chat panel
+already uses, so `released` rows are excluded and failed/stopped turns settle as
+before. It reads only the caller's own rows, never another user's, calls no model,
+does not require AI to be configured or enabled, and is not the administrator
+aggregate of §10. Its failure affects only the usage card; identity, profile,
+security operations and public reading are independent of it.
+
+Server-side rendering resolves the account layer of theme and language through a
+presentation-only lookup that returns both values as unset on any error, missing
+table or anonymous visit; this path chooses what to display and is never an
+authorization decision, which continues to run through `identity.ts`.
+
+#### Email change
+
+Changing the sign-in address is a product flow in `src/lib/auth/email-change.ts`,
+not the library endpoint. Better Auth 1.7.7 ships `/email-otp/change-email`, but it
+confirms only the session (no current password), keys its OTP to the
+registration-purpose identifier when `verifyCurrentEmail` is enabled, has no
+transaction identity, keeps the current session signed in after success, writes the
+`user` row directly so the account-change AI fence never runs, checks uniqueness in a
+read-then-write race, and reports "Email already in use". PLANNING §14.6 records that
+verification. The endpoint stays unconfigured and outside the public auth allowlist.
+
+`005-email-change.sql` adds `email_changes`: one row per request with its own uuid
+`id`, `user_id`, `old_email_hash` (keyed digest of the address being retired),
+plaintext `new_email` (needed to send and later commit it), `old_code_digest`,
+`new_code_digest`, `old_attempts`, `new_attempts`, `status`
+(`pending|cancelled|completed`), and `created_at`/`expires_at`. A partial unique index
+on `new_email` while `status='pending'` is the race guard the library lacks.
+
+**Two codes, one per mailbox.** `start` issues a separate six-digit code to the
+current address (purpose `change-email-old`) and to the target
+(`change-email-new`). Each side keeps its own digest and its own five-attempt budget,
+and `verify` supplies both at once, so a code delivered to one mailbox can never
+satisfy the other and the new address cannot authorize the change alone. Codes are
+never stored or logged in the clear — only keyed digests — and comparison is
+fixed-time. The attempt that exhausts a budget closes the transaction and reports
+`attempts_exhausted` rather than inviting another try. The 600-second window is shared
+and a resend renews it.
+
+Routes are a `GET /api/account/email` pending-state read plus POSTs under
+`/api/account/email/` (`start`, `resend`, `verify`, `cancel`), all taking the
+wrapper's existing origin, JSON, body-size and per-route field-allowlist checks.
+Every one requires a current verified active identity and a login inside 24 hours;
+`start` additionally verifies the current password, and `start` and `resend` require
+the same Turnstile challenge as the public send paths — so possession of the old
+mailbox is never the only proof, and an account that cannot receive at its old address
+is told plainly that this page cannot complete the change. `cancel` needs no password
+and no challenge, so an in-flight request can always be abandoned.
+
+`start` first cancels that account's own pending transactions, so exactly one is ever
+live, and it answers identically whether or not the target is already someone's
+address: nothing here confirms or denies a registration. A target that becomes
+registered between `start` and `verify` is caught by the `user.email` unique
+constraint at commit and returns `email_taken` with the account untouched. A request
+whose signing-in address has since moved fails as `stale_target` without revealing
+which condition matched.
+
+Commit runs inside `withAccountChange`: the account's running AI request must reach a
+confirmed terminal state before anything is written, so an unconfirmed stop returns
+409 `stop_unconfirmed`, the address stays unchanged and the transaction reopens for
+retry. On a confirmed stop one immediate transaction sets `user.email`,
+`emailVerified` and `updatedAt` (ISO text, the format the library itself writes;
+`account` has no email column, so the address lives only on `user`) and deletes every
+session row for that user; the response is success but the client is signed out and
+must log in with the new address. The stable `user.id` means role, profile,
+conversation ownership, usage rows, preferences and retained source versions are
+untouched — no second user is created and no history is migrated.
+
+Send or verify failures keep the old address, and the account can retry. The
+post-commit result notice to the retired address (purpose `change-email-notice`) is
+reported separately from the identity change: it is attempted after the transaction
+commits and its failure returns a success with `notified: false`, never a rolled-back
+or repeated change, because the new address is already authoritative by then.
+
+Limiter buckets are purpose-scoped so a change cannot starve recovery: three starts
+per hour per account, one send per minute and three per hour keyed separately to the
+old and the new address, a per-IP budget on these routes, and a shared daily mail
+ceiling in `mail.ts` where the whole `change-email*` family is capped well below the
+`forget-password` reserve. Failures are mapped to wrapper-only names —
+`password_wrong`, `code_failed`, `attempts_exhausted`, `expired`, `not_found`,
+`stale_target`, `already_completed`, `email_taken`, `email_same`, `rate_limited`,
+`challenge_failed`, `mail_send_failed`, `stop_unconfirmed` — each with its own copy in
+both locales, and none of them worded as a completed change.
+
+In the Brevo adapter the family is three purposes — `change-email-old`,
+`change-email-new` and `change-email-notice` — each with the same per-purpose ceiling
+as registration mail, plus a shared daily cap across all three that is set well below
+the `forget-password` reserve so a run of address changes cannot exhaust recovery.
+`sendOTP` rejects any purpose outside its table, so an unregistered one fails closed.
+
+#### Personal data export
+
+GET `/api/account/export/summary` and GET `/api/account/export` return the caller's
+own data as a private download. Both require a current verified active identity
+**and** a login created within 24 hours — the same explicit freshAge gate that
+protects session listing — because reading a whole history is a sensitive read, not
+a routine page load; an older login gets `reauth_required` and the card offers the
+in-place re-verification entry. Anonymous gets 401. These are reads: they take no
+password, hold no account-change fence, and mutate nothing.
+
+Query surface is allowlisted and validated before any SQL: `format` is `json` or
+`markdown` (default `json`); `conversation` is an owned UUID; `from`/`to` are
+`YYYY-MM-DD` UTC day bounds, `from` inclusive and `to` exclusive. Everything else,
+including an unknown parameter, is `bad_request`. Ownership is enforced in SQL
+against the caller's current `user.id`, so another account's conversation id is
+`not_found` rather than forbidden, and no listing call can widen the scope.
+
+All rows for one export are read inside a single SQLite transaction, so the result
+is one consistent snapshot; `readBoundary` records the instant that snapshot was
+taken and `generatedAt` the instant the body was assembled. After assembly the
+handler re-checks the session that authorized it and discards the body with 401 if
+the login was revoked, rotated or switched meanwhile, so a dead identity cannot
+keep streaming an earlier user's data.
+
+First release is bounded on purpose, with no queue, background job or unbounded
+read: at most 200 conversations and 2000 messages per response, with a 6 MiB preflight
+ceiling summing UTF-8 bytes of all message bodies, source-context JSON, titles and
+selected usage JSON. Summary suggestions fetch only the first 100 question characters.
+The serialized document has a separate 8 MiB ceiling checked after assembly. An
+over-limit request returns 413 with no attachment, `complete: false` and a reason;
+it does not return a silently truncated file. The caller can request per-conversation
+or per-date segments. A segment always states its own
+scope and is never described as a full snapshot; whole-account export at database
+scale needs the separately designed controlled background job, private staging and
+expiry from PLANNING §14.6 before it can be claimed.
+
+The JSON document is versioned (`schemaVersion: 1`) and carries the scope, counts,
+completeness and an explicit `excluded` list. Included: safe profile fields, saved
+preferences, and each conversation's id, title, archive state, times, pinned source
+revision, message positions/roles/content/timestamps/status/normalized error, the
+pinned source context (bounded excerpt text, revision, section/item), and reported
+per-turn usage through the same public `recordedDetails` allowlist the message
+details UI already uses. Missing token or timing data stays absent — it is never
+zero-filled, and cost is not computed, estimated or implied. Messages still pending
+or streaming are reported with the existing active-turn normalization and marked as
+of the export instant, never as completed.
+
+Excluded and stated as such: password hashes and credential rows, verification
+codes and OTP records, session tokens and session rows, native SDK session ids,
+mail delivery records, rate-limit buckets, any other user's rows, private
+environment values, SDK internal transcripts and the full book cache or version
+workspace. Retained source revisions are referenced by identifier only; the export
+never copies book content the user did not already pin into a message.
+
+Responses are `no-store`, vary by Cookie, and carry `Content-Disposition: attachment`
+with a filename that embeds no personal data. There is no shareable or guessable
+public link, no token in a URL, and the browser stores nothing in
+localStorage/sessionStorage: the card links directly to the endpoint so the file
+goes to the download manager. Import, cross-account merge and any delete-on-export
+behaviour are explicitly out of scope.
+
+#### Two-factor authentication
+
+TOTP second factor on the shared account, from the `twoFactor` plugin of the locked
+Better Auth 1.7.7. PLANNING §14.7 records the verification of that plugin's real
+behaviour; this section is the product contract built on it. Scope is deliberately
+narrow: **TOTP and recovery codes only**. No email/SMS second factor (`otpOptions` is
+left unconfigured, so no 2FA mail is ever sent), no passkey, and **no "trust this
+device"** — the library accepts a client-supplied `trustDevice` flag that would mint a
+30-day second-factor bypass, so the wrapper never sends it and no surface offers it.
+
+**The invariant everything else rests on:** a session row for an account with
+`twoFactorEnabled` exists only if the second factor was satisfied when that session was
+created. The library guarantees the forward direction itself — on a sign-in for an
+enabled account the credential session is deleted and replaced by a 600-second
+`better-auth.two_factor` challenge cookie, and `getSession` on that cookie resolves to
+no identity. The remaining gap is history: sessions minted *before* enrolment never saw
+a challenge. Enrolment therefore **revokes every other session** as it completes, so the
+invariant holds from the moment 2FA turns on. Because of this invariant, identity
+resolution (`identity.ts`, `server.ts`) does not re-check the factor per request — any
+session it can find has already passed it.
+
+`007-two-factor.sql` is generated from the plugin rather than hand-designed: it adds
+`user.twoFactorEnabled` (nullable, `default 0`, so every existing account keeps signing
+in normally after the migration) and the `twoFactor` table (`id`, `secret`,
+`backupCodes`, `userId` with `ON DELETE CASCADE`, `verified`, `failedVerificationCount`,
+`lockedUntil`) with the plugin's two indexes. It is purely additive, so an image
+predating 2FA simply ignores both and rollback needs no data restore; re-deploying an
+older image cannot resurrect or orphan anything.
+
+**Enrolment is two steps and nothing is enabled by the first.** `enable` requires a
+current verified active identity, a login inside 24 hours and the current password; it
+stores the secret and a fresh set of recovery codes with `verified = 0` and leaves
+`twoFactorEnabled` false, so an abandoned enrolment cannot lock anyone out and cannot
+weaken the account. `confirm` requires the same identity plus a valid code from the new
+device (exactly six TOTP digits; a recovery code cannot initialize the factor);
+only then does the library flip `verified` and `twoFactorEnabled`, and the
+wrapper immediately revokes every other session inside the account fence. The response
+carries the provisioning secret and the plaintext recovery codes exactly once; they are
+never logged, never placed in a URL, and never written to browser storage (see DESIGN
+§5.15 for how the UI holds them).
+
+**Management mutations require the factor, not just the password.** After the first
+enrolment, `disable` and recovery-code regeneration each demand a fresh session, the
+current password **and** a live second factor — a current TOTP code or one unused
+recovery code, distinguished by shape (six digits versus `xxxxx-xxxxx`). Without that,
+anyone holding a password and a stolen cookie could silently remove the second factor.
+Regeneration replaces the whole list, so every previously issued code stops working at
+that instant.
+
+**Recovery codes** are the library's: ten codes, `xxxxx-xxxxx`, stored symmetrically
+encrypted with the server secret, single-use by removing the matched value under a
+compare-and-set on the previous ciphertext, so a concurrent double-spend is refused
+rather than accepted twice. The server can decrypt them by design, which is why they are
+treated as a full second factor and why a spent code can never be replayed.
+
+**Losing the device and every recovery code has no self-service path.** Disabling
+requires the factor, and there is no support bypass, no automatic downgrade, no
+server-side re-send of codes to the account's email, and no way for a logged-in client
+to assert that the challenge was completed. This is stated in the UI before enrolment
+completes, because it is the one irreversible consequence of turning 2FA on. Restoring
+such an account would need an explicit owner decision and a designed offline procedure;
+neither exists in this build.
+
+**The challenge** is the library's own: a signed `better-auth.two_factor` cookie naming a
+`verification` row that expires after 600 seconds and is consumed on success, so a
+replayed challenge is rejected rather than re-used. Five wrong codes consume the
+challenge and force a fresh sign-in; separately the plugin counts consecutive failed
+verifications per account across challenges and factors and locks the factor for 15
+minutes at ten. A failed or expired challenge never establishes an identity, so it can
+reach no private resource and no AI route, and it can therefore never stop another
+user's running request.
+
+Those two budgets are not the whole throttle, and the difference is visible to the user.
+The plugin also caps **every** `/two-factor/` route at three requests per ten seconds, so
+a burst of guesses is refused before the five-attempt counter has advanced — measured on
+the locked version, the challenge closes on the eighth submission when attempts are
+bunched, not the fifth. That refusal is a 429 from the library and the wrapper reports it
+as `rate_limited`, never as a wrong code: presenting a working authenticator's code as
+incorrect is both false and an invitation to keep guessing. The wrapper's own buckets
+(ten per minute per challenge, ten per minute per IP) sit underneath it, so the number of
+codes one challenge can ever be tested with is bounded twice over.
+
+The session a completed challenge produces is created by the plugin itself, and that
+call carries no request context, so it would land with an empty user agent and every
+two-factor login would read as "Unknown" in the login-sessions list and in the security
+record. The wrapper writes the sign-in request's own `User-Agent` onto that session
+before answering — the request that finishes the challenge is the login, so this is the
+same value an ordinary sign-in stores, not a claim about a device.
+
+Every `/two-factor/*` path stays outside the public `/api/auth` allowlist, and the
+library's session-present verify branch — which returns the current token and applies no
+attempt throttling — is never reachable from a browser. The product surface is these
+wrapper routes only:
+
+| Route | Identity | Body fields | Effect |
+|---|---|---|---|
+| `POST /api/auth/sign-in/email` (existing) | none | unchanged | now answers `twoFactorRequired` instead of a false success |
+| `POST /api/2fa/verify` | no session, valid challenge cookie | `code` | completes sign-in with a TOTP code |
+| `POST /api/2fa/recovery` | no session, valid challenge cookie | `code` | completes sign-in with one recovery code |
+| `GET /api/account/2fa` | current identity | — | status only: enabled, codes remaining |
+| `POST /api/account/2fa/enable` | identity + fresh + password | `password` | stores an unverified secret and codes |
+| `POST /api/account/2fa/confirm` | identity + fresh | `code` | enables, rotates, revokes other sessions |
+| `POST /api/account/2fa/disable` | identity + fresh + password + factor | `password`, `code` | removes the factor and revokes sessions |
+| `POST /api/account/2fa/recovery-codes` | identity + fresh + password + factor | `password`, `code` | replaces the code set |
+
+The `verify` and `recovery` routes take the same origin, content-type and body-size
+checks as the public auth door, accept no other field, and return only
+`{ signedIn: true }` — never the library's token or user object, and never a session
+token. `GET /api/account/2fa` is deliberately readable without the 24-hour freshness
+gate, like preferences and usage, because "is my second factor on" is not itself a
+security mutation; every write on the path is gated.
+
+Rate limiting is purpose-scoped with `consumeLimits`: per-IP and per-account buckets on
+the challenge routes separate from the sign-in buckets, and separate per-account buckets
+for the management writes, so a blocked password form cannot throttle someone out of
+their own challenge and vice versa.
+
+Two-factor changes extend the confirmed security-event vocabulary with
+`two_factor_enable`, `two_factor_disable` and
+`two_factor_recovery_codes_regenerated` — results only. Failures, wrong codes and
+lockouts are not recorded, and no event row ever holds a secret, a code or a factor
+identifier.
+
+Enrolment, confirmation, disable and regeneration all run inside `withAccountChange`
+with a confirmed stop, so an account with a running AI request either completes cleanly
+or not at all, and the cross-tab `security` event fires so other windows drop the
+identity that just stopped being valid.
+
+#### Passkeys
+
+WebAuthn credentials on the shared account, from `@better-auth/passkey` 1.7.7 — the
+first-party package of the **same version line** as the locked `better-auth` 1.7.7, which
+no longer contains passkeys itself (PLANNING §14.7 records the verification). Adding
+passkeys therefore means adding one version-matched first-party package plus
+`@simplewebauthn/server`, not upgrading the authentication stack; `package.json`
+`overrides` pin `@better-auth/core`, `@better-auth/utils` and `better-call` to the
+versions already installed so npm cannot drift the stack sideways. Scope is deliberately
+narrow: passkeys are an **additional** way to sign in to an existing account. There is no
+passkey-first sign-up, no attestation trust (`fmt: "none"` is accepted, AAGUIDs are
+labelled but never allowlisted), no administrator view of other users' credentials, and
+no browser conditional/autofill mediation.
+
+`008-passkey.sql` is generated from the plugin and is purely additive: a `passkey` table
+(`name`, `publicKey`, `userId` with `ON DELETE CASCADE`, `credentialID`, `counter`,
+`deviceType`, `backedUp`, `transports`, `createdAt`, `aaguid`) with the plugin's two
+indexes, plus one hardening index of our own. `user` gains nothing, so accounts that
+predate passkeys are untouched and an older image simply ignores the table. The
+`credentialID` unique index is not in the generated plan: the plugin only *asks* the
+browser to exclude credentials the account already holds, which a non-conforming client
+can ignore, and a duplicated row would make "which credential signed in" ambiguous.
+`publicKey` and `credentialID` are public by construction and no private key exists on
+the server, in the database, or in a log.
+
+**The invariant, extended.** Every session on this account is created by one of exactly
+two ceremonies: a password plus the second factor, or a **user-verified passkey
+assertion**. A verified passkey counts as satisfying the second factor because it proves
+possession of a non-exportable private key, is bound to this RP ID and origin so it
+cannot be replayed against a phishing site, and is gated by a verification the server
+checks for itself. It does **not** weaken anything the password still protects: a
+passkey-created session is an ordinary session, so changing the password, committing an
+email change, disabling two-factor or regenerating recovery codes still demands the
+current password, and the operations that demand a live factor still demand a TOTP or
+recovery code — a passkey is never accepted there in place of one.
+
+The library does not enforce any of that on its own, and two gaps had to be closed in the
+wrapper rather than assumed away (measured in PLANNING §14.7): both verify endpoints
+hardcode `requireUserVerification: false`, so an assertion **without** the user-verified
+flag would otherwise sign the user in; and the two-factor after-hook matches only
+`/sign-in/email|username|phone-number`, so a passkey sign-in would otherwise walk past a
+enabled second factor without satisfying anything. The fix is the plugin's own
+`afterVerification` hooks, which run before any row is written or session issued: each one
+refuses unless `registrationInfo.userVerified` / `authenticationInfo.userVerified` is
+`true`, and registration additionally asks the authenticator for
+`userVerification: "required"` so credentials are bound to verification from the start.
+A refused ceremony leaves nothing behind — no passkey row, no session.
+
+**Challenges are server-issued, one-time and purpose-tagged.** `generate-*` stores an
+expected challenge in the `verification` table for 300 seconds and names it through a
+signed, HttpOnly `better-auth-passkey` cookie, and each verify step consumes it and
+rejects the other purpose, so a registration challenge cannot be spent as a login and a
+replayed response is refused. `rpID` and `expectedOrigin` are pinned from server
+configuration — the library would otherwise take the caller's own `Origin` header — and a
+wrong RP ID, wrong origin or unknown credential all fail without issuing a session.
+Because that cookie is per-browser rather than per-ceremony, starting a passkey sign-in
+invalidates an in-flight registration in the same browser; the UI restarts cleanly rather
+than pretending the older ceremony can still finish.
+
+`rpID` is derived from `APP_URL`'s hostname, so it is the registrable domain in production
+(`utils.lzhdev.com`) and `localhost` in a local preview. Browsers refuse an IP address as a
+relying-party id — a `SecurityError: This is an invalid domain` before any server call —
+so passkeys cannot work if the site is ever reached by bare IP, and loopback QA must use
+`http://localhost:<port>` rather than `127.0.0.1`.
+
+Every `/passkey/*` library path stays outside the public `/api/auth` allowlist, and the
+product surface is these wrapper routes only:
+
+| Route | Identity | Body fields | Effect |
+|---|---|---|---|
+| `GET /api/account/passkeys` | current identity | — | projected list: id, name, label, created, synced |
+| `POST /api/account/passkeys/register/start` | identity + fresh + password (+ factor when 2FA on) | `password`, `code`, `name` | WebAuthn creation options for this browser |
+| `POST /api/account/passkeys/register/finish` | same, with the challenge cookie | `response` | verifies, then stores the credential |
+| `POST /api/account/passkeys/rename` | identity + fresh + password | `password`, `id`, `name` | renames one own credential |
+| `POST /api/account/passkeys/remove` | identity + fresh + password (+ factor when 2FA on) | `password`, `code`, `id` | deletes one own credential |
+| `GET /api/passkey/options` | none | — | WebAuthn request options for sign-in |
+| `POST /api/passkey/verify` | none, valid challenge cookie | `response` | completes sign-in; returns only `{ signedIn: true }` |
+
+The management routes take the same origin, content-type and body-size checks as the rest
+of the account wrapper and forward only the fields above, so a client cannot reach the
+library's `createSession` flag on registration or supply its own origin. `name` is
+trimmed and capped, and the list is capped per account; the projection never carries
+`publicKey`, `credentialID` or `aaguid`. Rate limiting is purpose-scoped with
+`consumeLimits` — the sign-in ceremony has its own per-IP and per-challenge buckets,
+separate from password sign-in and from the two-factor challenge, so exhausting one never
+locks someone out of another route.
+
+**Losing a passkey cannot lock an account out.** Sign-up on this site is
+email-and-password only, so every account always has a password credential; passkeys are
+additive, and removing all of them still leaves the normal password (plus second factor,
+if enabled) path. The card says so where removal is offered. Conversely, registering a
+passkey never removes or weakens the password path, and there is no way to mark an
+account passkey-only.
+
+Passkey changes extend the confirmed security-event vocabulary with `passkey_register`
+and `passkey_remove` — results only. Renaming a credential is not a change in access and
+is not recorded, a refused ceremony records nothing, and no event row ever holds a
+credential identifier, public key or any other factor material.
+
+Registration, removal and rename run inside `withAccountChange` with a confirmed stop,
+like the other account-security mutations, and removal broadcasts the cross-tab
+`security` event so no window keeps showing a state the server just changed.
+
+#### Security activity
+
+A short, desensitized record of the account's own confirmed security changes
+(PLANNING §14.7). It exists so a user can answer "did my account actually change,
+when, and from what kind of device" — it is not an audit platform, an administrator
+console or an incident trail, and it deliberately records nothing about logins.
+
+**Login sessions are not a security log.** The session table describes access that is
+live *now*; a revoked or expired row says nothing about what happened while it existed.
+Events are therefore written only when an operation is confirmed, and no history is
+backfilled, inferred or reconstructed from existing session rows. Accounts that
+predate this table correctly show an empty list rather than an invented past.
+
+`006-security-events.sql` adds `security_events`, one row per confirmed event:
+
+| Column | Contents |
+|---|---|
+| `id` | generated uuid, so a retry cannot collide with or overwrite an earlier row |
+| `user_id` | the subject, `ON DELETE CASCADE` |
+| `kind` | `password_change` \| `email_change` \| `session_revoke_one` \| `session_revoke_others` \| `two_factor_enable` \| `two_factor_disable` \| `two_factor_recovery_codes_regenerated` \| `passkey_register` \| `passkey_remove`, enforced by CHECK |
+| `occurred_at` | epoch milliseconds of the confirmed change |
+| `browser`, `system` | the two inferred labels from the existing `browserInfo` projection of the acting session's User-Agent — a controlled vocabulary, never the raw UA |
+| `masked_email` | `email_change` only: the target address with its local part masked |
+| `sessions_affected` | the two revoke kinds only: how many sessions actually went away |
+
+Never stored, at any depth: passwords or hashes, verification or OTP codes, session or
+CSRF tokens, cookies, raw User-Agent strings, IP addresses or any location, email
+bodies, model or conversation content, and the full new address. The row is written
+with the same keyed-digest discipline as the rest of the account layer and carries no
+free-text field a client can populate.
+
+Recording is tied to the real outcome, not to the request:
+
+- `email_change` is inserted **inside** the same immediate transaction that moves
+  `user.email` and deletes the sessions, so the change and its record commit or roll
+  back together.
+- `password_change`, `session_revoke_one` and `session_revoke_others` mutate through the
+  library, which owns their transaction, so they are written **after** the wrapper has
+  confirmed an OK response. A transport failure, a non-OK response, an unconfirmed AI
+  stop or a rejected password writes nothing, and an unknown outcome is never recorded
+  as success.
+- Because the mutation is already durable at that point, a failed event insert after a
+  confirmed change is swallowed rather than turned into an error: reporting a completed
+  password change as failed would invite a retry that can no longer succeed.
+  The asymmetry is deliberate — the record is best-effort *after* a confirmed change
+  and never best-effort *before* one.
+- A batch revoke counts the caller's other live sessions first and writes **nothing**
+  when that count is zero, so a repeated click cannot manufacture an event for a
+  change that did not happen. A single revoke that has already lost its target returns
+  `not_found` upstream and likewise writes nothing.
+- Changing a password also revokes other sessions, but it is one operation and is
+  recorded once, as `password_change`; the revocation is part of its stated effect, not
+  a second event.
+
+GET `/api/account/activity` is the only read. It takes the wrapper's existing origin
+and identity checks, requires a current verified active identity **and** a login inside
+24 hours — the same gate as session listing, because this is security data — and
+filters by the caller's own `user.id` in SQL, so the result cannot be widened by any
+parameter. There is no administrator view in this scope and no query by address,
+device or date; if one is ever added, administrator status continues to come only from
+the server-side `role` column and never from a client-supplied field.
+
+Retention is 180 days with a cap of 100 rows per account, both enforced in
+`security_events.ts`: expired rows are pruned when a new event is written and the read
+filters by age as well, so a row can neither outlive the window nor be hidden while it
+still counts against the cap. Automatic cleanup applies to this table's own rows only.
+It never deletes or trims accounts, sessions, chat history, pinned source versions,
+book cache or backups, and it is not a general-purpose purge — the retention and
+pruning questions in DEPLOYMENT §12 remain separate and unapproved.
 
 lifecycle.ts coordinates logout/revocation/password changes per account across route
 bundles. A fence blocks new query registration; a per-owner authorization version
@@ -337,15 +825,41 @@ OTP. Invalid OTP/current password/foreign target cannot cancel a live query. A
 failed authorized reset may consume its OTP before cancellation timeout; request
 another code. Framework session-revocation and password hashing remain in place.
 
+Password, second-factor and passkey sign-in capture the authorization version at
+request entry in an AsyncLocalStorage issuance context. Session create hooks check
+that owner's version before and after the adapter insert; a late row is deleted and no
+cookie is issued if a security change intervened. Another account's changes do not
+invalidate the proof, and ordinary login neither stops a query nor revokes sessions.
+After confirmed cancellation, the security-change hook also deletes that owner's pending
+2FA challenges and attempt rows, so a password proof from before the change cannot be
+completed in a later request. Initial TOTP confirmation checks the persisted enabled and
+verified state before recording success.
+
 Login destinations use navigation.ts's site-route allowlist. Login/register/verify/
 reset links preserve safe returnTo, including reading query/hash; direct login
 returns home. External/protocol-relative/encoded separator/control URLs and auth
 loops fall back home. Authenticated visitors can continue or normally reauthenticate.
-Account events synchronize the current window and localStorage peers; credential/
-session changes invalidate private display immediately, profile changes refresh
+A `reauth=1` query variant on the login page only changes the title/description/
+primary-action copy and keeps the same server contract; it is not an authorization
+signal. Account center sections expose stable anchors (`#profile`, `#security`,
+`#sessions`) used by reauthentication returnTo links and focus-independent jumps.
+Account events synchronize the current window and localStorage peers: logout,
+reset and expiry (`security`) invalidate the known identity immediately;
+same-account security mutations such as session revocation or a password
+change (`session`) refresh the identity without unmounting the open account UI,
+so a closing dialog and its focus target survive; profile changes refresh
 identity without cancelling a chat. Focus rechecks expiry. Failure preserves an
 already known identity with a retry state. Chat keeps its own data/controller, uses
 the shared identity and broadcasts 401 expiry; late callbacks remain epoch-scoped.
+
+Wrapper error bodies use safe codes (`reauth_required`, `rate_limited`,
+`not_found`, `unauthorized`, `stop_unconfirmed`, `account_busy`,
+`service_unavailable`, `bad_request`, `invalid_origin`); client code maps them per
+section (src/lib/auth/errors.ts) so a password failure, a profile failure, a
+revoked target and an unconfirmed result stay distinct. A transport timeout or
+disconnect is an unconfirmed outcome: the UI refreshes account/session state and
+never reports success or automatically retries a security write. The wrapper
+returns no retry timestamp, so the UI claims none.
 
 New module integration:
 - Declare whether its page is public, with private actions, or fully account-gated.
@@ -391,6 +905,123 @@ message ID and reserved/accepted/failed state. No OTP/mail body is persisted or
 logged. Accepted is not delivered. A request-local outcome catches Better Auth's
 background-error swallowing and returns a recoverable 503 on mail failure.
 
+### Account deletion
+
+The lifecycle above ends one way: a person can delete their own account. This section is
+the **reviewable deletion inventory** — what is removed, what is anonymized, what is kept,
+in which order and with what restore consequence. It is the only place that list lives;
+PLANNING §14.7 records why the decisions were made and HANDOVER records what has actually
+been executed. **Nothing outside a disposable fixture has ever been deleted by this code**,
+and running it against production data requires the owner's approval of this list.
+
+Two facts drive the whole design. `conversations.owner_user_id` and `ai_usage.user_id`
+reference `user(id)` **without** `ON DELETE CASCADE`, so with `foreign_keys = ON` a bare
+`delete user` fails rather than silently orphaning rows; every other product table does
+cascade. And the shared reader workspace under `AGENT_DATA_DIR/versions/` has no per-user
+subtree at all, so it can never be part of a deletion.
+
+| Store | Action | Why |
+|---|---|---|
+| `user` | delete | the identity itself; last write inside the transaction |
+| `account`, `session` | delete (cascade from `user`) | password hash and every live login |
+| `user_preferences` | delete (cascade) | presentation only, dies with the account |
+| `twoFactor`, `passkey` | delete (cascade) | encrypted factor material and credentials; no key ever existed server-side |
+| `email_changes` | delete (cascade) | an in-flight change is abandoned and its target address is freed |
+| `security_events` | delete (cascade) | the record belongs to the account; keeping it would preserve a history of a person who no longer exists |
+| `conversation_meta`, `messages` | delete (cascade from `conversations`) | titles, archive state, every message body |
+| `conversations` | **explicit delete** | no cascade exists; deleting these first is what makes the `user` delete possible |
+| `ai_usage` | **explicit delete** | no cascade exists; per-turn usage rows and their token JSON |
+| `verification` | delete by exact OTP identifiers, scalar user id and guarded JSON user id | OTP digests and factor user ids are plain text, while passkey ceremonies carry JSON; only `json_valid` values are passed to `json_extract`. Email characters never act as SQL wildcards |
+| `limits` | delete by keyed digest | rows whose HMAC covers this email (both forms) or this user id; the IP-keyed buckets are not attributable to an account and stay, because they protect the site rather than describe the person |
+| `rateLimit` (library) | retain | keys are `ip\|path`, never an identity, and the library expires them |
+| `mail_requests` | **anonymize, do not delete** | `email_hash` becomes a fixed deletion marker while `purpose`, `created_at`, `status` and `provider_id` stay, so the global daily mail budget keeps counting what it actually sent without continuing to describe a deleted person. No mail body or OTP was ever stored |
+| SDK transcripts `~/.claude/projects/*/<sdk_session_id>.jsonl` | delete by exact filename, after the database commits | use the durable ownership ledger plus any still-known resume pointers; include failed/stopped/replaced runs, never the shared directory or an unattributed older file |
+| `sdk-transcripts.jsonl` | retain the minimal ownership mapping | user id and SDK id only, no message content or credentials; independent of SQLite restore and needed to retain attributable cleanup duties |
+| `AGENT_DATA_DIR/versions/**` | retain | shared, immutable, ownerless source pairs; other readers and older messages reference them |
+| retired `data/agent/sessions/*.json` | out of reach, retained | no owner column exists, so they cannot be attributed to this account; an operator-side sweep is the only route and it is not part of this feature |
+| browser `htlb_chat_session_id:<id>`, `htlb_chat_model:<id>`, `htlb_chat_draft:<id>:*`, `sessionStorage utils_verify_email` | cleared by the client on completion | id-namespaced, so another account's drafts on the same browser are untouched; the device theme keys deliberately survive, because they describe the device, not the account |
+| `/app/data/backups/*.sqlite` | retain, never pruned by this feature | a backup taken before the deletion still contains the identity until the owner decides otherwise; see the resurrection guard below |
+
+**Order and atomicity.** Every database effect above runs in one `.immediate()`
+transaction, children before `user`, so the operation is all-or-nothing and
+`foreign_keys = ON` is the enforcement: a store this list ever misses makes the `user`
+delete throw and the whole transaction roll back, rather than leaving an orphan behind.
+The last-administrator check runs inside this same write transaction, before the durable
+intent is appended, so overlapping requests for different users cannot delete all admins
+and a refused request leaves no intent for startup to execute.
+`foreign_key_check` is asserted after the deletion for exactly that reason. The file sweep
+cannot join that transaction, so it happens after the commit and its outstanding paths are
+carried in the durable intent record below until they succeed.
+
+Reconciliation unions previously owed paths with the restored database's known files;
+it never replaces old cleanup duties with an empty restored resume pointer. Ledger reads
+allow only an absent initial file (`ENOENT`) and an unfinished final JSON fragment.
+Permission/I/O errors, malformed complete lines and invalid complete records fail closed:
+migration/startup or deletion stops instead of treating the ledger as empty. A subsequent
+append truncates only an unfinished crash fragment, preserves all complete records and
+fsyncs the new line. Existing backups and unknown historical files are never swept.
+
+**States.** `account_deletions` holds at most one row per account and is the whole state
+machine: `requested_at`, `eligible_at` (the end of the cooling-off period), `expires_at`
+(after which the request lapses) and `exported_at`. The cooling-off period is **7 days** and
+the request then stays completable for **30 days**, after which it lapses back to no request
+at all. Both numbers are product choices bounded by existing site constants, and are stated
+as such rather than as compliance requirements: 7 days is long enough that a deletion
+requested from a compromised session is noticed on an ordinary visit and reversed with
+nothing lost, and short enough to stay well inside the 14-day session lifetime, so a request
+is never governed by a login that has already expired; the 30-day completion window keeps an
+unclaimed request from accumulating indefinitely, because a lapsed request is not a queue
+entry waiting to fire. A pending request is read lazily —
+lapse and eligibility are computed from those timestamps whenever the state is read, so no
+background job, scheduler or cron is needed and nothing can be deleted by a timer nobody is
+watching. Withdrawal deletes the row and leaves the account exactly as it was, because the
+cooling-off period touches no data. The final step is a second, explicit ceremony that is
+refused before `eligible_at` and after `expires_at`. By default it is also refused unless
+a full export was generated after the request. The owner's 2026-10-15 review-fix decision
+allows proceeding without a full copy only with `skipExport: true` in the final request.
+The field must be a literal boolean; absent/false retains the default refusal. The UI
+requires a separate, initially unselected acknowledgement inside the final dialog and
+retains scoped-export entries for large accounts. This neither stamps `exported_at` nor
+claims that a segment or a waived export is complete. Every other deletion gate is unchanged.
+
+**The durable intent record.** Inside the immediate transaction, after the administrator
+gate and before data removal, one line is appended and fsynced to
+`deleted-accounts.jsonl` beside the database file: the user id, the keyed email digest, the
+timestamp and the transcript paths that were owed. The file is not part of any SQLite
+backup, which is what makes it useful: at migration time — the same `migrate()` every entry
+point and every test already runs before a request is served — any id in that file that
+still has a `user` row is deleted again through the same re-entrant routine. That covers
+both a crash between the intent and the commit and a database restore that rolled the
+identity back in. It honours the file rather than asking, because a line can only exist
+there after the person completed the full confirmation ceremony. Re-registering the same
+email address is unaffected: the guard matches on the user id, which is never reused.
+Because the file lives beside the database rather than inside it, DEPLOYMENT §11 requires it
+to be preserved across restores, and a whole-volume rollback to an older snapshot can still
+bring an identity back — that limit is stated rather than papered over.
+
+**Gates.** The final step requires a login created within `session.freshAge`, the current
+password, and a live second factor when the account has one; the target is always the
+caller's own identity, resolved from the session, and no URL or body field can name another
+account. It runs inside the same `withAccountChange` fence as every other security mutation,
+which blocks new owner queries, bumps the account authorization version so a request that
+authenticated earlier cannot register, and aborts the owner's active AI turn and waits for
+it to be confirmed — an unconfirmed stop returns `stop_unconfirmed` and deletes nothing. A
+second concurrent attempt returns `account_busy` rather than queueing.
+
+**Last administrator.** An account that is the only `role = 'admin' AND status = 'active'
+AND emailVerified = 1` row cannot self-delete, because that predicate is exactly what
+`/admin` requires and promotion is a CLI-only, owner-operated command with no demotion path.
+The refusal says so and points at promoting another verified active account first; it is not
+overridable from the browser. Startup reconciliation honours an already recorded,
+authorized intent even if a restored snapshot contains fewer administrators; the fresh
+request check is never used to resurrect a previously deleted identity.
+
+**Backups.** A completed deletion does not touch any existing backup, and this feature
+never prunes one. Restoring a pre-deletion backup therefore re-introduces the identity until
+the next migration reconciles it from the intent file, and an off-machine copy held by the
+owner is outside this mechanism entirely. The person is told this in the confirmation copy:
+deletion ends the account's presence in the live database, not in the owner's backup set.
+
 ## 6. Book proxy and browser bridge
 
 GET /htlb/book prepares/revalidates the verified pair once per day, or resolves
@@ -401,10 +1032,21 @@ the revision actually served; retaining an old pair is not proof of an upstream
 update. Legacy cache/reader/clone paths may remain on existing volumes but are
 not used as an unverified fallback by this implementation.
 
-The local wrapper injects src/lib/book/bridge.ts; it does not alter upstream.
-Both sides validate origin and exact window source. An init/ready handshake
+The local wrapper injects src/lib/book/bridge.ts; the retained upstream pair is unchanged.
+Both iframe sandbox and response CSP sandbox omit `allow-same-origin`, so upstream
+scripts have an opaque origin even when the book route is opened directly. Inline
+reading scripts/styles and embedded data images remain available; CSP denies fetch,
+forms, child frames, base URLs and objects, and limits external fonts/styles to the
+existing Google Fonts hosts. Separate outbound-link windows do not share the reader
+origin. The reader cannot access app storage, authenticated API responses or parent DOM.
+The bridge checks the configured parent origin and exact parent window; the shell checks
+the exact reader window, serialized origin `null`, revision and bounded message shapes.
+Only parent-to-opaque-reader messages use `*`, carrying public theme/navigation data.
+An init/ready handshake
 survives iframe completion before hydration; ready advertises the revision and
-entry anchors. Selection offers Ask AI, sending at most 2000 characters from a
+entry anchors. Readiness uses handshake deadlines on mount/replacement and on load,
+because an error navigation may omit `onLoad`; no cross-frame DOM inspection is used.
+Failure keeps the existing localized retry action. Selection offers Ask AI, sending at most 2000 characters from a
 selected entry, with visible removable source context. Each send consumes that
 explicit context once. Source navigation takes the message's revision and entry
 anchor. If another source is displayed, the iframe loads the exact requested
@@ -445,9 +1087,13 @@ context. All interface conventions live in DESIGN §5.6.
 
 `next-intl` 4.14 in **cookie mode** — no URL locale prefix, no middleware, no proxy.
 
-- Resolution order (`src/i18n/locale.ts`): `NEXT_LOCALE` cookie → `Accept-Language` negotiation (q-value sorted, `zh*`/`en*`) → `en`.
+- Resolution order (`src/i18n/locale.ts`): explicit account preference →
+  `NEXT_LOCALE` cookie → `Accept-Language` negotiation (q-value sorted, `zh*`/`en*`)
+  → `en`. An account with no saved language changes nothing for the device, and an
+  anonymous or unreadable-preferences visit falls straight through to the cookie.
+  The account lookup is presentation-only and fails open to the device layer.
 - All visible copy lives in `messages/en.json` + `messages/zh.json`, including `tools.<slug>.name/description`. `src/lib/tools.ts` is intentionally content-free (slug, category, status, icon only).
-- `html[lang]` is `en` / `zh-CN` via `htmlLang()`; the header `LanguageSwitcher` writes the cookie and reloads.
+- `html[lang]` is `en` / `zh-CN` via `htmlLang()`; the header `LanguageSwitcher` writes the cookie and reloads, so it stays the device-layer control. The account centre's language choice writes the account preference instead and also reloads, warning first when a form holds unsaved edits.
 - `getTranslations` must be imported from `next-intl/server` (GOTCHAS §F).
 - Consequence: pages that read cookies/headers are dynamically rendered.
 
@@ -465,7 +1111,7 @@ values live in `/opt/utils/.env` (chmod 600) on the server.
 | `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL` | SDK | optional auxiliary-slot overrides; absent slots follow the selected main chat model |
 | `APP_URL` | auth | fixed trusted origin/base URL; production `https://utils.lzhdev.com`, local default `http://localhost:3000` |
 | `DATABASE_PATH` | database | default `<cwd>/data/utils.sqlite`; production `/app/data/utils.sqlite` |
-| `BETTER_AUTH_SECRET` | auth, OTP/metadata digests | server-generated random secret, at least 32 characters |
+| `BETTER_AUTH_SECRET` | auth, OTP/metadata digests | server-generated random secret, at least 32 characters; **must never change once an account exists** — it also encrypts stored TOTP secrets and recovery codes, so a rotation would leave every two-factor user unable to complete sign-in |
 | `BREVO_API_KEY` | mail | ordinary transactional HTTP API key |
 | `MAIL_FROM`, `MAIL_REPLY_TO` | mail | authenticated sender email (required); real reply inbox (optional) |
 | `MAIL_FROM_NAME` | mail | optional sender display name matching the chosen Brevo sender; defaults to `Utils` |

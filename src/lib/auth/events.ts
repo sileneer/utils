@@ -1,9 +1,12 @@
 export const ACCOUNT_EVENT = "utils-account-changed";
 export const ACCOUNT_STORAGE = "utils_auth_changed";
-export type AccountChangeKind = "security" | "profile";
+export type AccountChangeKind = "security" | "profile" | "session";
 export function storageChangeKind(value: string | null): AccountChangeKind {
-  try { return JSON.parse(value ?? "{}").kind === "profile" ? "profile" : "security"; }
-  catch { return "security"; }
+  try {
+    const kind = JSON.parse(value ?? "{}").kind;
+    if (kind === "profile" || kind === "session") return kind;
+    return "security";
+  } catch { return "security"; }
 }
 export function notifyAccountChange(kind: AccountChangeKind = "security") {
   window.dispatchEvent(new CustomEvent(ACCOUNT_EVENT, { detail: kind }));

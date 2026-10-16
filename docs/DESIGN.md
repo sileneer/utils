@@ -91,7 +91,7 @@ Paste-ready block for `globals.css` (shadcn v4 convention; adjust only through t
   --accent: oklch(0.30 0.06 295);
   --accent-foreground: oklch(0.90 0.05 295);
   --destructive: oklch(0.65 0.20 25);
-  --destructive-foreground: oklch(0.97 0.01 25);
+  --destructive-foreground: oklch(0.16 0.015 250);
   --border: oklch(0.28 0.02 250);
   --input: oklch(0.28 0.02 250);
   --ring: oklch(0.60 0.10 195);
@@ -142,6 +142,10 @@ Rules:
 ### 4.2 Usage rules
 
 - **Buttons**: `default` = primary action (one per view) · `secondary` = supporting actions · `outline` = actions on cards/neutral surfaces · `ghost` = icon buttons/toolbar actions · `destructive` = irreversible actions. Size `sm` in dense tool UIs; default elsewhere. All icon-only buttons need `aria-label` + a `Tooltip`.
+- Destructive buttons use the solid semantic destructive background and its contrast
+  foreground in both themes (dark foreground in dark mode). Hover adds a shadow without
+  fading either color; the former tinted background failed small-text contrast. Both
+  destructive tokens are registered in Tailwind's inline theme.
 - **Forms**: use react-hook-form + zod with existing Input/Label primitives and project wrappers. Every control has a visible Label; inline errors are associated with `aria-describedby` and invalid controls with `aria-invalid`. Submit shows pending feedback and is disabled while pending. Validate on submit, then revalidate corrected fields. Server validation remains authoritative.
 - **Feedback**: success/error → `sonner` toast (there is exactly one `<Toaster />` in the root layout). Waiting data → `Skeleton`, never spinners-in-cards. Empty states → centered lucide icon + one-line explanation + primary CTA. Errors → route-level `error.tsx` with a retry button; destructive `Alert` for user-fixable problems.
 - **Overlays**: `Dialog` for focused single tasks, `Sheet` for mobile settings panels, `Popover`/`DropdownMenu` for secondary controls. Confirm destructive actions with an `AlertDialog`.
@@ -222,6 +226,18 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   concurrent queries are rejected with a "busy" message (single 1GB VM).
 - Model picker: separate secondary-row dropdown with localized neutral book-Q&A hints (no unmeasured performance claims). Existing dropdown reads runtime model metadata; disable while loading or unavailable. Allowlist/default/preference persistence are described in ARCHITECTURE §3.
 - Embedded third-party content (the HowToLiveBetter book HTML) stays single-language — i18n applies to our chrome only.
+- **Book isolation registered 2026-10-15:** executable upstream HTML runs in an
+  opaque-origin sandbox, enforced by both the iframe and the HTML response's CSP
+  (including direct navigation). It has no application storage, account API or parent
+  DOM access. The bridge checks the configured parent origin and exact parent window;
+  the shell accepts only bounded messages from its exact opaque-origin reader window.
+  Parent-to-reader messages use `*` solely because an opaque origin has no target URL.
+  Preserve theme, selection, pinned citations and the existing unavailable/retry UI;
+  readiness comes from the bridge handshake, not cross-frame DOM inspection. Upstream
+  inline scripts/styles and embedded images remain usable; remote fonts are limited to
+  the existing Google Fonts hosts, and fetch/form/frame access is denied. User-activated
+  outbound links may open separate windows without granting the reader origin access.
+  No new UI component, dependency or token is introduced.
 
 ---
 
@@ -340,6 +356,411 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   states are localized. Never label inferred sessions as exact physical devices.
 - Login and related forms retain validated site-local returnTo throughout the flow.
   Global login/account menus work while AI is disabled and reader chat is closed.
+
+### 5.10 Account operations clarity — batch A approved 2026-10-13
+
+- Registered patterns in the account center: a compact summary card (name,
+  verified email, initial avatar) with profile/security/sessions anchor
+  navigation and a back-to-site link. Section wrappers carry the stable ids
+  `#profile` / `#security` / `#sessions` with scroll margins clearing the sticky
+  header; reauthentication returnTo links target those anchors. Reuse Card,
+  Button and Link; mobile stays single-column.
+- Register the password form as a collapsed-by-default disclosure (existing
+  Collapsible): the trigger toggles the form, opening focuses the first field,
+  and pending/success states stay inside the panel. No Tabs/sidebar is added.
+- Register the PasswordField project wrapper (account and auth forms): existing
+  Input/Label/Button/Tooltip around a labeled show/hide toggle rendered through
+  MorphIcon (Eye/EyeOff — a genuine two-state control, §7) with `aria-pressed`,
+  a state-specific accessible name, keyboard operation and a 40px target.
+  The Caps Lock hint appears only while an actual key event reports the
+  modifier and clears on blur; there is no strength meter or password egress.
+  Autocomplete, paste and the existing password rules are preserved.
+- Profile save follows the §4.2 RHF/Zod form contract. The display-name field
+  receives the server-confirmed value through `values` only while it still
+  exactly matches it; an unsaved draft is never overwritten. A rename from
+  another window surfaces a conflict notice offering "keep my edit" (draft
+  retained) or "use the saved name" (form reset); Save/Cancel appear only for a
+  trimmed-value change, pending blocks duplicate submits, and success refreshes
+  the site-wide name and initial avatar. No credential or OTP enters storage.
+- Security errors map per section (src/lib/auth/errors.ts): stale login
+  (re-verify with the 24-hour explanation), invalidated login (log in), wrong
+  password, rate limiting (server-known wording only, no invented countdown),
+  revoked target (list refresh — never a password error), service failure,
+  account busy, unconfirmed stop, and unconfirmed transport outcomes (result
+  unknown; no automatic retry, refresh before retrying). Profile failures never
+  present password copy; service failures are not described as pending setup.
+- The login `reauth=1` variant changes only title/description/primary-label
+  copy and keeps the same password form, safe returnTo and section anchor; it
+  grants nothing server-side and carries no sensitive form content.
+- Sessions: current session first, then most recent login; the section states
+  the active and other-session counts. Single-target confirmation shows the
+  inferred browser/system and login time; batch confirmation states the
+  other-session count and that the current session stays signed in. Per-row
+  controls carry target-specific accessible names (same-browser sessions remain
+  distinguishable). A refresh failure keeps the last loaded list with a stale
+  notice; an invalidated identity clears it. After a confirmed revoke focus
+  moves to the still-present section heading (tabindex=-1); cancel returns to
+  the initiating button. Same-account security changes (revoke/password) refresh
+  identity without unmounting the account UI, so open dialogs and focus survive.
+- The verification challenge renders explicit loading, expired, failed and
+  script-unavailable states with a bounded manual retry; only code-sending
+  actions depend on a fresh token. Reset keeps its own purpose-correct resend
+  and offers "start over with a different email", clearing the old OTP/password
+  and re-running the challenge; sending acceptance is not described as
+  delivery. No new dependency, base component or color token is introduced.
+
+### 5.11 Account preferences and personal usage — batch B approved 2026-10-14
+
+- **Two layers, one visible precedence.** Theme and language exist as a device
+  setting (theme in localStorage `utils_theme_device`, language in the
+  `NEXT_LOCALE` cookie) and, optionally, as an account setting. An explicitly
+  saved account value wins; an unset one falls through to the device value and
+  then to the system default. The header `ThemeToggle` and `LanguageSwitcher`
+  stay device-scoped and keep working anonymously; they do not write to the
+  account. When an account preference overrides the layer the header just
+  changed, the control says so in a status line naming the active value instead
+  of silently doing nothing, and points at `#preferences`.
+- **Preferences section** (`#preferences`) is an account-centre card using the
+  batch A Card/Label pattern plus the registered `ui/select` primitive (its first
+  use in this project). Its trigger sizes itself with
+  `data-[size=default]:h-8`, which outranks a plain height class, so the trigger
+  carries `h-11!` to reach the §5.10 40px target; one
+  select per setting, each including an explicit follow-device choice that stores
+  nothing. Choices are theme
+  device / system / light / dark and language
+  device default / English / Simplified Chinese. Saving follows the batch A profile
+  contract — compare
+  against the server-confirmed value, show Save/Cancel only for a real change,
+  block duplicate submits, and keep saving/saved/failed feedback inside the card.
+  An external save is adopted while nothing is pending locally, and a local edit
+  survives an external save; the comparison is against the last confirmed value so
+  an incoming save is not mistaken for a local edit.
+  Nothing is uploaded on first login, and applying an account value never
+  rewrites the device value.
+- **Language changes reload the document** because messages are server-rendered,
+  so any control that changes language first checks for unsaved form edits and
+  confirms through the registered AlertDialog pattern (same shape as the account
+  menu's logout confirm). Theme changes apply live and need no confirm. No
+  password, OTP or form secret is persisted to make a reload survivable.
+- **Signing out restores independent device settings**: the account layer drops
+  out of resolution and the applied theme returns to the device value, so one
+  account's preference cannot leak into the next identity or into anonymous use.
+  Other tabs re-resolve through the existing account event.
+- **Personal usage card** is a collapsed-by-default, lazily loaded card in the
+  account centre — not part of identity loading and not in the header menu. It
+  reads only the personal read-only usage wrapper and renders used/limit/remaining
+  for the current UTC day, the reset instant formatted in the browser's own time
+  zone with the zone name shown, and one of the four existing
+  `chat.availability_*` states. AI being switched off reads as unavailable, never
+  as an exhausted quota, and no token or cost figure is estimated or implied — the
+  card repeats the existing request-count scope note. Its failure shows a retry
+  inside the card only; identity, profile, security and public reading keep
+  working. Reuse `chat.quotaSummary` / `quotaReset` / `quotaScope` wording rather
+  than inventing a second vocabulary for the same numbers.
+- No new dependency, base component or color token is introduced.
+
+### 5.12 Personal data export — C2 approved 2026-10-14
+
+- Register the export as a collapsed-by-default card in the account centre, after
+  the usage card, reusing the batch A Collapsible disclosure: the trigger names the
+  action, opening focuses the first control, and every result stays inside the
+  panel. It adds a `#export` anchor to the summary navigation. No new base
+  component, dialog or route is introduced.
+- The card reads a scale summary first and shows what is about to be exported —
+  conversation, message and usage-record counts plus the account's oldest and newest
+  activity — before offering any download. Download controls are plain same-origin
+  links to the export endpoint with `format=json` or `format=markdown`; the browser
+  handles the attachment, so exported text never enters localStorage, sessionStorage,
+  a cookie or the URL.
+- Scope controls are a format pair and optional narrowing (one conversation, or a
+  date range). Narrowing is offered, not hidden, when the summary reports the
+  request exceeds the single-response limits, and the wording states the scope of
+  what each link produces. A partial export is labelled partial in both the card and
+  the file; the interface never presents a segment as the whole account.
+- States: loading summary, summary unavailable with manual retry, re-verification
+  required with the existing in-place entry, within limits, over limits, empty
+  (no conversations yet — profile export is still offered and explained), and
+  download unavailable. Failure text says the export changed nothing. There is no
+  progress promise, polling or background job in this release.
+- Confirm nothing destructive: export is read-only, so no AlertDialog is registered
+  for it, and no copy may imply deletion, revocation or a shareable link.
+- Both locales, light and dark, and 360/768/1280px apply; long conversation titles
+  and file names wrap or truncate with CSS rather than forcing horizontal
+  overflow, and every control keeps the §5.10 40px target.
+
+### 5.13 Secure email change — C1 approved 2026-10-14
+
+- The flow is a collapsed-by-default card in the account centre, on the batch A
+  Collapsible disclosure pattern, with an `#email` anchor added to the summary
+  navigation. It reuses the registered `PasswordField`, `Alert`, `Badge`, `Button`,
+  `Field`/`Input` and the same Turnstile `Challenge` the auth forms use — that
+  component was lifted out of `account-form.tsx` into `challenge.tsx` so both surfaces
+  share one implementation rather than a copy. No new dependency or token.
+- `Challenge` loads the api.js tag with `strategy="afterInteractive"` and derives
+  readiness from the presence of `window.turnstile`, not only from the script
+  callback: the default `lazy` strategy waits for the node to enter the viewport, so a
+  widget mounted inside a collapsed card below the fold would sit on "loading"
+  forever. If the API never appears within ~10s the component reports the existing
+  script-error state with its retry button instead of hanging.
+- The card is a small state machine, one visible state at a time, and every state says
+  what happens next: closed, idle (current password + new address + challenge),
+  pending (masked target, expiry countdown, per-slot attempt counts, two code fields,
+  resend with a cooldown, cancel), committing, done, plus the failure states below. A
+  page reload restores `pending` from the account's live transaction; a transaction
+  opened for an address the account no longer signs in with is not offered at all.
+- **Two codes, two fields.** The pending panel asks for the code sent to the current
+  address and the one sent to the target side by side (stacked at narrow widths), and
+  says so in the field labels, because the change needs both mailboxes and neither
+  code substitutes for the other. The panel carries its own `Challenge`: a new code
+  requires a fresh challenge, exactly like the reset flow's resend, so the resend
+  buttons are disabled until one is issued. The client cooldown matches the server's
+  one-send-per-address-per-minute bucket rather than inviting a refused attempt.
+- Old-mailbox access is never the only proof, and never an optional one: the form asks
+  for the current password and the card states plainly that an account which cannot
+  receive at its old address cannot be self-served here, with no dead-end affordance
+  that pretends otherwise.
+- Stale-login and signed-out states reuse the batch A distinction, with the in-place
+  re-verification entry pointing back at `#email`. A wrong password, a wrong code, an
+  exhausted attempt budget, a rate limit, an expired or cancelled transaction, a
+  target that turned out to be unusable and an unconfirmed AI stop each get their own
+  wording — and none of them may claim the address changed.
+- After a successful commit the result is a page-level state, not a card state:
+  committing revokes every session, so the signed-in page is replaced by a notice
+  naming the new address, explaining that all sessions were signed out and offering
+  that login as the only next step. A different login clears it.
+- A post-commit notice failure is reported as "the change is already applied; the
+  notification could not be sent", never as a failed change, and never re-submits.
+- Cancelling a pending transaction and the sign-out implied by committing both confirm
+  through the registered AlertDialog pattern, with a "Back" dismiss action — not the
+  generic "Back to the site" navigation label. Both locales, both themes,
+  360/768/1280px, keyboard operation and the §5.10 40px target apply. The trigger's
+  masked-address badge wraps to its own line when it cannot share the label row, so
+  neither it nor the countdown can force horizontal overflow.
+
+### 5.14 Security activity card — approved 2026-10-14
+
+- Register it as a collapsed-by-default card in the account centre on the batch A
+  Collapsible disclosure pattern, with an `#activity` anchor added to the summary
+  navigation, placed after the sessions card because it explains what happened to
+  those sessions rather than what is live now. It reuses `Card`, `Collapsible`,
+  `Badge`, `Button`, `Alert` and `Skeleton`; no new dependency, primitive or token.
+- The card is read-only and loads lazily on first expand, on the batch B usage-card
+  shape: a trigger that carries no private content, a skeleton while fetching, a
+  failure alert with an explicit retry that re-reads rather than replaying anything,
+  and a `reauth_required` alert pointing at the in-place re-verification entry,
+  because this is a gated security read.
+- Every row is one confirmed event: a verb-first label naming the operation, the local
+  date and time with the browser's own time-zone label, and the coarse inferred
+  device (`Chrome · Windows`) in the same words the session list already uses. Single
+  and batch revocation read differently and the batch row states the number of
+  sessions that actually went away, so the two can never be confused.
+- The empty state is a real state and must stay honest: "no recorded activity yet",
+  plus one line saying that operations performed before this record existed are not
+  shown. Never imply that an empty list means an untouched account, and never derive
+  rows from the current session list.
+- Two standing notes belong in the card, not in a tooltip: what is deliberately not
+  recorded (no IP or location, no device identifier, no address, no codes), and the
+  retention window with its exact length, so a missing old entry is explained instead
+  of looking like a deletion by someone else.
+- Copy must not overstate the guarantee. Say "confirmed changes to your account" and
+  "sign-in sessions", not "security log", "audit trail" or "protected".
+- Both locales, both themes, 360/768/1280px, keyboard operation and the §5.10 40px
+  target apply; long masked addresses and device labels must wrap rather than force
+  horizontal overflow.
+
+### 5.15 Two-factor authentication — TOTP approved 2026-10-14
+
+- The **sign-in challenge is a step of the existing login form, not a new route**.
+  `safeReturnTo` allowlists the destinations a login may return to, and adding a
+  `/two-factor` page would mean widening that list for no benefit; the form already
+  owns a multi-step shape from the reset flow. When sign-in answers `twoFactorRequired`
+  the form swaps to the challenge step in place — the credentials are never re-asked,
+  and the step states plainly that no session exists until the code is accepted.
+- The challenge step offers exactly two ways in — an authenticator code and a recovery
+  code — as separate labelled inputs, because they are different credentials with
+  different consequences (one is reusable, the other is spent). No "trust this device"
+  control exists anywhere in the product, and the copy says the challenge must be
+  completed on every sign-in.
+- Six-digit code inputs reuse the registered `Field`/`Input` with
+  `inputMode="numeric"`, `autoComplete="one-time-code"` and `maxLength={6}`; the
+  recovery-code input takes the `xxxxx-xxxxx` form instead and must not inherit the
+  numeric constraints. A visible countdown mirrors the server's 600-second window and,
+  when it lapses, says the sign-in must be restarted rather than pretending a retry of
+  the same code can work.
+- Enrolment, recovery-code regeneration and disabling live in one collapsed-by-default
+  account-centre card on the batch A disclosure pattern, with a `#two-factor` anchor in
+  the summary navigation, placed with the other security sections. It reuses `Card`,
+  `Collapsible`, `Alert`, `Badge`, `Button`, `Field`, `PasswordField`, `Input`,
+  `Textarea` and the registered AlertDialog; **no new dependency, primitive or token**.
+- Enrolment is shown as an explicit two-step sequence with the second step gated: the
+  secret and the recovery codes are revealed first and the "enabled" action stays
+  unavailable until the user confirms they have stored the codes, because they are
+  shown once and cannot be recovered afterwards. That confirmation is a `Button` with
+  `aria-pressed` rather than a checkbox, so the row keeps the §5.10 40px target and the
+  sentence is the control's own accessible name. Until the code is confirmed the card
+  must say the second factor is **not yet on** — an abandoned enrolment is not
+  protection.
+- **No QR code is offered.** Rendering one would need a new dependency, so the card
+  shows the setup key for manual entry in an authenticator app and says so, rather than
+  implying a scanner is supported. The key is a wrapping, selectable `Textarea` with its
+  own copy control, never a single-line field: a 52-character secret has to be readable
+  in full at 360px, because reading it is the only way to enter it. This is a known
+  functional limitation of the card, not an omission to discover later.
+- Factor material is held in component state only, for the lifetime of that one
+  expanded step: the secret, the provisioning URI and the plaintext recovery codes
+  never enter localStorage or sessionStorage, a URL, a query string, a toast, an error
+  message or a rendered status line. They are cleared when the step is closed, when
+  enrolment completes or fails, and when the account identity changes. The status view
+  reports only whether 2FA is on and how many recovery codes remain.
+- Recovery codes are presented as a list the user is told to save themselves, with a
+  copy-all control and an explicit statement that the server cannot resend them; each
+  regeneration replaces the set and invalidates the previous one, which the confirm
+  dialog says before acting.
+- Disabling and regenerating both confirm through the AlertDialog pattern and both ask
+  for the current password **and** a live second factor, so the dialog explains that a
+  code from the authenticator or one unused recovery code is required.
+- The irreversible consequence is stated before enrolment completes, not after: losing
+  the device and every recovery code means self-service cannot restore access, and
+  there is no support bypass. The card says this in one plain sentence rather than
+  burying it in help text.
+- Failure copy stays distinct per cause and never implies the factor was turned off or
+  that a session exists: wrong code, spent challenge, expired challenge, exhausted
+  attempt budget, account-level temporary lock, already-enabled, and a rejected
+  password each read differently. A wrong code at the challenge must not fall back to
+  "check your email and password". The plugin's own three-per-ten-seconds cap on its
+  routes is reported as **too many attempts**, never as a wrong code — telling someone
+  their authenticator is wrong when the answer is to wait sends them back to guessing.
+- Enabling, disabling and regenerating all broadcast the cross-tab `security` event, so
+  no window keeps showing a signed-in page for an identity the server just revoked.
+  Confirming and disabling also end *this* window's session, so their result is a
+  page-level notice in the §5.13 shape — the card that raised it no longer has the
+  identity it was describing, and "your login has expired" would misreport a change the
+  user just made on purpose.
+- The challenge step replaces the credential form in place, so the login form's "you are
+  already signed in" banner is suppressed while it is open: another window's live
+  session is not this request's business, and showing both reads as a contradiction. The
+  challenge copy therefore speaks about **this request** granting no access, not about
+  the browser having no session.
+- Both locales, both themes, 360/768/1280px, keyboard operation, focus return and the
+  §5.10 40px target apply. Long recovery codes and masked values wrap rather than
+  forcing horizontal overflow.
+
+### 5.16 Passkeys — approved 2026-10-15
+
+- Passkeys are managed in one collapsed-by-default account-centre card on the batch A
+  disclosure pattern, with a `#passkeys` anchor in the summary navigation placed next to
+  the other security sections, and the sign-in affordance is a button **below** the
+  existing password form on `/login` — never a replacement for it and never competing
+  with it for the primary action. It reuses `Card`, `Collapsible`, `Alert`, `Badge`,
+  `Button`, `Field`, `PasswordField`, `Input` and the registered AlertDialog; **no new UI
+  dependency, primitive or token**, and no client-side authentication library: the
+  ceremony calls `navigator.credentials` directly and only converts between base64url and
+  `ArrayBuffer`.
+- The browser is asked for the ceremony **only** from an explicit user action, and every
+  outcome has its own state, because WebAuthn fails in several unrelated ways that look
+  identical if one message is reused: no `navigator.credentials` at all (unsupported
+  browser — the card explains that passkeys need a current browser and offers nothing
+  else), a non-secure context (the page says the address is why rather than blaming the
+  browser), the user dismissing the dialog (`NotAllowedError`) — which is reported as
+  **cancelled**, with no retry loop and no error styling, because dismissing is a normal
+  choice — a device with no enrollable authenticator, and a server-side refusal, which
+  keeps its own per-cause copy.
+- A passkey is named by the person using it, at the moment of registration, in a normal
+  labelled field with a length cap and a suggested default, because a credential the user
+  cannot tell apart from their other credentials cannot be safely removed later. The list
+  shows the chosen name, a best-effort provider label derived server-side from the
+  authenticator's AAGUID (shown as "unrecognised authenticator" when the AAGUID is the
+  all-zero privacy value, which Apple and others report — never as a guess), the creation
+  date in the browser's own zone with the zone named, and whether the credential is
+  **synced** to the account's other devices or held on this one alone, because that
+  changes what losing the device means. No public key, credential id or AAGUID is
+  rendered.
+- Removal is per-row, names the exact credential in the confirm dialog, and requires the
+  current password (plus a live second factor when two-factor is on) like every other
+  security mutation. The dialog states plainly that signing in with the password still
+  works afterwards, because on this site a password credential always exists — that
+  sentence is the removal safety story, and it must not be softened into "you can always
+  recover this".
+- The sign-in button is present on the login form even when the account has no passkey,
+  because the server cannot know which credential the browser holds; when there is
+  nothing to assert it reads **no passkey is available for this browser**, not "wrong".
+  A completed passkey sign-in is an ordinary session: the same private-resource rules and
+  the same sensitive-operation freshness apply, and the UI shows no different badge for
+  it.
+- Nothing about a passkey is persisted by the browser on this site's behalf: the challenge
+  lives in a server-side row addressed by an HttpOnly signed cookie, so no credential,
+  challenge, public key or credential id is written to localStorage, sessionStorage, a
+  cookie the page can read, a URL, a toast or an error message. The in-flight ceremony
+  object exists only in component state and is dropped when the step is closed.
+- Failure copy stays distinct per cause and never implies a password problem:
+  cancelled, expired challenge, challenge already used, unverified ceremony, unrecognised
+  credential, duplicate credential, credential limit reached, and a rejected password each
+  read differently. A failed passkey sign-in always leaves the password form usable and
+  never reports the account as locked.
+- Both locales, both themes, 360/768/1280px, keyboard operation, focus return and the
+  §5.10 40px target apply. Credential names are user text and wrap rather than forcing
+  horizontal overflow.
+- Passkey and deletion step-up fields accept either a six-digit authenticator code or
+  an eleven-character unused recovery code, with the existing factor hint beside the
+  field. Initial security-card reads run once per opening attempt: loading, failure and
+  reauthentication are terminal until the user chooses a recovery action, never retry loops.
+
+### 5.17 Account deletion — approved 2026-10-15
+
+- One account-centre card, last in the security group, with a `#deletion` anchor in the
+  summary navigation. Collapsed by default like the other security cards, because its
+  first line is a question, not an action. It reuses `Card`, `Collapsible`, `Alert`,
+  `Button`, `PasswordField`, the registered `AlertDialog` and the existing factor-code
+  field; **no new UI primitive, token or dependency**, and the destructive action uses the
+  registered `destructive` button variant rather than a bespoke red.
+- **The export comes first, inside the card.** The pending state renders the export entry
+  point, whether a full export was generated since the request, and an explicit refresh
+  action after a download. Large accounts can save the existing scoped segments. As
+  approved during the 2026-10-15 review fixes, the final dialog also offers an initially
+  unselected acknowledgement that the person is proceeding without a complete export.
+  It reuses the recovery-code card's labelled, 40px `Button` toggle with `aria-pressed`;
+  no new primitive. Without a full export or this explicit acknowledgement, final
+  submission is disabled. This choice lives only in the open dialog and resets on close.
+- Three states, each rendered distinctly, and no fourth: **none** (the request form with the
+  impact statement), **pending** (the date the final step unlocks, the date the request
+  lapses, the export precondition, and a withdraw action), and **refused** (a distinct
+  message per cause). There is deliberately no "scheduled", "processing" or "deleted later"
+  state: nothing happens to the data until the final ceremony completes, and the copy says
+  so.
+- The impact statement is written as a list of outcomes, not a warning banner: what is
+  removed (identity, logins, credentials, every conversation and message, usage history,
+  preferences, security record), what is anonymized rather than deleted (mail metadata, so
+  the site's own budget accounting stays honest), what is kept (shared book source versions,
+  other people's data, and **existing backups, which this feature never prunes**). Saying
+  "your data is gone everywhere right now" would be false, so the copy does not say it.
+- Requesting needs the current password and a live second factor when one is enabled. The
+  final step is an `AlertDialog` that additionally needs the same proof **again** and a
+  typed confirmation matching the account's own email address: an irreversible action gets
+  a physical cost, and the typed value is compared server-side, never trusted from the
+  client. The dialog's title names the account being deleted so a shared browser cannot be
+  confused about which identity is meant.
+- Focus discipline: opening the confirmation moves focus to its first field, Escape and the
+  cancel button return focus to the control that opened it, the destructive button is not
+  the default focus target, and the dialog cannot be dismissed by clicking outside it while
+  a deletion is in flight.
+- The deletion confirmation stays within `100dvh - 2rem` and scrolls vertically when its
+  copy and fields exceed a short/mobile viewport. Both the acknowledgement and the final
+  destructive action remain keyboard-reachable; wrapping never widens the viewport.
+- On completion the client clears **its own** leftovers — the deleted account's chat session,
+  model and draft keys and the pending-verification email in `sessionStorage` — then routes
+  to the signed-out site with a neutral notice. It does not clear the device theme keys,
+  which describe the browser rather than the account, and it never touches another account's
+  id-namespaced keys. The notice holds no personal data: no email, no counts, no "goodbye".
+- Failure copy stays distinct per cause and never implies the deletion happened or that it
+  is pending when it is not: cooling-off not elapsed, request lapsed, export missing,
+  wrong password, wrong or expired factor, another change in flight on this account, an
+  active answer that could not be confirmed stopped, the last administrator, and a session
+  too old to authorize this. A refusal leaves the account exactly as it was and says which
+  of those it is.
+- The card is a security surface, so it inherits the §5.10 rules: 40px minimum targets, both
+  locales, both themes, 360/768/1280, keyboard-only operation of the whole request →
+  withdraw and request → confirm paths, and no state, email or token written to
+  localStorage, a URL or a toast.
 
 ## 6. Motion
 

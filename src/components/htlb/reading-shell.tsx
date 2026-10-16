@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/tooltip";
 import { isEntryAnchor, isRevision } from "@/lib/chat/citations";
 import type { BookContext } from "@/lib/chat/protocol";
+import { BOOK_SANDBOX } from "@/lib/book/isolation";
 function subscribeWidth(callback: () => void) {
   const media = matchMedia("(min-width: 1024px)");
   media.addEventListener("change", callback);
@@ -64,7 +65,18 @@ export function ReadingShell() {
   const [bookReload, setBookReload] = useState(0);
   const [viewport, setViewport] = useState<{ height: number; top: number }>();
   const iframe = useRef<HTMLIFrameElement>(null);
+  const bookReady = useRef(false);
+  const readinessTimer = useRef<number | undefined>(undefined);
   const toggle = useRef<HTMLButtonElement>(null);
+  // Error documents and failed navigations do not reliably fire iframe onLoad.
+  // Arm readiness when the reader is mounted/replaced as well as after onLoad.
+  useEffect(() => {
+    window.clearTimeout(readinessTimer.current);
+    readinessTimer.current = window.setTimeout(() => {
+      if (!bookReady.current) setBookFailed(true);
+    }, 10_000);
+    return () => window.clearTimeout(readinessTimer.current);
+  }, [bookReload]);
   useEffect(() => {
     const visual = window.visualViewport;
     if (!visual) return;
@@ -90,7 +102,7 @@ export function ReadingShell() {
     function receive(event: MessageEvent) {
       const data = event.data;
       if (
-        event.origin !== location.origin ||
+        event.origin !== "null" ||
         event.source !== iframe.current?.contentWindow ||
         !data ||
         data.channel !== "utils-book" ||
@@ -104,6 +116,9 @@ export function ReadingShell() {
         data.anchors.every(isEntryAnchor)
       ) {
         if (readerRevision && data.revision !== readerRevision) return;
+        bookReady.current = true;
+        window.clearTimeout(readinessTimer.current);
+        setBookFailed(false);
         setBook((previous) =>
           previous?.revision === data.revision
             ? previous
@@ -115,7 +130,7 @@ export function ReadingShell() {
           if (data.anchors.includes(pending.anchor))
             iframe.current?.contentWindow?.postMessage(
               { channel: "utils-book", type: "navigate", ...pending },
-              location.origin,
+              "*",
             );
           else toast.error(c("sourceLocationMissing"));
         }
@@ -128,7 +143,7 @@ export function ReadingShell() {
               ? "dark"
               : "light",
           },
-          location.origin,
+          "*",
         );
       }
       if (
@@ -155,7 +170,7 @@ export function ReadingShell() {
     if (!book)
       iframe.current?.contentWindow?.postMessage(
         { channel: "utils-book", type: "init" },
-        location.origin,
+        "*",
       );
     return () => window.removeEventListener("message", receive);
   }, [book, readerRevision, c]);
@@ -168,7 +183,7 @@ export function ReadingShell() {
           revision: book.revision,
           theme: resolvedTheme,
         },
-        location.origin,
+        "*",
       );
   }, [book, resolvedTheme]);
   function navigate(anchor: string, revision: string, messageId: string, top: number) {
@@ -179,8 +194,9 @@ export function ReadingShell() {
     setExpandedChat(false);
     setSelection(undefined);
     if (book?.revision === revision && book.anchors.has(anchor)) {
-      iframe.current?.contentWindow?.postMessage({ channel: "utils-book", type: "navigate", revision, anchor }, location.origin);
+      iframe.current?.contentWindow?.postMessage({ channel: "utils-book", type: "navigate", revision, anchor }, "*");
     } else {
+      bookReady.current = false;
       pendingNavigation.current = { anchor, revision };
       setReaderRevision(revision);
       setBook(undefined);
@@ -302,6 +318,7 @@ export function ReadingShell() {
             variant="outline"
             className="h-10"
             onClick={() => {
+              bookReady.current = false;
               setBook(undefined);
               setSelection(undefined);
               setBookFailed(false);
@@ -352,17 +369,19 @@ export function ReadingShell() {
         <iframe
           key={bookReload}
           ref={iframe}
+          sandbox={BOOK_SANDBOX}
           src={readerRevision ? "/htlb/book?revision=" + encodeURIComponent(readerRevision) : "/htlb/book"}
           title={t("title")}
           className="min-w-0 flex-1 border-0"
           onLoad={() => {
-            setBookFailed(
-              iframe.current?.contentDocument?.contentType ===
-                "application/json",
-            );
+            bookReady.current = false;
+            window.clearTimeout(readinessTimer.current);
+            readinessTimer.current = window.setTimeout(() => {
+              if (!bookReady.current) setBookFailed(true);
+            }, 5000);
             iframe.current?.contentWindow?.postMessage(
               { channel: "utils-book", type: "init" },
-              location.origin,
+              "*",
             );
           }}
         />

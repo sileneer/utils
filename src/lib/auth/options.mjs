@@ -1,5 +1,26 @@
 import { createHmac } from "node:crypto";
-import { emailOTP } from "better-auth/plugins";
+import { emailOTP, twoFactor } from "better-auth/plugins";
+import { passkey } from "@better-auth/passkey";
+import { APIError } from "@better-auth/core/error";
+
+/**
+ * The passkey plugin hardcodes `requireUserVerification: false` on both verify endpoints,
+ * so an assertion from an authenticator that skipped verification would still sign the
+ * user in. This hook runs before any row is written or session is issued, so refusing
+ * here leaves nothing behind — measured against the installed version.
+ *
+ * It is the only thing standing between "someone copied the private key off a synced
+ * passkey" and a session, because a copied key still signs.
+ */
+function requireUserVerified({ verification }) {
+  const info = verification?.registrationInfo ?? verification?.authenticationInfo;
+  if (info?.userVerified !== true) {
+    throw new APIError("UNAUTHORIZED", {
+      message: "Passkey ceremony was not user verified",
+      code: "PASSKEY_NOT_USER_VERIFIED",
+    });
+  }
+}
 
 /** Shared with schema generation; no secrets or database opened at import time. */
 export function authOptions(database, secret, sendVerificationOTP) {
@@ -74,6 +95,29 @@ export function authOptions(database, secret, sendVerificationOTP) {
             createHmac("sha256", secret).update(otp).digest("hex"),
         },
         sendVerificationOTP,
+      }),
+      // TOTP and recovery codes only. No otpOptions, so no second factor ever sends
+      // mail and `twoFactorMethods` can only ever list totp; no skipVerificationOnEnable,
+      // so enrolment stays incomplete until an authenticator code is proven.
+      twoFactor({
+        issuer: "Utils",
+        totpOptions: { period: 30, digits: 6 },
+        backupCodeOptions: { amount: 10, length: 10 },
+      }),
+      // rpID and origin are pinned from server configuration rather than inferred: the
+      // plugin would otherwise take the caller's own `Origin` header as the expected
+      // value. `residentKey: required` because a credential this site logs in with has
+      // to be discoverable without an email, and failing at registration is honest while
+      // failing silently at login is not.
+      passkey({
+        rpID: new URL(baseURL).hostname,
+        origin: baseURL,
+        authenticatorSelection: {
+          residentKey: "required",
+          userVerification: "required",
+        },
+        registration: { afterVerification: requireUserVerified },
+        authentication: { afterVerification: requireUserVerified },
       }),
     ],
   };

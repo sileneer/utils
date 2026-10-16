@@ -64,7 +64,7 @@ test.before(async () => {
     db.prepare("INSERT INTO schema_migrations VALUES (?,?)").run(file, 1);
   }
   for (const owner of ["owner", "other"])
-    db.prepare("INSERT INTO user VALUES (?,?,?,?,?,?,?,?,?)").run(
+    db.prepare("INSERT INTO user (id,name,email,emailVerified,image,createdAt,updatedAt,role,status) VALUES (?,?,?,?,?,?,?,?,?)").run(
       owner,
       "Disposable QA",
       owner + "@example.test",
@@ -198,7 +198,9 @@ test("003 migration backs up legacy schema and preserves messages, native select
   await database.migrate(db);
   assert.equal(
     db.prepare("SELECT count(*) n FROM schema_migrations").get().n,
-    3,
+    fs
+      .readdirSync(path.join(__dirname, "../migrations"))
+      .filter((file) => file.endsWith(".sql")).length,
   );
   assert.equal(db.pragma("integrity_check", { simple: true }), "ok");
   assert.deepEqual(db.pragma("foreign_key_check"), []);

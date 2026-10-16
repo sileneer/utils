@@ -10,6 +10,9 @@ export function safeReturnTo(value: unknown): string {
     return url.pathname + url.search + url.hash;
   } catch { return "/"; }
 }
-export function accountLink(mode: "login" | "register" | "verify-email" | "reset-password", target: string) {
-  return `/${mode}?returnTo=${encodeURIComponent(safeReturnTo(target))}`;
+/** reauth=1 only switches the login page copy/primary label for a stale session;
+ * it grants nothing server-side and the destination stays a safe site route. */
+export function accountLink(mode: "login" | "register" | "verify-email" | "reset-password", target: string, reauth = false) {
+  const base = `/${mode}?returnTo=${encodeURIComponent(safeReturnTo(target))}`;
+  return reauth && mode === "login" ? `${base}&reauth=1` : base;
 }

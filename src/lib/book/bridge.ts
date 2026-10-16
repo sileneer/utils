@@ -1,12 +1,12 @@
 /** Local wrapper only: upstream HTML and its source repository stay untouched. */
-export function withBookBridge(html: string, revision: string): string {
+export function withBookBridge(html: string, revision: string, parentOrigin: string): string {
   const script = `<script>
 (() => {
  const revision = ${JSON.stringify(revision)};
+ const parentOrigin = ${JSON.stringify(parentOrigin).replace(/</g, "\\u003c")};
  const channel = 'utils-book';
- const send = data => parent.postMessage({channel, revision, ...data}, location.origin);
+ const send = data => parent.postMessage({channel, revision, ...data}, parentOrigin);
  const anchors = [...document.querySelectorAll('.card[id]')].map(el => el.id);
- send({type:'ready', anchors});
  let selecting=false, selectionTimer;
  const publishSelection = () => {
    const selected = getSelection();
@@ -24,7 +24,7 @@ export function withBookBridge(html: string, revision: string): string {
  document.addEventListener('keyup', queueSelection);
  addEventListener('message', event => {
    const data = event.data;
-   if(event.origin !== location.origin || event.source !== parent || !data || data.channel !== channel) return;
+   if(event.origin !== parentOrigin || event.source !== parent || !data || data.channel !== channel) return;
    if(data.type === 'init') { send({type:'ready', anchors}); return; }
    if(data.revision !== revision) return;
    if(data.type === 'theme' && ['dark','light'].includes(data.theme)) document.documentElement.classList.toggle('dark',data.theme === 'dark');
@@ -34,7 +34,7 @@ export function withBookBridge(html: string, revision: string): string {
        state.q=''; for(const dimension of DIMS) state[dimension].clear();
        state.dispute=false; state.todo=false; syncControls(); apply();
      }
-     history.replaceState(null,'','#'+data.anchor);
+     try { history.replaceState(null,'','#'+data.anchor); } catch { /* Opaque history may be restricted. */ }
      if(typeof scrollToEl === 'function') scrollToEl(target,{align:'start'});
      else target.scrollIntoView({block:'start'});
      send({type:'navigated', anchor:data.anchor});

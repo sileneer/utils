@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Runtime volumes and private QA evidence are not application source.
+    "data/**",
   ]),
 ]);
 

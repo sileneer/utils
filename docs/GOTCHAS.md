@@ -780,3 +780,89 @@ after the closing animation.
 **Cause** Chrome can reserve 15px for its vertical scrollbar. **Fix** assert
 `scrollWidth <= innerWidth`, not equality. Record the selected emulated viewport
 and actual content width in the private receipt.
+
+### A lazy script tag never reports ready inside a collapsed card
+
+**Symptom** the Turnstile widget in the account centre's email-change card stays on
+"loading" with the API global already present, so the submit button never enables.
+**Cause** `next/script` defaults to `strategy="lazy"`, which only fetches once the node
+enters the viewport, and `onReady` is not re-reported when a same-`src` tag is reused
+by a later mount. The auth forms hid this because their challenge mounts in view.
+**Fix** load it with `afterInteractive` and treat the presence of `window.turnstile`
+as the readiness signal, with a bounded wait that falls through to the existing
+retryable script-error state. `turnstile.ready()` is not an option here — Cloudflare
+rejects it while the tag is async/deferred, which is how `next/script` inserts it.
+
+### dateStyle cannot be combined with timeZoneName
+
+**Symptom** the account centre renders its error boundary as soon as a list of
+formatted timestamps appears; the server logs nothing, so it looks like a data fault.
+**Cause** `new Intl.DateTimeFormat(locale, { dateStyle, timeStyle, timeZoneName })`
+throws a `TypeError` in Chrome — the style presets are mutually exclusive with
+`timeZoneName` — and the throw happens during render, so the whole page is caught by
+the boundary rather than just the card. **Fix** build the format from component options
+(`year`/`month`/`day`/`hour`/`minute` plus `timeZoneName`), which is what the usage card
+already does to get a zone label. When adding any timestamp that must name its zone,
+check the combination in a real browser: TypeScript accepts the options object and the
+unit tests never format a date.
+
+### A WebAuthn credential descriptor's transports is an array
+
+**Symptom** the first passkey on an account registers in a real browser and every later
+one fails with "the passkey prompt failed", with no rejection visible in the network log
+because the server never received a credential to reject. **Cause** the creation options
+arrive as `excludeCredentials: [{ id, transports: ["internal"] }]`, and the client
+converter called `.split(",")` on `transports`. An empty list never reaches that call, so
+the defect only appears once the account already holds a credential; the `TypeError` is
+thrown while building the options, before any prompt, and the ceremony wrapper reports its
+generic `failed`. **Fix** normalise `string | string[]` where the JSON enters the browser
+API and pin the server's shape with an assertion on `register/start` in
+`tests/passkey.test.cjs` — the failing path only exists in a browser, so that assertion is
+the only test that can see it. The outbound half runs the other way: `transports` must
+stay an **array** when posted, because the plugin joins it.
+
+### Private runtime volumes are not ESLint source
+
+**Symptom** default lint reports CommonJS imports in ignored QA evidence, or races a
+test deleting its disposable directory. **Cause** ESLint does not inherit Git ignores.
+**Fix** the ESLint global ignore now includes `data/**`; application code, maintained
+scripts and tracked tests still run through the ordinary full lint command. Keep dated
+older scoped-lint receipts separate from the current result.
+
+### A green Next build does not package CLI migration dependencies
+
+**Symptom** the final image passes native/artifact checks but exits before health;
+startup only reports a database startup failure. **Cause** migration scripts run outside
+Next's route trace. Adding `deletion.cjs` and its `keying.cjs` dependency to `migrate()`
+did not place their raw files in the runner. **Fix** carry the complete CommonJS chain
+explicitly in Dockerfile and require reconciliation in the image artifact check. Compare
+applied migration filenames against the image directory in persistence/restore checks;
+a historical literal count of three is not the current schema contract.
+
+### A before-session hook alone does not close a login race
+
+**Symptom** a password-only session appears after 2FA activation or password change
+already revoked other sessions. **Cause** the sign-in loaded its user/password proof
+before the security change and inserted the session afterwards; the 2FA plugin uses
+that earlier user snapshot. **Fix** capture the account authorization version at login
+entry, check it before and after the adapter insert, and remove a late row before any
+cookie. Cover both interleavings with the real library. Pending 2FA challenges are
+password proofs too and must be invalidated on the confirmed security write.
+
+### An opaque reader cannot use same-origin DOM readiness
+
+**Symptom** the isolated book never reports ready, or a failed navigation stays blank.
+**Cause** sandboxed script messages serialize origin as `null`; parent DOM inspection
+is forbidden, and failed iframe navigation need not fire `onLoad`. **Fix** check the
+exact window and message shape, inject the trusted parent origin into the bridge, and
+use init/ready deadlines on mount/replacement as well as load. Only the public
+parent-to-opaque-reader message uses target `*`. Test direct book navigation too: an
+iframe attribute alone cannot isolate the route when opened as a top-level document.
+
+### Windows append handles cannot truncate a torn ledger tail
+
+**Symptom** recovery append throws `EPERM` from `ftruncate`. **Cause** an append-only
+Windows handle lacks truncation rights. **Fix** validate the complete ledger first,
+truncate only the unfinished final fragment using its separate path operation, then
+open for append, write the complete line and fsync. The supported runtime is one process;
+complete malformed records and read permission/I/O errors remain fatal.

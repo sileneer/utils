@@ -20,7 +20,7 @@ test.before(async () => {
   db.close();
   database
     .getDatabase()
-    .prepare("INSERT INTO user VALUES (?,?,?,?,?,?,?,?,?)")
+    .prepare("INSERT INTO user (id,name,email,emailVerified,image,createdAt,updatedAt,role,status) VALUES (?,?,?,?,?,?,?,?,?)")
     .run(
       "owner",
       "Owner",

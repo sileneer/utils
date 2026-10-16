@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.292",
+    "@better-auth/passkey": "1.7.7",
     "@hookform/resolvers": "5.9.1",
     "better-auth": "1.7.7",
     "better-sqlite3": "13.0.3",
@@ -46,6 +47,11 @@
     "shadcn": "^4.21.1",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@better-auth/core": "1.7.7",
+    "@better-auth/utils": "0.4.2",
+    "better-call": "1.4.0"
   },
   "allowScripts": {
     "better-sqlite3@13.0.3": true

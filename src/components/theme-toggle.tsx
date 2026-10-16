@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import Link from "next/link";
 import { Monitor, Moon as MoonIcon, Sun as SunIcon } from "lucide-react";
 import { Moon as MoonNode, Sun as SunNode } from "lucide";
 import { useTranslations } from "next-intl";
@@ -19,12 +20,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAccount } from "@/components/auth/account-provider";
+import { writeDeviceTheme, type DeviceTheme } from "@/lib/theme-device";
 
 const emptySubscribe = () => () => {};
 
 export function ThemeToggle() {
   const t = useTranslations("theme");
   const { setTheme, resolvedTheme } = useTheme();
+  const { preferences } = useAccount();
   // next-themes resolvedTheme is only known after mount (html class set client-side).
   const mounted = useSyncExternalStore(
     emptySubscribe,
@@ -32,6 +36,14 @@ export function ThemeToggle() {
     () => false,
   );
   const isDark = mounted && resolvedTheme === "dark";
+  const override = preferences?.theme ?? null;
+
+  // The menu always edits this device; a saved account choice keeps winning and
+  // says so, rather than the control silently doing nothing (DESIGN §5.11).
+  const choose = (value: DeviceTheme) => {
+    writeDeviceTheme(value);
+    setTheme(override ?? value);
+  };
 
   return (
     <DropdownMenu>
@@ -52,18 +64,23 @@ export function ThemeToggle() {
         <TooltipContent>{t("label")}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setTheme("light")}>
+        <DropdownMenuItem onClick={() => choose("light")}>
           <SunIcon />
           {t("light")}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("dark")}>
+        <DropdownMenuItem onClick={() => choose("dark")}>
           <MoonIcon />
           {t("dark")}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("system")}>
+        <DropdownMenuItem onClick={() => choose("system")}>
           <Monitor />
           {t("system")}
         </DropdownMenuItem>
+        {override && (
+          <DropdownMenuItem asChild>
+            <Link href="/account#preferences">{t("accountOverride", { theme: t(override) })}</Link>
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

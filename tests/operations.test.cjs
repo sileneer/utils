@@ -11,7 +11,7 @@ Module._load = function (name, ...args) { if (name === "@/lib/agent/auth")
 const { GET } = require("../src/app/api/admin/operations/route.ts");
 const now = Date.now();
 test.before(async () => { const db = await database.migrate(); db.close(); for (const [id, role, verified, status] of [["admin", "admin", 1, "active"], ["reader", "user", 1, "active"], ["pending", "admin", 0, "active"], ["disabled", "admin", 1, "disabled"]])
-    database.getDatabase().prepare("INSERT INTO user VALUES (?,?,?,?,?,?,?,?,?)").run(id, id, id + "@example.test", verified, null, now, now, role, status); });
+    database.getDatabase().prepare("INSERT INTO user (id,name,email,emailVerified,image,createdAt,updatedAt,role,status) VALUES (?,?,?,?,?,?,?,?,?)").run(id, id, id + "@example.test", verified, null, now, now, role, status); });
 test("administrator API requires current verified active database role and does not trust identity claims", async () => {
     assert.equal((await GET(new Request("http://localhost/api/admin/operations"))).status, 401);
     for (const id of ["reader", "pending", "disabled", "missing"]) {
