@@ -25,6 +25,7 @@ import { getBook } from "@/lib/book/source";
 import { isRevision } from "@/lib/chat/citations";
 import { abortable } from "@/lib/agent/abort";
 import { reserveQuery, releaseQuery, accountChangeVersion } from "@/lib/agent/active-query";
+import { recordTranscript } from "@/lib/agent/transcripts.cjs";
 export const dynamic = "force-dynamic";
 const QUERY_TIMEOUT_MS = Number(process.env.AGENT_QUERY_TIMEOUT_MS ?? 180_000);
 function errorCode(error: unknown) {
@@ -285,8 +286,10 @@ export async function POST(request: Request) {
           })) {
             if (abortController.signal.aborted)
               throw new Error(timedOut ? "timeout" : "stopped");
-            if (msg.type === "system" && msg.subtype === "init")
+            if (msg.type === "system" && msg.subtype === "init") {
+              recordTranscript(owner.id, msg.session_id);
               session.sdkSessionId = msg.session_id;
+            }
             if (msg.type === "stream_event") {
               const event = msg.event;
               if (

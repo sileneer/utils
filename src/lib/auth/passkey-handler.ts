@@ -3,6 +3,8 @@ import { accountSession } from "./identity";
 import { getAuth } from "./server";
 import { consumeLimits, privateKey } from "./limits";
 import { recordSessionDevice } from "./session-device";
+import { withAuthentication } from "./lifecycle";
+import { accountChangeVersion } from "../agent/active-query";
 import { proveFactor, translateFactorError, twoFactorStatus } from "./two-factor";
 import {
   credentialIdOf,
@@ -179,6 +181,7 @@ export function passkeyListResponse(userId: string): { passkeys: PasskeyView[] }
  * verification table without ever answering.
  */
 export async function handlePasskeyAuth(request: Request) {
+  const authorizationVersion = accountChangeVersion();
   try {
     const path = new URL(request.url).pathname.slice("/api/passkey".length);
     const ip = process.env.TRUST_CLOUDFLARE_IP === "1"
@@ -221,7 +224,8 @@ export async function handlePasskeyAuth(request: Request) {
     if (await accountSession(headers)) return fail("signed_in", 403);
     if (!challenge) return fail("challenge_gone", 401);
 
-    const response = await library(auth, headers, "/passkey/verify-authentication", { response: credential.value });
+    const response = await withAuthentication(authorizationVersion, () =>
+      library(auth, headers, "/passkey/verify-authentication", { response: credential.value }));
     if (!response.ok) return refuse(response);
     recordSessionDevice(response.headers.getSetCookie(), request.headers.get("user-agent"));
     return json({ signedIn: true }, 200, response.headers);

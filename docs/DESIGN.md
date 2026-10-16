@@ -226,6 +226,18 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   concurrent queries are rejected with a "busy" message (single 1GB VM).
 - Model picker: separate secondary-row dropdown with localized neutral book-Q&A hints (no unmeasured performance claims). Existing dropdown reads runtime model metadata; disable while loading or unavailable. Allowlist/default/preference persistence are described in ARCHITECTURE §3.
 - Embedded third-party content (the HowToLiveBetter book HTML) stays single-language — i18n applies to our chrome only.
+- **Book isolation registered 2026-10-15:** executable upstream HTML runs in an
+  opaque-origin sandbox, enforced by both the iframe and the HTML response's CSP
+  (including direct navigation). It has no application storage, account API or parent
+  DOM access. The bridge checks the configured parent origin and exact parent window;
+  the shell accepts only bounded messages from its exact opaque-origin reader window.
+  Parent-to-reader messages use `*` solely because an opaque origin has no target URL.
+  Preserve theme, selection, pinned citations and the existing unavailable/retry UI;
+  readiness comes from the bridge handshake, not cross-frame DOM inspection. Upstream
+  inline scripts/styles and embedded images remain usable; remote fonts are limited to
+  the existing Google Fonts hosts, and fetch/form/frame access is denied. User-activated
+  outbound links may open separate windows without granting the reader origin access.
+  No new UI component, dependency or token is introduced.
 
 ---
 

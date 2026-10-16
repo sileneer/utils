@@ -3,6 +3,8 @@ import { getAuth } from "./server";
 import { consumeLimits, privateKey } from "./limits";
 import { recordSessionDevice } from "./session-device";
 import { FACTOR_ERRORS } from "./two-factor";
+import { withAuthentication } from "./lifecycle";
+import { accountChangeVersion } from "../agent/active-query";
 
 function json(data: unknown, status = 200, cookies?: Headers) {
   const headers = new Headers({ "cache-control": "no-store", vary: "Cookie" });
@@ -20,6 +22,7 @@ const RECOVERY_CODE = /^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}$/;
  * cookie names a short-lived verification row.
  */
 export async function handleTwoFactor(request: Request) {
+  const authorizationVersion = accountChangeVersion();
   try {
     const path = new URL(request.url).pathname.slice("/api/2fa".length);
     if (request.method !== "POST" || (path !== "/verify" && path !== "/recovery"))
@@ -65,13 +68,13 @@ export async function handleTwoFactor(request: Request) {
       return fail("rate_limited", 429);
 
     const route = path === "/verify" ? "/two-factor/verify-totp" : "/two-factor/verify-backup-code";
-    const response = await getAuth().handler(
+    const response = await withAuthentication(authorizationVersion, () => getAuth().handler(
       new Request(origin + "/api/auth" + route, {
         method: "POST",
         headers,
         body: JSON.stringify({ code }),
       }),
-    );
+    ));
     if (!response.ok) {
       const payload = await response.json().catch(() => ({})) as { code?: unknown };
       const name = typeof payload.code === "string" ? payload.code : "";

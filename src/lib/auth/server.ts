@@ -3,11 +3,24 @@ import { headers } from "next/headers";
 import { authOptions } from "./options.mjs";
 import { db } from "../db";
 import { sendOTP } from "./mail";
-import { beforePasswordWrite, isPasswordChange } from "./lifecycle";
+import { assertSessionIssuance, beforePasswordWrite, isPasswordChange, sessionIssuanceIsCurrent } from "./lifecycle";
 function createAuth(secret: string) {
   return betterAuth({
     ...authOptions(db(), secret, sendOTP),
     databaseHooks: {
+      session: {
+        create: {
+          before: async (session) => { assertSessionIssuance(session.userId); },
+          after: async (session) => {
+            // The adapter awaits between the before hook and INSERT. If a security
+            // change won that interval, remove this exact late row before any cookie.
+            if (!sessionIssuanceIsCurrent(session.userId)) {
+              db().prepare("DELETE FROM session WHERE id=? AND userId=?").run(session.id, session.userId);
+              assertSessionIssuance(session.userId);
+            }
+          },
+        },
+      },
       account: {
         update: { before: async (data) => {
           if (typeof data.password === "string") await beforePasswordWrite();

@@ -2,7 +2,8 @@ import { getAuth } from "./server";
 import { consumeLimits, privateKey } from "./limits";
 import { withMailOutcome } from "./mail";
 import { accountSession } from "./identity";
-import { withAccountChange, beforePasswordWrite } from "./lifecycle";
+import { withAccountChange, beforePasswordWrite, withAuthentication } from "./lifecycle";
+import { accountChangeVersion } from "../agent/active-query";
 import { verifyChallenge } from "./turnstile";
 import { db } from "../db";
 
@@ -44,6 +45,7 @@ function json(error: string, status: number) {
   );
 }
 export async function handleAuth(request: Request) {
+  const authorizationVersion = accountChangeVersion();
   try {
     const auth = getAuth(),
       url = new URL(request.url),
@@ -150,7 +152,8 @@ export async function handleAuth(request: Request) {
           // Lock before invoking the OTP flow, but cancel only in its authorized
           // password-write hook. Invalid OTPs must never cancel a live request.
           response = user ? await withAccountChange(user.id, call, false) : await call();
-        } else response = await call();
+        } else response = route === "/sign-in/email"
+          ? await withAuthentication(authorizationVersion, call) : await call();
         if (route === "/sign-up/email") {
           // Sign-up sends no mail automatically, so sending failure is visible and
           // recoverable using the same resend path (without retaining passwords).

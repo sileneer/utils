@@ -4,11 +4,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const vm = require("node:vm");
 const { withBookBridge } = require("../src/lib/book/bridge.ts");
-test("bridge requires same origin, exact parent, valid revision and existing entry; hidden entries clear all filters", () => {
+test("opaque reader bridge requires configured parent origin, exact parent, valid revision and existing entry", () => {
   const listeners = {},
     sent = [],
     scroll = [];
-  const parent = { postMessage: (data) => sent.push(data) };
+  const parent = { postMessage: (data, targetOrigin) => { assert.equal(targetOrigin, "http://localhost"); sent.push(data); } };
   const target = { id: "e-8-45", offsetParent: null, scrollIntoView: () => {} };
   const state = { q: "hidden", sec: new Set(["1"]), dispute: true, todo: true };
   let pending;
@@ -18,7 +18,7 @@ test("bridge requires same origin, exact parent, valid revision and existing ent
     getSelection:()=>({toString:()=>"x".repeat(2300),anchorNode:node,focusNode:node}),
     setTimeout:callback=>{pending=callback;return 1;},
     clearTimeout:()=>{pending=undefined;},
-    location: { origin: "http://localhost" },
+    location: { origin: "null" },
     document: {
       querySelectorAll: () => [target],
       getElementById: (id) => (id === target.id ? target : null),
@@ -35,7 +35,7 @@ test("bridge requires same origin, exact parent, valid revision and existing ent
     history: { replaceState: () => {} },
     scrollToEl: (el, options) => scroll.push({ el, options }),
   };
-  const script = withBookBridge("<body></body>", "a".repeat(40)).match(
+  const script = withBookBridge("<body></body>", "a".repeat(40), "http://localhost").match(
     /<script>([\s\S]*?)<\/script>/,
   )[1];
   vm.runInNewContext(script, context);

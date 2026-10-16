@@ -405,6 +405,14 @@ SDK gets its explicit runtime/provider allowlist.
   that replaces the whole data volume with an older snapshot can still roll the file back
   too; that limit is documented in ARCHITECTURE §5, and no backup is ever pruned to
   "complete" a deletion.
+- The independent SDK ownership file `/app/data/sdk-transcripts.jsonl` (mode 600)
+  must also be preserved across database-only restores. It contains user/native-session
+  ids only; startup backfills still-attributable resume pointers before deletion replay.
+  Clearing `conversations.sdk_session_id` never clears this ownership. A missing initial
+  ledger is allowed, but unreadable/corrupt complete records in either ledger prevent
+  startup; repair file ownership/restore evidence rather than bypassing reconciliation.
+  Files whose pointers were already lost before this tracking existed remain retained;
+  do not infer ownership or delete them as part of a rollout.
 - The host compose also mounts `/opt/utils/data/sdk` at
   `/home/nextjs/.claude`. Create the SDK directory as app uid 1001, mode 700,
   before recreation. This preserves native SDK resume files across deployments;

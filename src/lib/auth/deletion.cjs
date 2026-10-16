@@ -17,6 +17,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { databasePath } = require("../database.cjs");
 const { privateKey } = require("./keying.cjs");
+const { readLedger, appendLedger } = require("../durable-jsonl.cjs");
+const { ownedTranscriptIds } = require("../agent/transcripts.cjs");
 
 const DAY = 86_400_000;
 /** How long the final ceremony is refused for. See ARCHITECTURE §5 for the basis. */
@@ -39,27 +41,19 @@ const intentPath = () => path.join(path.dirname(databasePath()), INTENT_FILE);
  */
 function appendIntent(entry) {
   const file = intentPath();
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const handle = fs.openSync(file, "a", 0o600);
-  try {
-    fs.writeSync(handle, JSON.stringify(entry) + "\n");
-    fs.fsyncSync(handle);
-  } finally {
-    fs.closeSync(handle);
-  }
+  appendLedger(file, entry, validIntent);
   return file;
+}
+function validIntent(entry) {
+  return entry && typeof entry.userId === "string" && entry.userId.length > 0 && entry.userId.length <= 128 &&
+    Number.isSafeInteger(entry.at) && entry.at >= 0 && /^[a-f0-9]{64}$/.test(entry.emailHash) &&
+    Array.isArray(entry.transcripts) && entry.transcripts.every((file) => typeof file === "string" && path.isAbsolute(file));
 }
 
 /** The latest entry per identity wins; a torn trailing line from a crash is skipped. */
 function readIntents() {
-  let raw;
-  try { raw = fs.readFileSync(intentPath(), "utf8"); } catch { return []; }
   const latest = new Map();
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
-    let entry;
-    try { entry = JSON.parse(line); } catch { continue; }
-    if (!entry || typeof entry.userId !== "string") continue;
+  for (const entry of readLedger(intentPath(), validIntent).records) {
     latest.set(entry.userId, entry);
   }
   return [...latest.values()];
@@ -68,23 +62,26 @@ function readIntents() {
 /**
  * The SDK transcript files this account owns. They sit one level deep in a directory named
  * after the *shared* reader workspace, so only the exact `<sdk_session_id>.jsonl` names this
- * account's conversations carry are ever claimed — never the directory, and never a sibling.
+ * account's durable ownership ledger or remaining resume pointers carry are ever claimed
+ * — never the directory, and never an unattributable sibling.
  */
 function transcriptPaths(database, userId) {
-  const ids = database
+  const ids = [...new Set([...ownedTranscriptIds(userId), ...database
     .prepare("SELECT sdk_session_id FROM conversations WHERE owner_user_id=? AND sdk_session_id IS NOT NULL")
     .all(userId)
     .map((row) => row.sdk_session_id)
     // A session id is a filename here, so anything path-shaped is ignored rather than joined.
-    .filter((id) => /^[A-Za-z0-9_-]{1,128}$/.test(String(id ?? "")));
+    .filter((id) => /^[A-Za-z0-9_-]{1,128}$/.test(String(id ?? "")))])];
   if (!ids.length) return [];
   const root = path.join(os.homedir(), ".claude", "projects");
   let projects;
-  try { projects = fs.readdirSync(root); } catch { return []; }
+  try { projects = fs.readdirSync(root); }
+  catch (error) { if (error.code === "ENOENT") return []; throw error; }
   const found = [];
   for (const project of projects) for (const id of ids) {
     const file = path.join(root, project, id + ".jsonl");
-    try { if (fs.statSync(file).isFile()) found.push(file); } catch { /* not ours */ }
+    try { if (fs.statSync(file).isFile()) found.push(file); }
+    catch (error) { if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error; }
   }
   return found;
 }
@@ -156,7 +153,7 @@ function isAdministrator(database, userId) {
  * and `foreign_key_check` is asserted before the commit for the same reason. Only the file
  * sweep is outside the transaction, and what it could not finish stays recorded as owed.
  */
-function executeDeletion(database, userId, now = Date.now(), { reconciling = false } = {}) {
+function executeDeletion(database, userId, now = Date.now(), { reconciling = false, owed = [] } = {}) {
   const user = database.prepare("SELECT id, email FROM user WHERE id=?").get(userId);
   if (!user) return { deleted: false, alreadyGone: true };
   const emailHash = privateKey(user.email);
@@ -164,7 +161,7 @@ function executeDeletion(database, userId, now = Date.now(), { reconciling = fal
   // typed and some by the normalized form. Both are this account's rows.
   const normalizedHash = privateKey(String(user.email).trim().toLowerCase());
   const userHash = privateKey(userId);
-  const transcripts = transcriptPaths(database, userId);
+  const transcripts = [...new Set([...transcriptPaths(database, userId), ...owed])];
   const refused = database.transaction(() => {
     // The account fence is per identity, so two administrators may reach this point
     // concurrently. Serialize the global invariant with the deletion itself, after
@@ -223,7 +220,7 @@ function reconcileDeletions(database, now = Date.now()) {
   for (const intent of readIntents()) {
     if (database.prepare("SELECT id FROM user WHERE id=?").get(intent.userId)) {
       repaired.push({ userId: intent.userId, kind: "identity" });
-      executeDeletion(database, intent.userId, now, { reconciling: true });
+      executeDeletion(database, intent.userId, now, { reconciling: true, owed: intent.transcripts });
       continue;
     }
     const owed = (intent.transcripts ?? []).filter((file) => fs.existsSync(file));

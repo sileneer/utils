@@ -43,6 +43,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/migrations ./migrations
 COPY --from=builder --chown=nextjs:nodejs /app/src/lib/database.cjs ./src/lib/database.cjs
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib/durable-jsonl.cjs ./src/lib/durable-jsonl.cjs
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib/agent/transcripts.cjs ./src/lib/agent/transcripts.cjs
 # Migration startup is outside Next's traced route graph. Carry its complete
 # CommonJS deletion/reconciliation dependency chain in the final image.
 COPY --from=builder --chown=nextjs:nodejs \

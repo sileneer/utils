@@ -662,6 +662,135 @@ function handleAgent(route, cookie, body = {}) {
     : new Request(url, { headers: { cookie } }));
 }
 
+/** Control either asynchronous boundary without replacing credential verification. */
+async function pausedSessionCreation(beforeInsert = false) {
+  const context = await getAuth().$context;
+  const target = beforeInsert ? context.adapter : context.internalAdapter;
+  const method = beforeInsert ? "create" : "createSession";
+  const original = target[method];
+  let entered, resume;
+  const waiting = new Promise((resolve) => { entered = resolve; });
+  const released = new Promise((resolve) => { resume = resolve; });
+  let once = true;
+  target[method] = async function (...args) {
+    if (once && (!beforeInsert || args[0].model === "session")) {
+      once = false;
+      entered();
+      await released;
+    }
+    return original.apply(this, args);
+  };
+  return { waiting, resume, restore: () => { target[method] = original; } };
+}
+
+test("a password-only login in flight cannot survive TOTP activation", async () => {
+  const person = await create("factor-login-race@example.test");
+  assert.equal((await account("/2fa/enable", { password: person.password }, person.cookie)).status, 200);
+  clearBuckets();
+  const pause = await pausedSessionCreation();
+  const login = auth("sign-in/email", { email: person.email, password: person.password });
+  try {
+    await pause.waiting;
+    const confirmed = await account("/2fa/confirm", { code: await codeFor(person.id) }, person.cookie);
+    assert.equal(confirmed.status, 200);
+    pause.resume();
+    const stale = await login;
+    assert.equal(stale.ok, false);
+    assert.equal(stale.headers.getSetCookie().length, 0);
+    assert.equal(sessionCount(person.id), 0);
+  } finally { pause.resume(); pause.restore(); }
+  clearBuckets();
+  assert.deepEqual((await loginWithFactor(person)).includes("session_token="), true);
+});
+
+for (const beforeInsert of [false, true]) test(`password change rejects a late old-password session ${beforeInsert ? "after the before hook" : "before the before hook"}`, async () => {
+  const person = await create(`password-login-race-${beforeInsert}@example.test`);
+  const pause = await pausedSessionCreation(beforeInsert);
+  const login = auth("sign-in/email", { email: person.email, password: person.password });
+  const next = password();
+  try {
+    await pause.waiting;
+    assert.equal((await account("/password", { currentPassword: person.password, newPassword: next }, person.cookie)).status, 200);
+    pause.resume();
+    const stale = await login;
+    assert.equal(stale.ok, false);
+    assert.equal(stale.headers.getSetCookie().length, 0);
+    assert.equal(sessionCount(person.id), 1, "only the acting password-change session remains");
+  } finally { pause.resume(); pause.restore(); }
+  clearBuckets();
+  assert.equal((await auth("sign-in/email", { email: person.email, password: next })).status, 200);
+});
+
+test("a different account's security change does not reject or cancel a normal login", async () => {
+  const person = await create("login-unrelated@example.test");
+  const other = await create("login-other@example.test");
+  clearBuckets();
+  const pause = await pausedSessionCreation();
+  const login = auth("sign-in/email", { email: person.email, password: person.password });
+  const { reserveQuery, releaseQuery } = require("../src/lib/agent/active-query.ts");
+  const query = { owner: person.id, turn: randomUUID(), abort: new AbortController() };
+  assert.equal(reserveQuery(query), true);
+  try {
+    await pause.waiting;
+    assert.equal((await account("/password", { currentPassword: other.password, newPassword: password() }, other.cookie)).status, 200);
+    pause.resume();
+    assert.equal((await login).status, 200);
+    assert.equal(query.abort.signal.aborted, false, "ordinary authentication never stops paid work");
+  } finally { pause.resume(); pause.restore(); releaseQuery(query); }
+});
+
+test("a recovery code cannot confirm pending TOTP or manufacture an activation event", async () => {
+  const person = await create("factor-confirm-recovery@example.test");
+  const issued = await account("/2fa/enable", { password: person.password }, person.cookie);
+  const { backupCodes } = await issued.json();
+  clearBuckets();
+  const refused = await account("/2fa/confirm", { code: backupCodes[0] }, person.cookie);
+  assert.equal(refused.status, 400);
+  assert.deepEqual(await refused.json(), { error: "bad_request" });
+  assert.equal(userRow(person.id).twoFactorEnabled, 0);
+  assert.equal(factorRow(person.id).verified, 0);
+  assert.deepEqual(eventsFor(person.id), []);
+  assert.equal((await statusOf(person.cookie)).codesRemaining, 10, "rejected enrollment proof spends no recovery code");
+  clearBuckets();
+  assert.equal((await account("/2fa/confirm", { code: await codeFor(person.id) }, person.cookie)).status, 200);
+});
+
+test("a password change invalidates an unfinished second-factor password proof", async () => {
+  const person = await create("factor-old-challenge@example.test");
+  await enroll(person);
+  await loginWithFactor(person);
+  clearBuckets();
+  const pending = await login(person);
+  assert.deepEqual(pending.body, { twoFactorRequired: true });
+  clearBuckets();
+  assert.equal((await account("/password", { currentPassword: person.password, newPassword: password() }, person.cookie)).status, 200);
+  clearBuckets();
+  const refused = await factor("/verify", { code: await codeFor(person.id) }, pending.cookie);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.headers.getSetCookie().length, 0);
+  assert.equal(sessionCount(person.id), 1, "only the password-changing session remains");
+});
+
+test("in-flight second-factor completion cannot mint a late session after password change", async () => {
+  const person = await create("factor-completion-race@example.test");
+  await enroll(person);
+  await loginWithFactor(person);
+  clearBuckets();
+  const pending = await login(person);
+  clearBuckets();
+  const pause = await pausedSessionCreation();
+  const completing = factor("/verify", { code: await codeFor(person.id) }, pending.cookie);
+  try {
+    await pause.waiting;
+    assert.equal((await account("/password", { currentPassword: person.password, newPassword: password() }, person.cookie)).status, 200);
+    pause.resume();
+    const refused = await completing;
+    assert.equal(refused.ok, false);
+    assert.equal(refused.headers.getSetCookie().length, 0);
+    assert.equal(sessionCount(person.id), 1);
+  } finally { pause.resume(); pause.restore(); }
+});
+
 test.after(async () => {
   global.fetch = originalFetch;
   db().close();

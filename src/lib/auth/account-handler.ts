@@ -214,7 +214,7 @@ async function handleTwoFactorManagement(
   }
 
   if (path === "/2fa/confirm") {
-    if (!code) return fail("bad_request", 400);
+    if (!/^\d{6}$/.test(code)) return fail("bad_request", 400);
     if (status.enabled) return fail("already_enabled", 409);
     if (!status.pending) return fail("not_enabled", 409);
     return factorAttempt(async () => {
@@ -222,6 +222,8 @@ async function handleTwoFactorManagement(
       await withAccountChange(userId, async () => {
         await beforePasswordWrite();
         await proveFactor(cookie, code);
+        const confirmed = await twoFactorStatus(userId);
+        if (!confirmed.enabled || confirmed.pending) throw new Error("factor_not_enabled");
         // Every session goes, including this one, so no login that never faced a
         // challenge survives the moment the factor turns on.
         affected = revokeAllSessions(userId);

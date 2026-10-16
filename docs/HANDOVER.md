@@ -1,6 +1,6 @@
 # Handover
 
-**Updated 2026-10-15 for the locally implemented PLANNING §14 batches A, B, C1, C2,
+**Updated 2026-10-16 for the codebase audit fixes and the locally implemented PLANNING §14 batches A, B, C1, C2,
 the §14.7 security activity record, the §14.7 TOTP second factor, the §14.7 passkey
 capability and the §14.7 account deletion.**
 The full account/UI acceptance below is dated **2026-10-09**; the
@@ -35,7 +35,10 @@ AI calls. On 2026-10-15 the owner requested fixes for the six commit-review find
 and completion of the subsequent work, including local verification, commits and feature-branch
 PR preparation. The owner explicitly chose allowing deletion without a complete export only
 after a separate final-dialog acknowledgement. No approval covers merging `main` or a
-production rollout. Batches A, B, C2, C1, the activity record, TOTP,
+production rollout. The owner then requested fixing all five subsequent codebase-audit
+findings and full testing, and continued that work on 2026-10-16. This includes local
+fixes/regressions and updating the existing feature PR; it does not authorize production
+account/data actions, merge or deployment. Batches A, B, C2, C1, the activity record, TOTP,
 passkeys and deletion are
 implemented locally and unmerged; production still runs the §13 release. **No production
 account has two-factor enabled**, and enabling it for the owner account is separately
@@ -49,6 +52,18 @@ pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
 
 Current local branch: `codex/account-improvement-plan-20261013`, based on `e209d59`
 (the PR #8 squash merge). The checkout started clean.
+
+**Codebase audit fixes, 2026-10-16:** the five findings from application HEAD `ff386ce`
+are fixed on this branch: stale login issuance, executable book origin, lost SDK file
+ownership, fail-open ledger reads and recovery-code TOTP initialization. Sixteen new
+regressions bring the full suite to 206; fresh local and browser verification is in §7.
+The change adds a small native ownership ledger and shared durable JSONL helper, but no
+npm dependency, migration, env variable or production action. Docker explicitly includes
+their CLI startup dependencies. Existing `.zcode/`, ignored investigations, retained data
+and unowned historical logs are preserved. The exact follow-up PR head/CI/image result
+is recorded in ignored `data/investigation/codebase-audit-20261015/pr-receipt.json`;
+re-check that receipt and GitHub before publication. PR #9 remains unmerged. The earlier
+batch records below are dated implementation receipts, not today's release position.
 
 **Commit review and fixes, 2026-10-15:** the initial review covered 13 local commits
 through `fa95882` against `e209d59` (75 changed paths). All six findings are now fixed
@@ -242,6 +257,19 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
   debugging lessons. AGENTS is the shared rulebook; CLAUDE imports it.
 
 ## 4. Next actions
+
+**Five subsequent audit findings closed locally, 2026-10-16.** Session issuance now
+validates the account generation before and after insertion for password/TOTP/passkey
+login, and security writes invalidate unfinished password-to-2FA challenges. Initial
+factor activation requires TOTP and confirmed persisted state. SDK ownership survives
+failed/stopped/replaced runs and cleared resume pointers in its own preserved ledger;
+deletion unions prior owed cleanup on restore. Ledger read/corruption failures stop
+startup/removal. Both the reader iframe and direct HTML response enforce opaque origin,
+with a bounded bridge handshake and failure/retry handling. Keep the PR unmerged and
+verify its exact accepted head and CI/image/security gates before any newly authorized
+publication. Unattributable pre-existing logs remain retained: no automatic historical
+cleanup was authorized or attempted. Real-device, real-mail and production acceptance
+remain outside this pass. The previous six findings below also remain fixed.
 
 **Review findings closed locally, 2026-10-15.** Verification deletion now matches exact
 OTP identifiers and guards JSON extraction. The global last-administrator invariant is
@@ -494,6 +522,55 @@ application. Screenshots, the CDP drivers and the fixture databases stay local a
 touched, and no real SDK transcript was removed.**
 
 ## 7. Verification and limits
+
+**Codebase audit fix acceptance (2026-10-16):** fresh full offline suite **206/206**,
+full lint and production build (TypeScript plus standalone sanitization) exit 0 with the
+existing Node 24.19.0 runtime. New cases exercise login issuance on both sides of the
+adapter's await, 2FA/password/passkey interleavings, unrelated-account independence,
+no ordinary-login cancellation, old challenge invalidation, initial recovery-code refusal,
+failed/stopped/replaced transcript cleanup, restored ownership/backfill, conflicting owner
+refusal, ledger EACCES/EIO, crash-tail recovery, malformed complete records and prior owed
+file cleanup. The book route's response policy is regression-covered for direct access.
+
+Fresh isolated headless Chrome passes **12 account and 12 reader combinations**:
+en/zh × light/dark × 360/768/1280px. Account flows include recovery-code login, virtual
+passkey registration/removal, 201-conversation export waiver, final deletion, stale reads
+and manual retry; card/dialog axe checks have zero violations (the previously documented
+secondary-hover OKLCH parser incomplete remains a tool limitation). Reader checks include
+theme inside the opaque frame, selection, pinned older-revision citation navigation,
+draft/context retention on return and no horizontal overflow. Injected upstream scripts
+cannot read storage or authenticated APIs in either iframe or direct navigation, nor the
+parent DOM from the iframe. A forced 502 reports failure and retries successfully. The
+reader screenshots were captured after animations and visually inspected; no page errors.
+No physical-device or real-provider claim is made. Agent-browser's native Windows binary
+remains unavailable, so the existing bundled Playwright/Chrome fallback was used.
+
+Evidence is ignored `data/investigation/codebase-audit-20261015/`: `final-tests.log`,
+`final-lint.log`, `final-build.log`, `browser-receipt.json`, `reader-browser-receipt.json`,
+screenshots and the exact-head PR/CI receipt. Local Docker is unavailable; final Linux
+image checks run in the feature PR's acceptance workflow and are recorded separately in
+that receipt. The owned preview/browser processes are closed and ports 3041/3042 verified
+closed. No real mail, paid AI, production account/data mutation, retained-file cleanup,
+merge or deployment occurred. All earlier audit evidence below is historical.
+
+**Subsequent codebase audit verification (2026-10-15, `ff386ce`):** fresh full offline
+suite **190/190**, full lint and full production build (including TypeScript and
+standalone sanitization) exit 0 on the existing Node 24.19.0 runtime. Three isolated
+reproduction scripts exercise six failing-behaviour scenarios: login versus 2FA enable,
+login versus password change, pending-factor confirmation with a recovery code,
+failed-chat transcript deletion, startup with an unreadable deletion ledger, and an
+upstream HTML script reading a synthetic authenticated API in headless Chrome.
+The auth tests use the real installed Better Auth/SQLite code, delaying one session
+creation to control interleaving; mail is mocked. The chat test uses a synthetic SDK
+stream and fake home; the startup test injects `EACCES` only for the fixture ledger.
+The browser fixture uses the actual book route with injected HTML, a synthetic API,
+an HttpOnly disposable cookie and a fresh browser profile; it never visits production.
+All browser/server processes used by that fixture closed on completion. Evidence:
+ignored `data/investigation/codebase-audit-20261015/` (`findings.md`, `reproduce-*.cjs`,
+`auth-receipt.json`, `storage-receipt.json`, `book-receipt.json`, test/lint/build logs).
+These reproductions confirm gaps beyond the green regression suite; they are not
+production exploitation evidence. No new full locale/theme/viewport matrix, physical
+device acceptance, Docker/CI run, real mail, paid AI or production QA occurred.
 
 **Review-fix acceptance (2026-10-15):** **190/190** offline tests passed (four new
 regressions cover mixed verification values/startup, overlapping admin deletions, UTF-8

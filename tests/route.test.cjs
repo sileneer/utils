@@ -18,6 +18,7 @@ process.env.DATABASE_PATH = path.join(
   "utils.sqlite",
 );
 process.env.APP_URL = "http://localhost";
+process.env.BETTER_AUTH_SECRET = randomUUID() + randomUUID();
 process.env.AI_ENABLED = "1";
 process.env.AI_USER_DAILY_LIMIT = "100";
 process.env.AI_GLOBAL_DAILY_LIMIT = "100";
@@ -459,6 +460,65 @@ test("cross-user history and writes rejected; quota guard prevents upstream invo
   process.env.AI_USER_DAILY_LIMIT = "1";
   assert.equal((await POST(request())).status, 429);
 });
+test("failed and stopped SDK runs retain exact transcript ownership through replacement and deletion", async () => {
+  process.env.AI_USER_DAILY_LIMIT = "100";
+  const fsSync = require("node:fs"), os = require("node:os");
+  const originalHome = os.homedir;
+  const home = path.join(process.env.AGENT_DATA_DIR, "fixture-home");
+  const projects = path.join(home, ".claude", "projects", "shared-reader");
+  await fs.mkdir(projects, { recursive: true });
+  os.homedir = () => home;
+  const { ownedTranscriptIds } = require("../src/lib/agent/transcripts.cjs");
+  const deletion = require("../src/lib/auth/deletion.cjs");
+  const db = database.getDatabase();
+  const neighbour = path.join(projects, randomUUID() + ".jsonl");
+  await fs.writeFile(neighbour, "unattributed retained fixture");
+  try {
+    for (const outcome of ["failed", "stopped"]) {
+      const owner = randomUUID(), id = randomUUID(), turnId = randomUUID();
+      db.prepare("INSERT INTO user(id,name,email,emailVerified,createdAt,updatedAt,role,status) VALUES (?,?,?,?,?,?,?,?)")
+        .run(owner, "Fixture", owner + "@example.test", 1, Date.now(), Date.now(), "user", "active");
+      authenticatedOwner = owner;
+      const first = randomUUID(), replacement = randomUUID();
+      let ready;
+      const started = new Promise((resolve) => { ready = resolve; });
+      queryImpl = async function* (input) {
+        await fs.writeFile(path.join(projects, first + ".jsonl"), "synthetic private exchange");
+        yield { type: "system", subtype: "init", session_id: first };
+        if (outcome === "stopped") await new Promise((resolve, reject) => {
+          input.options.abortController.signal.addEventListener("abort", () => reject(Error("stopped")), { once: true });
+          ready();
+        });
+        yield { type: "result", subtype: "error_during_execution", errors: ["fixture failure"] };
+      };
+      const controller = new AbortController();
+      const running = await POST(request({ sessionId: id, turnId }, controller.signal));
+      if (outcome === "stopped") { await started; controller.abort(); }
+      assert.equal((await events(running)).at(-1).type, "error");
+      assert.equal(db.prepare("SELECT sdk_session_id FROM conversations WHERE id=?").get(id).sdk_session_id, null);
+      assert.ok(ownedTranscriptIds(owner).includes(first));
+      queryImpl = async function* () {
+        await fs.writeFile(path.join(projects, replacement + ".jsonl"), "replacement private exchange");
+        yield { type: "system", subtype: "init", session_id: replacement };
+        yield { type: "result", subtype: "success", result: "recovered" };
+      };
+      const retry = await POST(request({ sessionId: id, turnId }));
+      assert.equal(retry.status, 200);
+      assert.equal((await events(retry)).at(-1).type, "done");
+      assert.ok(ownedTranscriptIds(owner).includes(replacement));
+      // The documented database-only restore removes resume pointers, not ownership.
+      db.prepare("UPDATE conversations SET sdk_session_id=NULL,needs_rebuild=1 WHERE id=?").run(id);
+      const deleted = deletion.executeDeletion(db, owner);
+      assert.equal(deleted.deleted, true);
+      assert.equal(deleted.transcripts.length, 2);
+      assert.deepEqual(deleted.outstanding, []);
+      assert.equal(fsSync.existsSync(path.join(projects, first + ".jsonl")), false);
+      assert.equal(fsSync.existsSync(path.join(projects, replacement + ".jsonl")), false);
+      assert.equal(fsSync.existsSync(neighbour), true, "only attributable files can be removed");
+    }
+  } finally { os.homedir = originalHome; authenticatedOwner = "owner"; }
+});
+
 test.after(async () => {
   Module._load = load;
   database.getDatabase().close();

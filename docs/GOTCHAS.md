@@ -838,3 +838,31 @@ did not place their raw files in the runner. **Fix** carry the complete CommonJS
 explicitly in Dockerfile and require reconciliation in the image artifact check. Compare
 applied migration filenames against the image directory in persistence/restore checks;
 a historical literal count of three is not the current schema contract.
+
+### A before-session hook alone does not close a login race
+
+**Symptom** a password-only session appears after 2FA activation or password change
+already revoked other sessions. **Cause** the sign-in loaded its user/password proof
+before the security change and inserted the session afterwards; the 2FA plugin uses
+that earlier user snapshot. **Fix** capture the account authorization version at login
+entry, check it before and after the adapter insert, and remove a late row before any
+cookie. Cover both interleavings with the real library. Pending 2FA challenges are
+password proofs too and must be invalidated on the confirmed security write.
+
+### An opaque reader cannot use same-origin DOM readiness
+
+**Symptom** the isolated book never reports ready, or a failed navigation stays blank.
+**Cause** sandboxed script messages serialize origin as `null`; parent DOM inspection
+is forbidden, and failed iframe navigation need not fire `onLoad`. **Fix** check the
+exact window and message shape, inject the trusted parent origin into the bridge, and
+use init/ready deadlines on mount/replacement as well as load. Only the public
+parent-to-opaque-reader message uses target `*`. Test direct book navigation too: an
+iframe attribute alone cannot isolate the route when opened as a top-level document.
+
+### Windows append handles cannot truncate a torn ledger tail
+
+**Symptom** recovery append throws `EPERM` from `ftruncate`. **Cause** an append-only
+Windows handle lacks truncation rights. **Fix** validate the complete ledger first,
+truncate only the unfinished final fragment using its separate path operation, then
+open for append, write the complete line and fsync. The supported runtime is one process;
+complete malformed records and read permission/I/O errors remain fatal.

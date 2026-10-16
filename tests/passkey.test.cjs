@@ -473,6 +473,35 @@ test("nothing secret is ever stored or returned", async () => {
   assert.equal(listPasskeys(person.id).length, 1);
 });
 
+test("a passkey assertion in flight cannot create a session across an account security change", async () => {
+  const person = await create("pk-issuance-race@example.test");
+  const device = createAuthenticator({ rpId: RP_ID, origin: origin() });
+  assert.equal((await register(person, device, "Race fixture")).finished.status, 200);
+  clearBuckets();
+  const options = await passkeyOptions();
+  const challenge = await options.json(), cookie = jar("", options);
+  const context = await require("../src/lib/auth/server.ts").getAuth().$context;
+  const original = context.internalAdapter.createSession;
+  let entered, resume;
+  const waiting = new Promise((resolve) => { entered = resolve; });
+  const released = new Promise((resolve) => { resume = resolve; });
+  let once = true;
+  context.internalAdapter.createSession = async function (...args) {
+    if (once) { once = false; entered(); await released; }
+    return original.apply(this, args);
+  };
+  const completing = passkeyVerify(device.assert(challenge.challenge), cookie);
+  try {
+    await waiting;
+    assert.equal((await account("/password", { currentPassword: person.password, newPassword: password() }, person.cookie)).status, 200);
+    resume();
+    const refused = await completing;
+    assert.equal(refused.ok, false);
+    assert.equal(refused.headers.getSetCookie().length, 0);
+    assert.equal(db().prepare("SELECT count(*) n FROM session WHERE userId=?").get(person.id).n, 1);
+  } finally { resume(); context.internalAdapter.createSession = original; }
+});
+
 test.after(async () => {
   try { db().close(); } catch { /* already closed */ }
   await fs.rm(directory, { recursive: true, force: true });

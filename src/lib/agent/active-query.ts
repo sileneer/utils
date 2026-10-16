@@ -90,6 +90,9 @@ export function serviceBusy() {
 
 // A request that authenticated before revocation cannot register after the fence.
 export function accountChangeVersion() { return state.version; }
+export function authorizationIsCurrent(owner: string, version: number) {
+  return !state.blocked.has(owner) && version >= (state.accountVersions.get(owner) ?? 0);
+}
 export function blockOwnerQueries(owner: string) {
   if (state.blocked.has(owner)) throw new Error("account_busy");
   state.blocked.add(owner);

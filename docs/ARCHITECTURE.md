@@ -289,6 +289,15 @@ transcripts are never served to the browser. SQLite backups do not include them;
 on database-only restoration invalidate saved SDK IDs and rebuild from completed
 visible history rather than resuming an unavailable transcript.
 
+Native file ownership is independent of that resume pointer. `sdk-transcripts.jsonl`,
+beside the database (mode 600), appends and fsyncs `{userId, sdkSessionId}` at every
+observed SDK init before that id can be discarded. Startup backfills only existing
+explicit conversation-to-id mappings and validates the preserved ledger. It contains no
+message text or credentials and is not in SQLite backups. Keep it across database-only
+restores; failed/stopped/replaced sessions remain attributable even after resume ids are
+cleared. A conflicting owner is refused. Pre-existing files whose pointers were already
+lost cannot be safely attributed and remain retained for a separately authorized audit.
+
 GET /api/agent/session without id returns identity, personal availability and
 that owner's active turn when present; with id it returns their visible messages,
 source revision, title and archive state. It never returns native IDs or login
@@ -537,7 +546,8 @@ current verified active identity, a login inside 24 hours and the current passwo
 stores the secret and a fresh set of recovery codes with `verified = 0` and leaves
 `twoFactorEnabled` false, so an abandoned enrolment cannot lock anyone out and cannot
 weaken the account. `confirm` requires the same identity plus a valid code from the new
-device; only then does the library flip `verified` and `twoFactorEnabled`, and the
+device (exactly six TOTP digits; a recovery code cannot initialize the factor);
+only then does the library flip `verified` and `twoFactorEnabled`, and the
 wrapper immediately revokes every other session inside the account fence. The response
 carries the provisioning secret and the plaintext recovery codes exactly once; they are
 never logged, never placed in a URL, and never written to browser storage (see DESIGN
@@ -815,6 +825,16 @@ OTP. Invalid OTP/current password/foreign target cannot cancel a live query. A
 failed authorized reset may consume its OTP before cancellation timeout; request
 another code. Framework session-revocation and password hashing remain in place.
 
+Password, second-factor and passkey sign-in capture the authorization version at
+request entry in an AsyncLocalStorage issuance context. Session create hooks check
+that owner's version before and after the adapter insert; a late row is deleted and no
+cookie is issued if a security change intervened. Another account's changes do not
+invalidate the proof, and ordinary login neither stops a query nor revokes sessions.
+After confirmed cancellation, the security-change hook also deletes that owner's pending
+2FA challenges and attempt rows, so a password proof from before the change cannot be
+completed in a later request. Initial TOTP confirmation checks the persisted enabled and
+verified state before recording success.
+
 Login destinations use navigation.ts's site-route allowlist. Login/register/verify/
 reset links preserve safe returnTo, including reading query/hash; direct login
 returns home. External/protocol-relative/encoded separator/control URLs and auth
@@ -915,7 +935,8 @@ subtree at all, so it can never be part of a deletion.
 | `limits` | delete by keyed digest | rows whose HMAC covers this email (both forms) or this user id; the IP-keyed buckets are not attributable to an account and stay, because they protect the site rather than describe the person |
 | `rateLimit` (library) | retain | keys are `ip\|path`, never an identity, and the library expires them |
 | `mail_requests` | **anonymize, do not delete** | `email_hash` becomes a fixed deletion marker while `purpose`, `created_at`, `status` and `provider_id` stay, so the global daily mail budget keeps counting what it actually sent without continuing to describe a deleted person. No mail body or OTP was ever stored |
-| SDK transcripts `~/.claude/projects/*/<sdk_session_id>.jsonl` | delete by exact filename, after the database commits | one file per conversation inside a **shared** project directory, so only the names this account owned are touched; SQLite backups never contained them, and a database-only restore already clears `sdk_session_id` with `needs_rebuild = 1` |
+| SDK transcripts `~/.claude/projects/*/<sdk_session_id>.jsonl` | delete by exact filename, after the database commits | use the durable ownership ledger plus any still-known resume pointers; include failed/stopped/replaced runs, never the shared directory or an unattributed older file |
+| `sdk-transcripts.jsonl` | retain the minimal ownership mapping | user id and SDK id only, no message content or credentials; independent of SQLite restore and needed to retain attributable cleanup duties |
 | `AGENT_DATA_DIR/versions/**` | retain | shared, immutable, ownerless source pairs; other readers and older messages reference them |
 | retired `data/agent/sessions/*.json` | out of reach, retained | no owner column exists, so they cannot be attributed to this account; an operator-side sweep is the only route and it is not part of this feature |
 | browser `htlb_chat_session_id:<id>`, `htlb_chat_model:<id>`, `htlb_chat_draft:<id>:*`, `sessionStorage utils_verify_email` | cleared by the client on completion | id-namespaced, so another account's drafts on the same browser are untouched; the device theme keys deliberately survive, because they describe the device, not the account |
@@ -931,6 +952,14 @@ and a refused request leaves no intent for startup to execute.
 `foreign_key_check` is asserted after the deletion for exactly that reason. The file sweep
 cannot join that transaction, so it happens after the commit and its outstanding paths are
 carried in the durable intent record below until they succeed.
+
+Reconciliation unions previously owed paths with the restored database's known files;
+it never replaces old cleanup duties with an empty restored resume pointer. Ledger reads
+allow only an absent initial file (`ENOENT`) and an unfinished final JSON fragment.
+Permission/I/O errors, malformed complete lines and invalid complete records fail closed:
+migration/startup or deletion stops instead of treating the ledger as empty. A subsequent
+append truncates only an unfinished crash fragment, preserves all complete records and
+fsyncs the new line. Existing backups and unknown historical files are never swept.
 
 **States.** `account_deletions` holds at most one row per account and is the whole state
 machine: `requested_at`, `eligible_at` (the end of the cooling-off period), `expires_at`
@@ -1003,10 +1032,21 @@ the revision actually served; retaining an old pair is not proof of an upstream
 update. Legacy cache/reader/clone paths may remain on existing volumes but are
 not used as an unverified fallback by this implementation.
 
-The local wrapper injects src/lib/book/bridge.ts; it does not alter upstream.
-Both sides validate origin and exact window source. An init/ready handshake
+The local wrapper injects src/lib/book/bridge.ts; the retained upstream pair is unchanged.
+Both iframe sandbox and response CSP sandbox omit `allow-same-origin`, so upstream
+scripts have an opaque origin even when the book route is opened directly. Inline
+reading scripts/styles and embedded data images remain available; CSP denies fetch,
+forms, child frames, base URLs and objects, and limits external fonts/styles to the
+existing Google Fonts hosts. Separate outbound-link windows do not share the reader
+origin. The reader cannot access app storage, authenticated API responses or parent DOM.
+The bridge checks the configured parent origin and exact parent window; the shell checks
+the exact reader window, serialized origin `null`, revision and bounded message shapes.
+Only parent-to-opaque-reader messages use `*`, carrying public theme/navigation data.
+An init/ready handshake
 survives iframe completion before hydration; ready advertises the revision and
-entry anchors. Selection offers Ask AI, sending at most 2000 characters from a
+entry anchors. Readiness uses handshake deadlines on mount/replacement and on load,
+because an error navigation may omit `onLoad`; no cross-frame DOM inspection is used.
+Failure keeps the existing localized retry action. Selection offers Ask AI, sending at most 2000 characters from a
 selected entry, with visible removable source context. Each send consumes that
 explicit context once. Source navigation takes the message's revision and entry
 anchor. If another source is displayed, the iframe loads the exact requested

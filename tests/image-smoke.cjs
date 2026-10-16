@@ -38,6 +38,8 @@ function artifactCheck() {
   // Startup migrations import these before the Next route bundles exist. A route
   // build can succeed while this untraced CommonJS dependency chain is missing.
   assert.equal(typeof require("/app/src/lib/auth/deletion.cjs").reconcileDeletions, "function");
+  assert.equal(typeof require("/app/src/lib/agent/transcripts.cjs").backfillTranscriptOwners, "function");
+  assert.equal(typeof require("/app/src/lib/durable-jsonl.cjs").readLedger, "function");
   const Database = require("better-sqlite3"), db = new Database(":memory:");
   assert.equal(db.prepare("SELECT sqlite_version() version").get().version, "3.53.4");
   db.close();

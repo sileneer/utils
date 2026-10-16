@@ -619,6 +619,36 @@ test("the durable intent keeps a restored database from resurrecting a deleted i
   assert.equal(rowsFor(again).user, 1, "the guard matches the id, which is never reused");
 });
 
+test("an unreadable preserved deletion ledger prevents startup instead of resurrecting an identity", async () => {
+  const person = await create("dl-unreadable@example.test");
+  deletion.appendIntent({ userId: person.id, at: Date.now(), emailHash: require("../src/lib/auth/keying.cjs").privateKey(person.email), transcripts: [] });
+  const read = fs.readFileSync;
+  try {
+    for (const code of ["EACCES", "EIO"]) {
+      fs.readFileSync = function (file, ...args) {
+        if (path.resolve(String(file)) === path.resolve(deletion.intentPath())) throw Object.assign(Error("fixture read failure"), { code });
+        return read.call(this, file, ...args);
+      };
+      await assert.rejects(database.migrate(db()), { code });
+      assert.equal(rowsFor(person).user, 1, "the app must remain offline while the record cannot be read");
+    }
+  } finally { fs.readFileSync = read; }
+  deletion.reconcileDeletions(db());
+  assert.equal(rowsFor(person).user, 0);
+});
+
+test("restored deletion retains a prior outstanding transcript even without a resume pointer", async () => {
+  const person = await create("dl-owed@example.test");
+  const owed = path.join(directory, "owed-fixture.jsonl");
+  fs.writeFileSync(owed, "owned synthetic transcript");
+  deletion.appendIntent({ userId: person.id, at: Date.now(), emailHash: require("../src/lib/auth/keying.cjs").privateKey(person.email), transcripts: [owed] });
+  assert.ok(!db().prepare("SELECT sdk_session_id FROM conversations WHERE owner_user_id=?").get(person.id));
+  deletion.reconcileDeletions(db());
+  assert.equal(fs.existsSync(owed), false);
+  assert.equal(rowsFor(person).user, 0);
+  assert.deepEqual(deletion.readIntents().find((entry) => entry.userId === person.id).transcripts, []);
+});
+
 test("nothing secret or personal survives in the tables a deletion is supposed to clear", async () => {
   const person = await create("dl-clean@example.test");
   seed(person, { messages: 3 });
