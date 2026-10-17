@@ -1,6 +1,6 @@
 # Handover
 
-**Updated 2026-10-17 for reviewed public-tool release preparation.**
+**Updated 2026-10-17 after the reviewed public-tool release and live acceptance.**
 Current release evidence is in §2/§5/§7; earlier implementation and acceptance
 entries are dated historical receipts. Runtime contracts:
 [ARCHITECTURE](ARCHITECTURE.md); operations: [DEPLOYMENT](DEPLOYMENT.md);
@@ -57,18 +57,32 @@ No such sensitive action was exercised for this release. Existing paid QA budget
 
 ## 2. Checkout and release position
 
-**Current review position:** the checkout began clean at `524a402` on
-`codex/release-handover-20261016`, with ten commits beyond `origin/main` (`69e7a5d`).
-Those commits cover the four tools, their handovers and the owner-introduction
-cleanup. The accompanying review-fix commit closes numeric edge cases, JSON
-position/output bounds, QR draft tracking, new-tool login return paths,
-accessibility/contrast and the existing chat POST Origin gap. No schema, provider
-configuration, production account or retained content is changed. All changed
-paths and the existing auth/ownership, SDK/book isolation, persistence and
-deployment boundaries were reviewed; fresh checks are in §7. PR/exact-head/image
-acceptance and deployment are pending, not proved by the local results.
-Ignored `.zcode/`, previous investigations and data remain preserved; private
-evidence is under `data/investigation/tools-release-review-20261017/`.
+**Current release:** PR [#10](https://github.com/sileneer/utils/pull/10) was
+squash-merged on 2026-10-17 as `82921bb684a16bf2c27ff0aa5c451dd05a45f872`, from
+accepted head `1c1402c4166375b2b3d49b0b3defcbdb1fb9892a`. Exact-head acceptance
+[38997358725](https://github.com/sileneer/utils/actions/runs/38997358725),
+GitGuardian and qlty were green immediately before merge; main had no configured
+branch protection and no check was bypassed. The merged tree equals the accepted
+head. CI/CD [39023644597](https://github.com/sileneer/utils/actions/runs/39023644597)
+passed all test, full-image, publish and deploy jobs. The running OCI revision
+matches `82921bb` and is healthy; live route/data acceptance is recorded in §5/§7.
+
+Review covered the ten original commits through `524a402` and all changed paths,
+plus existing auth/ownership, SDK/book isolation, persistence and deployment
+boundaries. Fixes close numeric edge cases, JSON position/output bounds, QR draft
+tracking, new-tool login returns, accessibility/contrast and the existing chat POST
+Origin gap. No schema, provider configuration or production account was changed.
+The original reviewed commit history, including fix commits `2f8c29f` and
+`d29aa30`, is retained locally on `codex/public-tools-history-20261017`. The PR
+history was consolidated to remove a synthetic password-shaped historical test
+fixture from security-gate input; the final tree was verified identical before an
+exact force-with-lease update. No real credential was involved or gate suppressed.
+
+Local `main`/`origin/main` are synchronized to `82921bb`. The current local-only
+branch `codex/public-tools-release-handover-20261017` records this acceptance;
+do not push another main commit merely to publish the receipt. Ignored `.zcode/`,
+previous investigations and retained data remain preserved. Private evidence is
+under `data/investigation/tools-release-review-20261017/`.
 
 The following release/implementation positions are dated receipts.
 
@@ -101,9 +115,9 @@ was clean at `03c5b0f` before this work; ignored `.zcode/`, retained data and pr
 investigations are preserved. Private working notes are under ignored
 `data/investigation/site-copy-20261016/`.
 
-The entries below describe their original completion dates. Only the older
-account/security entries are superseded by the PR #9 release; the four public-tool
-entries remain unpublished until the separately authorized release above.
+The entries below describe their original completion dates. PR #9 supersedes the
+older account/security positions; PR #10 supersedes the four tools' original
+local-only publication positions.
 
 **`/unit-converter`, 2026-10-17 (local commit `ee5fb38`, not pushed):** new engine
 `src/lib/tools/units.ts`, client UI `src/components/unit-converter/tool.tsx`, route
@@ -368,13 +382,14 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 ## 4. Next actions
 
-**Current public-tool release:** local review and fixes have passed the checks in
-§7. Create the PR, verify its exact head and all acceptance/security/quality gates,
-then merge under the owner's authorization. Verify the actual running revision,
-health, public tools, private-route rejection and retained-data parity afterward.
+**Public-tool release complete:** PR #10 is merged and deployed, with actual
+running-revision, health, route and retained-data acceptance in §5/§7. No release
+action remains for these four tools. The existing development-only `braces`
+advisory remains tracked in §7; do not apply a breaking toolchain downgrade to
+silence it. Physical-device and independent provider/mail QA remain separate.
 The older local-only wording below is a historical implementation receipt.
 
-**After `/text-diff`, `/qr-studio`, `/json-formatter` and `/unit-converter`:** all four are
+**Historical local completion of `/text-diff`, `/qr-studio`, `/json-formatter` and `/unit-converter`:** all four are
 implemented, verified and `live` in
 `src/lib/tools.ts`, so their home cards link to `/<slug>`. `agent-chat` is
 the only entry still `planned`. The next local tool starts from
@@ -384,7 +399,7 @@ any generated image. `/unit-converter` is committed locally as `ee5fb38`, `/json
 `65215e5` (handover `673d9d0`), `/qr-studio` as
 `7f716ef` (handover `37dc448`), `/text-diff` as
 `955c139` (handover `371612c`), and the introduction cleanup as `8c009da`.
-Nothing here has been pushed or deployed.
+At that time nothing had been pushed or deployed; PR #10 now publishes this work.
 
 **PR #9 merged, 2026-10-16.** Publication authorization is settled in §1;
 deployment and read-only acceptance evidence belong in §7. No additional feature
@@ -534,7 +549,31 @@ Independent follow-ups remain:
   keep observing scheduled status after the upgrade. Off-machine destination,
   ownership, upload and retention/pruning need separate decisions (DEPLOYMENT §12).
 
-## 5. Last accepted production data and backup (2026-10-16)
+## 5. Last accepted production data and backup
+
+**PR #10 acceptance, 2026-10-17:** coherent SQLite API backup
+`/app/data/backups/pre-pr10-20261017-1c1402c.sqlite` is retained at mode 600,
+uid 1001, 282624 bytes. Its integrity is `ok`, foreign-key issues zero and counts
+match the pre-release baseline; no pending/streaming message or SDK process was
+active. No production restore or backup pruning occurred.
+
+Post-release counts and internal digests match: one user/account, nine sessions,
+zero verification rows, seven conversations, 22 messages, 12 usage rows and three
+conversation metadata rows. All five preference/factor/passkey/deletion/event
+tables remain empty. All six source-version trees, 18 SDK files, nine migrations,
+runtime AI enablement/quotas/key presence and the mode-600 three-record ownership
+ledger match the baseline. Integrity is `ok`, foreign-key issues zero. Data/SDK
+mounts and private env ownership (`utils-deploy`, mode 600) are preserved.
+
+Running image ID is
+`sha256:6e3ba6e7574d6b1cf35d23d26e30fafb9c5f442193cae5f549361f7d29426476`.
+The previous release is available in the registry as
+`ghcr.io/sileneer/utils@sha256:9834b1cf8e2c16062981316f5f2bb2a26102c3ff1821aa4abb97db357ddfa3d9`
+(tag `sha-69e7a5d`, config digest `sha256:9e2376d4213a372f27a83dcf9e38edc5ecb0f7d36edecc34f8af47bc53be0cae`).
+The registry manifest was checked read-only; this prior image is not retained
+locally on the host and was not pulled or started for acceptance.
+
+The following PR #9 values are a dated historical receipt.
 
 Before PR #9 deployment, created the coherent SQLite API backup
 `/app/data/backups/pre-pr9-20261016-8b53778a.sqlite` (mode 600, 192512 bytes),
@@ -578,6 +617,14 @@ were preserved. No DB replacement, off-machine upload or pruning occurred.
 These are dated acceptance results, not current row-count/health guarantees.
 
 ## 6. QA cleanup and private evidence
+
+The 2026-10-17 release-review preview and diagnostic PIDs were already absent on
+resumption; ports 3051/3052 were verified to have no listener. The temporary
+production browser tab was closed and its viewport override reset; the owner's
+GitHub tab was preserved. Private screenshots, generated fixtures and SQLite
+evidence remain ignored under `data/investigation/tools-release-review-20261017/`.
+No secrets, production session/cookie export, owner file cleanup, mail or paid AI
+call was used. The final acceptance handover is committed locally only.
 
 The `/unit-converter` pass reused the same disposable loopback launcher on port 3051 and the
 same asset server on 3052 (axe-core only); it introduced no new fixture, database, credential
@@ -728,6 +775,28 @@ touched, and no real SDK transcript was removed.**
 
 ## 7. Verification and limits
 
+**PR #10 publication acceptance, 2026-10-17:** exact-head PR acceptance,
+GitGuardian and qlty passed; main CI/CD passed full lint/tests/build, final Linux
+image acceptance and deployment. Production OCI revision equals merge `82921bb`;
+origin and tunnel health pass. Twenty-five GET-only production HTTP checks pass:
+both locale variants of home/About/reader/four tools, safe anonymous identity
+with no-store, protected account/chat/admin rejection and safe login redirects.
+The retired auth route rejects GET with 405. Automatic approval rejected the
+initial script's production POST under the read-only acceptance boundary; it was
+not executed and was removed. Retired POST 410 is covered locally and in image CI.
+The HTTP harness initially expected account identity GET to return 401; source
+inspection confirmed its documented 200 `{user:null}` contract and that exact
+safe value/no-store and protected subroutes were then asserted successfully.
+
+Live anonymous browser interactions confirm Chinese/emoji diff output, QR preview
+and enabled exports, exact large JSON integer/negative-zero formatting, scientific
+zero and 37°C → 98.6°F. The production QR screenshot was inspected. Additional
+homepage locale/theme/viewport repetition hit an automation debugger timeout
+before any completed matrix case; it is not counted as passed. The full 48-case
+local matrix below remains the responsive acceptance. No app error was observed
+in completed production interactions; no claim of a completed live browser matrix
+or physical-device testing is made. Data/source/SDK parity is confirmed in §5.
+
 **Public-tool review, 2026-10-17:** fresh full `npm test` **276/276**, full lint,
 complete production build/typecheck/standalone sanitization and `git diff --check`
 pass after the review fixes. Six new cases cover actual numeric, JSON location/
@@ -762,16 +831,18 @@ development dependency nodes for the unpatched `braces` advisory
 [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm); no blind
 toolchain downgrade was made. Final-image tests now explicitly reject `braces`,
 shadcn, eslint-config-next and jsqr in the runner and check all four public routes.
-Those Linux/image results still require the PR run. Production read-only preflight
-has integrity `ok`, zero FK issues, no active AI run and preserved baseline hashes;
-this is not post-release acceptance. No paid AI, real mail or account/security
+Those Linux/image results passed in the exact-head PR and merged-head CI runs
+above. Production read-only preflight and post-release checks have integrity `ok`,
+zero FK issues, no active AI run and preserved baseline hashes. No paid AI, real mail or account/security
 mutation was performed. Existing paid-call budgets and prior QA limits are unchanged.
 
 **PR #10 initial gate:** GitGuardian flagged a hardcoded password-shaped Wi-Fi
 test fixture in the original QR commit. It is synthetic test data, not a live
 credential. Replaced it and the SVG secrecy fixture with runtime-generated values,
 retaining the exact escaping/absence assertions. No suppression or gate bypass is
-used; the corrected PR head must receive fresh acceptance before merge.
+used. The final consolidated head `1c1402c` passed fresh acceptance and every
+security/quality gate before merge; its final tree equals the preserved reviewed
+history branch. The generated-fixture change also passed the QR suite 13/13.
 
 **`/unit-converter` local implementation, 2026-10-17:** `npm test` runs 270 cases across
 sixteen files, all green — 16 of them new in `tests/unit-convert.test.cjs`, which test the
