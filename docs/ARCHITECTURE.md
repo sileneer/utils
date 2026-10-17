@@ -36,6 +36,10 @@ the browser is a thin client.
 | `/` | page | `src/app/page.tsx` | tool index and shared home account entry (`src/lib/tools.ts`, `HomeAccount`) |
 | `/htlb` | page | `src/app/htlb/page.tsx` | reading shell + chat sidebar |
 | `/htlb/book` | handler | `src/app/htlb/book/route.ts` | book HTML proxy, GET + POST (§6) |
+| `/text-diff` | page | `src/app/text-diff/page.tsx` | public browser-only text comparison; no API route, no storage, no AI (§11) |
+| `/qr-studio` | page | `src/app/qr-studio/page.tsx` | public browser-only QR generation and PNG/SVG export; no API route, no storage, no AI (§11) |
+| `/json-formatter` | page | `src/app/json-formatter/page.tsx` | public browser-only JSON validation and formatting; no API route, no storage, no AI (§11) |
+| `/unit-converter` | page | `src/app/unit-converter/page.tsx` | public browser-only unit conversion; no API route, no storage, no AI, no exchange rates (§11) |
 | `/api/book/entry` | handler | `src/app/api/book/entry/route.ts` | public pinned entry title/excerpt, read-only GET (§6) |
 | `/about` | page | `src/app/about/page.tsx` | |
 | `/api/health` | handler | `src/app/api/health/route.ts` | container + deploy healthcheck; `DRILL_FAIL_HEALTH=1` → 503 |
@@ -68,7 +72,9 @@ the same transcript, draft, selected model, request and scroll position.
         -> SSE -> one stable assistant message for that turn
 
 **Gate and validation.** A verified, active user with a revocable Better Auth
-session is required; old passcode cookies are ignored. Every transcript load
+session is required; old passcode cookies are ignored. Chat POST requires the
+exact configured app Origin and JSON content type before parsing or reserving
+usage, including requests from sibling origins. Every transcript load
 and write validates its owner. Message
 length is 1–4000 characters; sessionId and turnId must be UUIDs. The requested
 revision must be a hexadecimal commit identifier. Optional context contains
@@ -1137,7 +1143,7 @@ set in the Dockerfile; the app runs as the non-root `nextjs` user (uid 1001).
 
 ## 9. Known limits (do not rediscover these)
 
-- **One query at a time**, globally. Family use is fine; a second concurrent user gets "busy". A RAM upgrade or a sidecar agent process is the fix if concurrency ever matters.
+- **One query at a time**, globally. A second concurrent user gets "busy". A RAM upgrade or a sidecar agent process is the fix if concurrency ever matters.
 - SQLite/conversation growth has no automatic retention policy; archive is reversible, with no deletion/cleanup job.
 - Same-email serialization and global query busy state assume one Next process;
   multi-replica deployment needs a shared lock/coordinator and database migration.
@@ -1180,3 +1186,35 @@ ReadingShell adjusts fixed mobile viewport bounds only for a focused text input
 with an actual visual-height reduction, ignoring desktop resize and pinch zoom.
 This retains existing controller/draft/source state; real-device acceptance is
 recorded separately in HANDOVER.
+
+## 11. Local browser-only tools
+
+`/text-diff`, `/qr-studio`, `/json-formatter` and `/unit-converter` are the public tools
+that run entirely in the browser.
+Their route
+comes from the registry slug (`src/lib/tools.ts` → `/<slug>`, DESIGN §5.3); the
+runtime contract lives here:
+
+- The tool computation has no API route, database read, cookie, server call or AI
+  provider. The page bundle carries its engine (`src/lib/tools/{diff,qr,json,units}.ts`)
+  and does the work in the tab. Shared site chrome still resolves locale/account
+  state through the existing site-wide paths; tool inputs never enter those lookups.
+- User text never leaves the tab and never becomes an address: it is not written to
+  `localStorage`/`sessionStorage`/IndexedDB, not placed in a URL, query string or
+  hash, and not used to name a download. State exists only in React state, so
+  navigation clears it — the intended behaviour for content someone pasted in.
+- A tool holding unsaved text registers through `src/lib/unsaved.ts`, so the
+  language switcher (which reloads the document) confirms before discarding it.
+- Rendered as plain React text children only: no HTML and no markdown interpretation
+  of user content, in either direction. The QR preview is drawn as JSX `<rect>` elements
+  and the exported SVG is geometry plus two validated colours — the encoded payload,
+  including a Wi-Fi password, is never echoed as readable preview text or embedded
+  as text in the exported SVG, a URL, a log, a storage key or a download file name.
+  The active form fields naturally hold their own user-entered values.
+- The bounds that matter here protect the tab, not a server, so they are a stated
+  refusal plus a bounded fallback rather than a queue: DESIGN §5.18.
+- `/unit-converter` ships its unit table as static code (`src/lib/tools/units.ts`): it makes
+  no request and reads no runtime configuration, which is exactly why currency is absent —
+  an exchange rate is live data, not a definition.
+- These tools stay public and keyless. Account access (§5) does not gate them, and
+  they must not grow a module-local identity, storage or authorization of their own.

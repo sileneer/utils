@@ -1,57 +1,159 @@
 # Handover
 
-**Updated 2026-10-16 for the codebase audit fixes and the locally implemented PLANNING §14 batches A, B, C1, C2,
-the §14.7 security activity record, the §14.7 TOTP second factor, the §14.7 passkey
-capability and the §14.7 account deletion.**
-The full account/UI acceptance below is dated **2026-10-09**; the
-documentation release
-uses normal CI/CD and read-only revision/health checks, with separate evidence. Runtime contracts:
+**Updated 2026-10-17 for reviewed public-tool release preparation.**
+Current release evidence is in §2/§5/§7; earlier implementation and acceptance
+entries are dated historical receipts. Runtime contracts:
 [ARCHITECTURE](ARCHITECTURE.md); operations: [DEPLOYMENT](DEPLOYMENT.md);
 UI: [DESIGN](DESIGN.md); decisions: [PLANNING](PLANNING.md) §11–13; improvement plan
-and batch results: [PLANNING](PLANNING.md) §14.
+and batch results: [PLANNING](PLANNING.md) §14; browser-only public tools:
+[PLANNING](PLANNING.md) §15.
 
 ## 1. Authorization
 
-The owner approved and completed account/chat improvements, runtime AI config
-publication and site-wide accounts (PR #7 A+B+C plus D). Those approvals remain
-settled. The owner subsequently approved merging the documentation into main
-on 2026-10-11, including its normal push-to-main CI/CD rollout. This does not
-authorize provider calls or new features. On 2026-10-13 the owner authorized
-**local implementation of PLANNING §14 batch A**, and on 2026-10-14
-**local implementation of batch B** (account preferences plus the personal usage
-overview), **local implementation and isolated verification of C2** (personal
-data export) and **local technical verification, protocol design, implementation
-and simulated acceptance of C1** (secure email change). On 2026-10-14 the owner also
-authorized **local implementation of the minimal security activity record from
-PLANNING §14.7** and **local design, implementation and full recovery acceptance of the
-§14.7 TOTP second factor**. On 2026-10-15 the owner authorized **local evaluation,
-implementation and verification of the §14.7 passkey capability**, explicitly excluding
-production credential registration, a domain change, publication, real mail and paid AI
-calls. On 2026-10-15 the owner also authorized **local lifecycle design, isolated
-implementation and disposable-account verification of the §14.7 account deletion**,
-explicitly excluding deletion or anonymization of any production account or retained data,
-cleanup of existing retained files, backups or owner files, publication, real mail and paid
-AI calls. On 2026-10-15 the owner requested fixes for the six commit-review findings
-and completion of the subsequent work, including local verification, commits and feature-branch
-PR preparation. The owner explicitly chose allowing deletion without a complete export only
-after a separate final-dialog acknowledgement. No approval covers merging `main` or a
-production rollout. The owner then requested fixing all five subsequent codebase-audit
-findings and full testing, and continued that work on 2026-10-16. This includes local
-fixes/regressions and updating the existing feature PR; it does not authorize production
-account/data actions, merge or deployment. Batches A, B, C2, C1, the activity record, TOTP,
-passkeys and deletion are
-implemented locally and unmerged; production still runs the §13 release. **No production
-account has two-factor enabled**, and enabling it for the owner account is separately
-unapproved; **no passkey has been registered anywhere but a disposable local fixture**, and
-**the deletion code has never been run against a real account or a retained file**. Exporting production
-data, account deletion, changing a real account's email, real mail sending and paid
-AI calls remain unapproved. Off-machine backup uploads and
-pruning remain unapproved. Paid acceptance allowance/limits are in §4/§7.
+**Current authorization, 2026-10-17:** the owner requested complete validation of
+all four implemented tools, review of their commits and the workspace changes,
+then PR creation and merge once the result is accepted. This supersedes the
+local-only publication limits in the dated implementation receipts below. Merge
+is conditional on the exact reviewed head passing CI/image/security gates;
+deployment requires actual revision/health/route/data acceptance afterward.
+Production acceptance stays read-only; no paid AI allowance, real mail, credential
+change, account mutation, retained-file cleanup or backup pruning is implied.
+
+The owner's 2026-10-16 and 2026-10-17 requests authorize implementing the planned public
+tools **locally** and verifying them, one per request: `/text-diff`, then `/qr-studio`, then
+`/json-formatter`, then `/unit-converter`. Each is
+public and needs no login, every input is processed in the browser, and nothing is
+uploaded, sent to AI, persisted by default or written into a shareable link. New
+components, interaction patterns and any dependency had to be registered in DESIGN.md
+before use; the registry status flips to `live` only once the tool is complete and
+verified, and the other tools keep their status. `/qr-studio` added the site's second
+runtime dependency and one dev-only verification dependency (§12, PLANNING §15.5);
+`/json-formatter` and `/unit-converter` add **no dependency at all** (PLANNING §15.7, §15.8).
+**These authorizations exclude pushing to `main` and any deployment.** No production
+request, real mail, paid AI call or account mutation was made for them.
+
+The owner's earlier 2026-10-16 request authorizes simplifying the site's
+introduction to the lzhdev tools website and removing personal-audience/lineage
+wording. The four public-tool requests were for implementation prompts only;
+feature implementation and publication are outside that copy cleanup. The owner
+then explicitly authorized a local commit of these changes; no push or deployment
+was requested. The release authorization below remains a dated PR #9 receipt.
+
+On 2026-10-16 the owner explicitly requested **merge** after review fixes, full
+testing and exact-head PR acceptance. This authorizes merging PR #9 at accepted
+head `8b53778a69f08e4d2eb488286ab3d9af5f82a27a` and its normal automatic CI/CD
+deployment. It supersedes the earlier local-only publication boundary for the
+implemented PLANNING §14 batches A/B/C1/C2, activity, TOTP, passkeys, deletion and
+the two rounds of review fixes. The owner's separate final-dialog acknowledgement
+decision for deletion without a complete export remains part of the accepted scope.
+
+Production acceptance remains read-only. This release does not authorize real mail,
+paid AI calls, production data exports, changing credentials/email, enabling TOTP,
+registering passkeys, deleting/anonymizing real accounts or cleaning retained files.
+The owner enters production passwords/codes in the website; agents must not mint or
+export production sessions. Off-machine backup uploads and pruning remain unapproved.
+No such sensitive action was exercised for this release. Existing paid QA budgets in
+§4/§7 are unchanged and were not used. Earlier PR #7/D and #8 approvals remain settled.
 
 ## 2. Checkout and release position
 
-Current local branch: `codex/account-improvement-plan-20261013`, based on `e209d59`
-(the PR #8 squash merge). The checkout started clean.
+**Current review position:** the checkout began clean at `524a402` on
+`codex/release-handover-20261016`, with ten commits beyond `origin/main` (`69e7a5d`).
+Those commits cover the four tools, their handovers and the owner-introduction
+cleanup. The accompanying review-fix commit closes numeric edge cases, JSON
+position/output bounds, QR draft tracking, new-tool login return paths,
+accessibility/contrast and the existing chat POST Origin gap. No schema, provider
+configuration, production account or retained content is changed. All changed
+paths and the existing auth/ownership, SDK/book isolation, persistence and
+deployment boundaries were reviewed; fresh checks are in §7. PR/exact-head/image
+acceptance and deployment are pending, not proved by the local results.
+Ignored `.zcode/`, previous investigations and data remain preserved; private
+evidence is under `data/investigation/tools-release-review-20261017/`.
+
+The following release/implementation positions are dated receipts.
+
+PR [#9](https://github.com/sileneer/utils/pull/9) was squash-merged on 2026-10-16
+as `69e7a5d94070d2e3ce5c0935c1d25bf353f815e1` from accepted head `8b53778a…`.
+The exact feature-head acceptance run
+[38832266225](https://github.com/sileneer/utils/actions/runs/38832266225),
+GitGuardian and qlty checks were successful immediately before merge. Main had
+no configured branch protection; no check was bypassed.
+
+Local `main` is synchronized to the merge commit. Current local branch
+`codex/release-handover-20261016` contains the unpublished release handover commit
+`03c5b0f` plus the local introduction cleanup committed with this handover update;
+do not push another main commit merely to publish this receipt. The checkout was
+clean before release work; owner-owned/ignored files remain preserved.
+CI/CD run [38835232890](https://github.com/sileneer/utils/actions/runs/38835232890)
+passed every test/image/deploy gate. The running OCI revision matches the merge
+commit and is healthy in that release receipt; actual deployment acceptance is
+recorded in §7. The release handover was committed locally without a push or
+second deployment. Production was not rechecked for the later copy-only work.
+
+**Local introduction cleanup, 2026-10-16 (local commit only):** changed both message
+catalogs, the About page, README, ARCHITECTURE, DESIGN, PLANNING and this handover.
+Home/About/metadata now use the concise owner introduction; the obsolete About
+milestone paragraph was removed and the unused passcode prompt no longer suggests
+shared access. Documentation uses the same positioning while preserving historical
+shared-passcode limitations and technical mail/pattern grouping terminology.
+No route, dependency, authentication behavior or tool status changed. The checkout
+was clean at `03c5b0f` before this work; ignored `.zcode/`, retained data and prior
+investigations are preserved. Private working notes are under ignored
+`data/investigation/site-copy-20261016/`.
+
+The entries below describe their original completion dates. Only the older
+account/security entries are superseded by the PR #9 release; the four public-tool
+entries remain unpublished until the separately authorized release above.
+
+**`/unit-converter`, 2026-10-17 (local commit `ee5fb38`, not pushed):** new engine
+`src/lib/tools/units.ts`, client UI `src/components/unit-converter/tool.tsx`, route
+`src/app/unit-converter/page.tsx` and `tests/unit-convert.test.cjs`; changed are both
+message catalogs (new `unitConverter` namespace, 101 keys each), `src/lib/tools.ts` (this
+slug is now `live`), README and the four docs. It adds **no dependency, no migration, no
+environment variable and no API route**: 62 units in seven categories are static code, each
+expressed against one base unit, with area/volume/speed factors derived from the length and
+time tables and temperature kept affine on integer-scaled kelvin (PLANNING §15.8). Currency
+is deliberately absent, as are units whose size depends on tradition. `agent-chat` is the
+only remaining `planned` entry. The tree was clean at `673d9d0` before this work.
+
+**`/json-formatter`, 2026-10-16 (local commit `65215e5`, not pushed):** new engine
+`src/lib/tools/json.ts`, client UI `src/components/json-formatter/tool.tsx`, route
+`src/app/json-formatter/page.tsx` and `tests/json-format.test.cjs`; changed are both
+message catalogs (new `jsonFormatter` namespace, 42 keys each), `src/lib/tools.ts` (this
+slug is now `live`), README and the four docs. It adds **no dependency, no migration, no
+environment variable and no API route**: the parser is written in the engine so that
+numbers, strings and key order are re-emitted from their source text instead of through
+`JSON.parse`/`JSON.stringify` (PLANNING §15.7). `unit-converter` and `agent-chat` statuses
+are untouched, and the QR packages from the previous pass are unchanged. The tree was
+clean at `37dc448` before this work.
+
+**`/qr-studio`, 2026-10-16 (local commit `7f716ef`, not pushed):** new engine
+`src/lib/tools/qr.ts`, client UI `src/components/qr-studio/tool.tsx`, route
+`src/app/qr-studio/page.tsx` and `tests/qr-code.test.cjs`; changed are both message
+catalogs (new `qrStudio` namespace, 44 keys each), `src/lib/tools.ts` (this slug is now
+`live`), `package.json`/`package-lock.json`, README and the four docs. It adds two
+packages: runtime `qrcode-generator` 2.0.4 (MIT, zero transitive dependencies — the
+lockfile delta is 15 lines) and dev-only `jsqr` 1.4.0, which exists solely to decode the
+generated matrix, the exported SVG geometry and the exported PNG bytes in the tests and
+never appears in the application or the image. No migration, no environment variable and
+no API route: like `/text-diff`, the page has no backend and renders dynamic only because
+locale resolution reads cookies per request. `text-diff`, `json-formatter` and
+`unit-converter` statuses are untouched. The tree was clean at `371612c` before this work.
+
+**`/text-diff`, 2026-10-16 (local commit `955c139`, not pushed):** new engine
+`src/lib/tools/diff.ts`, client UI `src/components/text-diff/tool.tsx`, route
+`src/app/text-diff/page.tsx` and `tests/text-diff.test.cjs`; changed are both message
+catalogs (new `textDiff` namespace, 51 keys each), `src/lib/tools.ts` (this slug is now
+`live`), `src/app/globals.css` (the `--success` token), README and the four docs.
+It adds **no dependency, no migration, no environment variable, no API route and no
+server-side change**: the tool has no backend, and `/text-diff` renders dynamic only
+because locale resolution reads cookies per request (ARCHITECTURE §7). The registry's
+other entries are untouched, so `qr-studio`, `json-formatter`, `unit-converter` and
+`agent-chat` stay `planned`. DESIGN §5.3's stale `/tools/<slug>` wording is corrected in
+the same change, and ARCHITECTURE §11/DESIGN §5.18 record the browser-only contract.
+The tree was clean at `8c009da` before this work; the introduction cleanup commit and
+all ignored `.zcode/`, retained data and earlier investigations are preserved. Private
+QA evidence is under ignored `data/investigation/text-diff-20261016/`.
 
 **Codebase audit fixes, 2026-10-16:** the five findings from application HEAD `ff386ce`
 are fixed on this branch: stale login issuance, executable book origin, lost SDK file
@@ -62,7 +164,7 @@ npm dependency, migration, env variable or production action. Docker explicitly 
 their CLI startup dependencies. Existing `.zcode/`, ignored investigations, retained data
 and unowned historical logs are preserved. The exact follow-up PR head/CI/image result
 is recorded in ignored `data/investigation/codebase-audit-20261015/pr-receipt.json`;
-re-check that receipt and GitHub before publication. PR #9 remains unmerged. The earlier
+the reviewed head and gates were rechecked before the merge above. The earlier
 batch records below are dated implementation receipts, not today's release position.
 
 **Commit review and fixes, 2026-10-15:** the initial review covered 13 local commits
@@ -249,6 +351,14 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 - DEPLOYMENT §8/§11–12 owns release checks, service setup and backup operations, including
   the rule that `deleted-accounts.jsonl` is preserved across restores and that no backup is
   pruned to complete a deletion.
+- ARCHITECTURE §11 owns the runtime contract of a browser-only public tool (no route,
+  storage, URL or upload involvement); DESIGN §5.18 owns that shared contract and the
+  text-diff patterns, DESIGN §5.19 the QR Studio patterns, §5.20 the JSON Formatter
+  patterns, §5.21 the Unit Converter patterns, and §12 the two QR packages.
+  The route itself comes from `src/lib/tools.ts` and is listed in ARCHITECTURE §2.
+  PLANNING §15 owns the algorithm and dependency decisions behind these tools, including
+  the rejected options (§15.3, §15.5, §15.7) and the decode-verification standard (§15.6),
+  and the unit table's base-unit, inclusion-scope and precision rules (§15.8).
 - PLANNING §11–14 owns decisions, deferred account features and the §14
   improvement plan with its batch A/B/C1/C2, security-activity, two-factor, passkey and
   account-deletion
@@ -258,18 +368,40 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 ## 4. Next actions
 
-**Five subsequent audit findings closed locally, 2026-10-16.** Session issuance now
+**Current public-tool release:** local review and fixes have passed the checks in
+§7. Create the PR, verify its exact head and all acceptance/security/quality gates,
+then merge under the owner's authorization. Verify the actual running revision,
+health, public tools, private-route rejection and retained-data parity afterward.
+The older local-only wording below is a historical implementation receipt.
+
+**After `/text-diff`, `/qr-studio`, `/json-formatter` and `/unit-converter`:** all four are
+implemented, verified and `live` in
+`src/lib/tools.ts`, so their home cards link to `/<slug>`. `agent-chat` is
+the only entry still `planned`. The next local tool starts from
+DESIGN §5.18–§5.21 and ARCHITECTURE §11 — the shared contract, the touch-target fixes and
+the "no stale output" rule are already settled, and `jsqr` is available to decode-verify
+any generated image. `/unit-converter` is committed locally as `ee5fb38`, `/json-formatter` as
+`65215e5` (handover `673d9d0`), `/qr-studio` as
+`7f716ef` (handover `37dc448`), `/text-diff` as
+`955c139` (handover `371612c`), and the introduction cleanup as `8c009da`.
+Nothing here has been pushed or deployed.
+
+**PR #9 merged, 2026-10-16.** Publication authorization is settled in §1;
+deployment and read-only acceptance evidence belong in §7. No additional feature
+or sensitive production action is implied. The earlier implementation milestones
+below are released by this merge, rather than waiting for another merge decision.
+
+**Five subsequent audit findings closed, 2026-10-16.** Session issuance now
 validates the account generation before and after insertion for password/TOTP/passkey
 login, and security writes invalidate unfinished password-to-2FA challenges. Initial
 factor activation requires TOTP and confirmed persisted state. SDK ownership survives
 failed/stopped/replaced runs and cleared resume pointers in its own preserved ledger;
 deletion unions prior owed cleanup on restore. Ledger read/corruption failures stop
 startup/removal. Both the reader iframe and direct HTML response enforce opaque origin,
-with a bounded bridge handshake and failure/retry handling. Keep the PR unmerged and
-verify its exact accepted head and CI/image/security gates before any newly authorized
-publication. Unattributable pre-existing logs remain retained: no automatic historical
-cleanup was authorized or attempted. Real-device, real-mail and production acceptance
-remain outside this pass. The previous six findings below also remain fixed.
+with a bounded bridge handshake and failure/retry handling. Unattributable pre-existing
+logs remain retained: no automatic historical cleanup was authorized or attempted.
+Real-device and real-mail acceptance remain open. The previous six findings below
+also remain fixed.
 
 **Review findings closed locally, 2026-10-15.** Verification deletion now matches exact
 OTP identifiers and guards JSON extraction. The global last-administrator invariant is
@@ -278,20 +410,12 @@ intent to execute on restart. Export preflight sums every materialized body/cont
 usage JSON in UTF-8 bytes. Large-account deletion has the owner's explicit opt-out from
 the complete-export prerequisite, preserving every other gate and never mislabelling a
 segment as complete. Security-card reads stop on reauthentication/failure, and step-up
-inputs accept both TOTP and recovery-code shapes. Keep the feature branch unmerged;
-before any authorized rollout re-check the exact PR head and all CI/image gates (receipt
-in §2). A separate owner decision is still required before merge or rollout; real devices,
-real mail, production accounts and real retained-data deletion remain outside this pass.
+inputs accept both TOTP and recovery-code shapes. Real-device/mail verification and
+sensitive production account actions remain outside the release acceptance scope.
 
-Batches A, B, C2 and C1 are implemented locally (§2, PLANNING
-§14.9/§14.10/§14.11/§14.12) and await the owner's review and a separate publication
-decision; nothing may be merged or deployed on this authorization. Batches A, B, C2
-and C1 are committed, C1 as `4d08dec`. The §14.7 minimal security activity record is
-committed on top of it as `1590981` (§2, PLANNING §14.13), the §14.7 TOTP second
-factor as `1142983` (§2, PLANNING §14.14), the §14.7 passkey capability as `058fb94`
-on top of those (§2, PLANNING §14.15), and the §14.7 account deletion as `86e52bb`
-on top of that (§2, PLANNING §14.16). Do not start additional features or merge/deploy
-any batch without subsequent authorization.
+All implemented §14 batches and review fixes are included in PR #9. Their original
+commits and rationale remain in §2 and PLANNING §14.9–§14.18. Do not start additional
+features or another rollout without subsequent authorization.
 
 Two-factor leaves the deliberate open items that this authorization could not cover:
 
@@ -337,8 +461,9 @@ Account deletion is implemented but **deliberately unexecuted against anything r
 this authorization does not cover running it on production data:
 
 - **The reviewable deletion list is ARCHITECTURE §5 "Account deletion".** Deleting a real
-  account, or letting the reconciliation touch a real database, needs the owner's explicit
-  approval of that specific list first. Everything removed so far was created seconds earlier
+  account needs the owner's explicit approval of that specific list first. Release startup
+  runs the normal migration/reconciliation path; it does not authorize deletion of a real
+  account or execution of a new deletion intent. Everything removed in QA was created
   inside a disposable fixture.
 - **Backups are not pruned by this feature and must not be.** A pre-deletion backup still
   contains the identity; the guard is the out-of-database `deleted-accounts.jsonl` plus the
@@ -363,7 +488,7 @@ this authorization does not cover running it on production data:
 C1 leaves one deliberate open item: **real mail delivery for the three
 `change-email*` purposes has never been exercised** — this authorization covered
 simulated acceptance only, and the Brevo adapter is unchanged apart from the new
-purposes. Before any publication, a separately scoped check should confirm that a
+purposes. A separately authorized follow-up should confirm that a
 code reaches a real old and a real new mailbox, that the two subjects and bodies read
 correctly to a human, and that the retired-address notice arrives; the loopback pass
 could only inspect the request bodies the fixture intercepted.
@@ -405,10 +530,43 @@ Independent follow-ups remain:
   retry automatically, change models or extend limits to manufacture a pass.
 - Physical phone keyboard/IME/source-return, cross-device production reset,
   long-context/source-faithfulness and mail-header acceptance remain distinct.
-- Observe the next natural scheduled backup execution. Off-machine destination,
+- The last natural scheduled backup was verified successful on 2026-10-15;
+  keep observing scheduled status after the upgrade. Off-machine destination,
   ownership, upload and retention/pruning need separate decisions (DEPLOYMENT §12).
 
-## 5. Last accepted production data and backup (2026-10-09)
+## 5. Last accepted production data and backup (2026-10-16)
+
+Before PR #9 deployment, created the coherent SQLite API backup
+`/app/data/backups/pre-pr9-20261016-8b53778a.sqlite` (mode 600, 192512 bytes),
+with no pending/streaming message or native SDK process. Backup integrity is `ok`,
+foreign-key issues zero and counts match the live baseline. The backup was not
+restored over production or pruned.
+
+Post-release counts match: one user/account, nine sessions, zero verification rows,
+seven conversations, 22 messages, 12 usage rows and three conversation metadata rows.
+Internal digests confirm retained identity verification/role/status, conversations,
+messages, usage and metadata are unchanged. All six retained source-version trees
+and 18 SDK files match their baseline digests. Migrations 001–009 are applied;
+integrity is `ok`, foreign-key issues zero. All new preference/factor/passkey/deletion/
+security-event tables are empty. The new SDK ownership ledger backfilled three
+attributable pointers, mode 600; unowned historical files remain retained.
+
+Data and SDK bind mounts, AI enablement, quota limits and configured-key presence
+are preserved. Private env remains mode 600, owned by `utils-deploy`. The host backup
+script matches `deploy/backup.sh`, mode 750, with exactly one 03:15 UTC cron entry and
+active cron service; the last natural backup completed on 2026-10-15 with integrity
+`ok`. No host script, schedule, secret or configuration change was needed.
+
+Rollback starts from prior running revision `e209d59b2bd473ce8a69b54cfba69eef54a9a06c`
+and DEPLOYMENT §6/§11. Its retained local image is
+`sha256:0eb1a2d1fde1423c2b6cff3fd23680f96a2753bdcfbdbdbdc096c3f2c534f473`.
+Preserve the upgraded database, all external ledgers, SDK
+files, retained source pairs and backups; image rollback must not rewind user data.
+Private baseline, backup and parity receipts are in
+`data/investigation/account-release-20261016/`. These are dated checks, not future
+row-count or health guarantees.
+
+**Historical 2026-10-09 acceptance:**
 
 Coherent pre-release backup: `/app/data/backups/release-20261009-site-account.sqlite`
 (mode 600), created with zero active requests. Integrity/FK checks passed and all
@@ -420,6 +578,53 @@ were preserved. No DB replacement, off-machine upload or pruning occurred.
 These are dated acceptance results, not current row-count/health guarantees.
 
 ## 6. QA cleanup and private evidence
+
+The `/unit-converter` pass reused the same disposable loopback launcher on port 3051 and the
+same asset server on 3052 (axe-core only); it introduced no new fixture, database, credential
+or process. Both were stopped only after their command lines had been read back and confirmed,
+with 3051/3052 then verified to hold no listener, and the extra Chrome used for the real-viewport
+captures runs from the `chrome-devtools-mcp` tool's own profile directory. No production request
+was made, no owner browser profile, tab, cookie or session was opened, and nothing from this tool
+reached storage: the page writes no `localStorage`/`sessionStorage` key of its own (the only keys
+present are the site's two theme keys) and the address bar never gained a query, hash or path
+segment while values were typed, converted, copied or refused.
+
+The `/json-formatter` pass reused the same disposable loopback launcher on port 3051 and
+the same asset server on 3052; it introduced no new fixture, database or process, and both
+servers were stopped only after their command lines had been read back and confirmed, with
+the ports then verified free. No production request was made and no owner data was touched.
+
+The `/qr-studio` pass reused the same disposable loopback launcher on port 3051 (its own
+migrated database under ignored `data/investigation/text-diff-20261016/`, AI disabled, no
+provider, mail or Turnstile credential) and the same second server on 3052, which now
+serves two already-installed QA libraries — axe-core and jsQR — to the page. Both were
+stopped only after their command lines had been read back and confirmed to be this pass's
+launchers, and 3051/3052 were then verified to hold no listener. The extra Chrome used for
+the real-viewport screenshots runs from the `chrome-devtools-mcp` tool's own profile
+directory and was closed after the captures. No owner browser profile, tab, cookie or
+session was opened, no production cookie or session was minted or exported, and no
+production request was made. The generated QR files existed only as in-page blobs during
+QA; the captured exports and screenshots stay local and ignored, and no Wi-Fi password
+used in testing appears in any surviving log.
+
+The `/text-diff` pass used its own disposable loopback launcher on port 3051 with a
+dedicated migrated database under ignored `data/investigation/text-diff-20261016/`, an
+AI-disabled configuration with no provider, mail or Turnstile credential, plus a second
+loopback server on 3052 that only served the already-installed axe-core file to the page.
+Both were stopped only after their command lines had been read back and confirmed to be
+this pass's launchers, and 3051/3052 were then verified to hold no listener. The extra
+Chrome used for the real-viewport screenshots runs from the `chrome-devtools-mcp` tool's
+own profile directory and was closed after the captures; no owner browser profile, tab,
+cookie or session was opened, and no production cookie or session was minted or exported.
+The launcher's disposable database and the screenshots stay local and ignored; no
+credential value appears in the surviving logs. No application data, retained file or
+production resource was modified.
+
+The 2026-10-16 release used fresh anonymous Chrome contexts and read-only HTTP/host
+checks. Browser/context cleanup completed, and the Actions watcher and SSH commands
+exited. No local preview was started. Evidence and screenshots stay ignored under
+`data/investigation/account-release-20261016/`; no credentials, cookies, private
+content or evidence files are staged. Existing owner-owned/ignored material is preserved.
 
 The review-fix pass uses only ignored `data/investigation/account-fixes-20261015/`.
 Its launcher creates fresh UUID-named fixture databases and a fake home; credentials and
@@ -522,6 +727,329 @@ application. Screenshots, the CDP drivers and the fixture databases stay local a
 touched, and no real SDK transcript was removed.**
 
 ## 7. Verification and limits
+
+**Public-tool review, 2026-10-17:** fresh full `npm test` **276/276**, full lint,
+complete production build/typecheck/standalone sanitization and `git diff --check`
+pass after the review fixes. Six new cases cover actual numeric, JSON location/
+expansion and Origin failures; the existing navigation case now checks all four
+new routes. Independent private checks cover 4,000 generated JSON documents in
+12,000 style runs (including output-bound preflight), 3,000 mixed-EOL diff pairs
+with exact input reconstruction and 4,318 accepted edge-value conversions.
+
+The fresh AI-disabled disposable preview on 3051 passed 48 populated-tool browser
+combinations (four tools × en/zh × light/dark × 360/768/1280px), with language/theme
+asserted, no horizontal overflow or undersized visible controls. Saved desktop/
+mobile screenshots and contact sheets were inspected. Tested diff options,
+unified copying and focused hunk navigation, escaped HTML, QR draft confirmation,
+JSON number/escape fidelity, duplicate-key stale-output removal, expansion refusal
+and minification recovery, and temperature/zero-exponent/absolute-zero outcomes.
+Actual browser-downloaded PNG and SVG files independently decode to the exact
+Wi-Fi payload (Chinese, escaped separators and hidden-network flag), both 512px.
+CDP network observation confirmed no upload from diff input actions; source review
+confirms all four computations have no request/storage path.
+
+WCAG-tag axe checks cover all 48 populated tool states. Two initial JSON contrast
+flags occurred during the Clear button's disabled-to-enabled opacity transition;
+all six light-locale/width cases pass after waiting for active animations to finish.
+No settled violations remain. Diff's decorative `aria-hidden` minus glyph and the
+JSON error caret are the only manual contrast checks; they share colors/backgrounds
+with the checked adjacent text and were inspected. This is browser emulation,
+not physical-device QA. The installed agent-browser Windows binary was absent;
+the built-in browser fallback was used. No browser console errors were observed.
+
+`npm audit --omit=dev` reports zero vulnerabilities. Full audit has nine existing
+development dependency nodes for the unpatched `braces` advisory
+[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm); no blind
+toolchain downgrade was made. Final-image tests now explicitly reject `braces`,
+shadcn, eslint-config-next and jsqr in the runner and check all four public routes.
+Those Linux/image results still require the PR run. Production read-only preflight
+has integrity `ok`, zero FK issues, no active AI run and preserved baseline hashes;
+this is not post-release acceptance. No paid AI, real mail or account/security
+mutation was performed. Existing paid-call budgets and prior QA limits are unchanged.
+
+**PR #10 initial gate:** GitGuardian flagged a hardcoded password-shaped Wi-Fi
+test fixture in the original QR commit. It is synthetic test data, not a live
+credential. Replaced it and the SVG secrecy fixture with runtime-generated values,
+retaining the exact escaping/absence assertions. No suppression or gate bypass is
+used; the corrected PR head must receive fresh acceptance before merge.
+
+**`/unit-converter` local implementation, 2026-10-17:** `npm test` runs 270 cases across
+sixteen files, all green — 16 of them new in `tests/unit-convert.test.cjs`, which test the
+table and the arithmetic rather than whether a page opens: every published definition the
+engine claims (1 in = 2.54 cm, 1 ft = 12 in, 1 mi = 5280 ft, 1 nmi = 1852 m,
+1 lb = 0.45359237 kg, 1 st = 14 lb, 1 US gal = 231 in³, 1 Imp gal = 4.54609 L,
+1 acre = 43560 ft², 1 ha = 10000 m², 1 yr = 365.25 d, …); the three benchmarks named in the
+brief; the square-cube law (m²→ft² equals the length factor squared, m³→ft³ cubed, plus
+1 ft² = 144 in², 1 ft³ = 1728 in³, 1 mi² = 640 acre); temperature as an affine scale with
+`factor === null` asserted for all 16 ordered pairs and the exact readings people type
+(32 °F → 0 °C, 212 °F → 100 °C, 98.6 °F → 37 °C, 273.15 K → 0 °C, −40 ↔ −40,
+−459.67 °F → 0 K); absolute zero as a physical bound naming each scale's own floor, with
+0 K itself accepted; decimal, signed and scientific-notation input including the exact
+integer/power-of-ten split; 21 refused inputs each mapped to `invalid` or `empty`;
+`overflow` and `underflow` distinguished from a silent 0 or `Infinity`; a full-pair sweep
+asserting no displayed string is empty, contains `NaN`/`Infinity`, or exceeds 12 significant
+digits; a full-pair round trip through the base unit within 1e-9 relative; the explicit proof
+that the engine's full-precision value and the rounded display differ and that only the
+former is converted back; table well-formedness (62 units, unique ids and symbols, one base
+per category, affine only for temperature); US/Imperial separation; and the deliberate
+absences (no currency, month, cup, tablespoon, teaspoon or mach). Full `npm run lint`,
+`npx tsc --noEmit` and full `npm run build` exit 0, with `/unit-converter` in the route list.
+
+Browser acceptance ran against the production build on the disposable loopback preview.
+All **12 combinations** (en/zh × light/dark × 360/768/1280px) were measured on the final
+bundle with `html[lang]` and the applied theme class asserted per run: zero horizontal
+overflow, nine interactive controls in `#main-content` none under 40px, and the same
+`39.3700787402` result in every combination. Verified in the running page: the example-free
+empty state; 12 m → 39.3700787402 ft; 12 in → 1 ft with the chain `12 in = 0.3048 m = 1 ft`
+and both exact definitions; swap both ways; category switching resetting the two unit lists
+to one dimension while keeping the number (Length → Temperature left `12` and moved to
+°C → °F); **32 °F → 0 °C on screen**, which is the case the naive `(°F + 459.67) × 5/9`
+double path renders as `5.68e-14`; the through-base line suppressed when a chosen unit already
+is the base; the five refusal states (` `, `1,000`, `12 in`, `1e400`, `1e-400`, and −500 on
+the Fahrenheit scale) each with their own localized sentence and **no result field left in the
+DOM**; markup typed into the box (`<img src=x onerror="alert(1)">`) coming back as quoted text
+with zero `img`/`script`/`iframe` elements created; Copy captured through a clipboard recorder
+as exactly `144` — the number alone, no unit and nothing in `location.href`, `hash` or storage;
+axe-core reporting **0 violations and 0 incomplete** on the filled mobile page and the error
+state; canvas-composited contrast from 4.73 (destructive alert body, light) and 5.08 (dark) up
+to 17.35, with muted text 5.77/6.73; and a real Tab press moving Value → From with
+`:focus-visible` true and a 3px ring layer. Three full-page images at real emulated viewports
+were captured and read: en/light/1280 (filled conversion plus relationship panel),
+zh/dark/360 with the localized refusal, and zh/dark/360 with 32 °F → 0 °C. The home page now
+links `/unit-converter` and shows a single remaining `Soon` badge (`agent-chat`).
+
+Limits: emulated viewports and a same-origin iframe matrix, not a physical device; the
+Radix listbox was measured with the popup open (its 28px default items were raised to 40px
+for this tool only — the shared `ui/select` still ships 28px items, so the other three tools'
+popups keep the old height and were not re-measured); the "same unit on both sides" sentence
+was added after the desktop screenshot pass and is verified at the catalog and code level but
+was not re-photographed in the browser; `1e-400`-style refusals are reported rather than
+approximated; and no real-device, production or account data was involved. Nothing was merged,
+pushed or deployed. Private evidence: ignored `data/investigation/text-diff-20261016/`
+(`browser-receipt.json`, the three screenshots, the launcher and its disposable database).
+
+**`/json-formatter` local implementation, 2026-10-16:** `npm test` runs 254 cases across
+fifteen files, all green — 15 of them new in `tests/json-format.test.cjs`, which test the
+parser and printer rather than a page: every top-level shape (object, array, string,
+number, boolean, null) and the empty-array/empty-object prints; **number fidelity** for ten
+literals including a 30-digit integer, `9007199254740993`, `-0`, `1e2`, `1E+2`, `1.50`,
+`0.1000000000000000000000001` and `-1.5e-7`, with an assertion that `JSON.parse` +
+`JSON.stringify` really does destroy several of them — the trap this engine exists to avoid;
+string fidelity for `\uXXXX`, `\/`, `\n`, `\t`, `\"`, `\\`, a NUL escape and emoji, checking
+both the raw text and the decoded value; document key order never sorted; **duplicate keys**
+reported with the key and both positions (including the escaped spelling `"\u0061"` matching
+`"a"`), with no output produced while one is present; 22 malformed inputs each mapped to its
+own reason (trailing comma in array and object, missing colon, missing comma, unterminated
+string, bad escape, control character in a string, `01`, `1.`, `.5`, `+1`, `tru`, `nulll`,
+`NaN`, `Infinity`, a comment, single quotes, extra data); line/column correctness including a
+CRLF document and the caret placement in the source excerpt; the 2 000 000-character and
+200-level bounds; indent 2/4/Tab output verified line by line; formatting idempotence; and
+`JSON.parse` deep equality between the output and the input for ordinary documents.
+Full `npm run lint` and full `npm run build` exit 0. The final re-check on the committed
+tree used `node --test --test-concurrency=1 tests/*.test.cjs` — **254/254** — because the
+parallel default is the one this host's memory pressure perturbs, and `npm run build` then
+finished with `/json-formatter` in the route list.
+
+Browser acceptance ran against the fresh production build on the same disposable loopback
+preview. All **12 combinations** (en/zh × light/dark × 360/768/1280px) were measured with
+the applied theme class and `html[lang]` asserted per run: zero horizontal overflow, no
+interactive target under 40px, and the formatted output keeping the big integer, `-0` and
+Chinese keys in every combination. Two full-page images were captured at real emulated
+viewports and read: zh/dark/360 showing the localized trailing-comma error with its line,
+column and caret, and en/light/1280 showing the example formatted from 127 to 170
+characters. Verified in the running page: the example, all three indents, Minified (single
+line, big integer intact) and back; a trailing comma replacing the output entirely —
+the output `Textarea` leaves the DOM, so no stale result can be read — with the reason,
+`line 3, column 14` and the caret; a duplicate key naming `“a”` with both positions;
+`<img src=x onerror=…>` inside a string producing **zero** element nodes and appearing only
+as text; a 692 KB document formatting to 1.28 MB while the input stayed responsive
+(153 ms to type afterwards) and a 4.5 MB one being refused with its limit named; 300-level
+nesting refused; Copy captured through a clipboard recorder matching the output byte for
+byte; and the download intercepted as a blob — `formatted.json`, `application/json`,
+content identical to the output, so no key reaches a file name. axe-core reported
+**0 violations and 0 incomplete**; measured contrast 4.55 (inactive tab) to 17.35 in light
+and the same floor in dark. Real Tab walks Input → Output (read-only, reachable) → Copy →
+Download with `:focus-visible` and the theme ring at every stop.
+
+Limits: emulated viewports and a same-origin iframe matrix, not a physical device; the
+parser is strict JSON only — comments and JSON5 syntax are refused by design, not repaired.
+Nothing was merged, pushed or deployed, and no production or account data was involved.
+Private evidence: ignored `data/investigation/text-diff-20261016/`
+(`browser-receipt.json`, the two screenshots, the launcher and its disposable database).
+
+**`/qr-studio` local implementation, 2026-10-16:** `npm test` runs 239 cases across
+fourteen files, all green — 13 of them new in `tests/qr-code.test.cjs`, which test the
+payload and the geometry rather than whether a page opens: Wi-Fi escaping of `\ ; : , "`
+(including a password that itself looks like a field boundary), the `WIFI:` record for
+WPA/WEP/open with and without the hidden flag, text and URL passing through untouched,
+empty and over-long refusal, a higher correction level needing a denser symbol, the
+version derived from the module count, the four-module quiet-zone floor, WCAG contrast
+values, the exact SVG structure and rect count, and the centred export layout. **Every
+generated code is decoded back with `jsqr`**: nine payloads (Chinese, mixed CJK plus
+emoji, a query URL, an escaped Wi-Fi record, leading/trailing spaces, newlines, a ZWJ
+family emoji, a 900-character string) across all four correction levels, at 256/512/1024
+px, with inverted colours and with a custom palette — all round-trip byte-for-byte.
+Full `npm run lint` and full `npm run build` exit 0.
+
+Browser acceptance ran against the fresh production build on the disposable loopback
+preview. All **12 combinations** (en/zh × light/dark × 360/768/1280px) rendered with the
+applied theme class and `html[lang]` asserted per run, the preview present, zero
+horizontal overflow and no control under 40px by measured rect. Four full-page images at
+real emulated viewports were captured and read (en/light/360 with Chinese input,
+zh/dark/360, en/light/1280 Wi-Fi form with the low-contrast warning, plus the text-diff
+pass) — the QR keeps its own light background inside the dark card, as intended.
+**The rendered page and the downloaded files were decoded, not eyeballed:** the SVG in the
+DOM, serialized and rasterized, decodes to the exact Chinese text and to the exact
+`WIFI:T:WPA;S:Office\;Net\:x;P:sun\;day\,2026;H:true;;` record; the intercepted PNG
+export is 512×512 and 1024×1024 as selected and decodes; the intercepted SVG export is
+the same size, contains 225 rects, no script/href/`url()`/doctype/entity/image/style
+construct, the only absolute URI is the SVG namespace, and it decodes too. Both downloads
+are named `qr-code.png` / `qr-code.svg` — no content in the file name. A stale result is
+structurally impossible: making the input over-long removed the preview and showed the
+byte-limit message, clearing it showed the empty message, and an empty SSID with the
+Wi-Fi tab selected shows its own reason. The low-contrast path was verified against a
+real decoder rather than a rule of thumb — at 1.61:1 (`#ccc` on white) jsQR returns
+nothing, so the warning names the measured ratio and the 3:1 floor while still showing
+the valid code. Typing a URL produced **no request to that host**: the network log holds
+only same-origin assets, `/api/account`, the QA script and the `data:` URL used to
+rasterize. The password field stays masked with a working show/hide toggle, and the
+payload never appears as text in the DOM.
+
+axe-core reported **0 violations and 0 incomplete** nodes on the populated page (Wi-Fi
+form, warning shown, footnote expanded) — no `color-mix` tints on this page, so the
+contrast rule resolved cleanly. Measured chrome contrast: light theme 4.55 (inactive tab)
+to 18.06, dark theme 5.38 to 16.75, with the primary download button at 5.24 and 8.18.
+Real keyboard input was used: the Tab chain runs SSID → password → show/hide → security
+select → hidden switch with `:focus-visible` and the theme ring at every stop, Enter opens
+the Select listbox (three options) and Escape closes it, one Space toggles the switch and
+the next decode carries `H:true`, and Enter activates the password toggle. Synthetic
+`keydown` does **not** activate these controls, so the switch and toggle results above come
+from CDP key events only. The only console output was Chrome's advisory that a password
+field is not inside a `<form>`; wrapping it would add nothing here and would invite
+browser save prompts.
+
+One defect was found only by serving the build: the page 500-ed under server rendering
+because Turbopack resolves the library's **ESM** build, which ships no encoding table at
+all, so the UTF-8 converter had to be supplied by this site (`TextEncoder`, assigned to
+the factory the library actually reads). The Node tests use the CJS build, which does have
+the table, so they passed while the page crashed — the same converter now runs on both
+paths. Limits: emulated viewports and a same-origin iframe matrix, not a physical phone;
+no real scanner app was used, so "decodes with jsQR" is strong evidence, not a claim about
+every camera in the wild. Nothing was merged, pushed or deployed, and no production or
+account data was involved. Private evidence: ignored `data/investigation/text-diff-20261016/`
+(`browser-receipt.json`, the four QR screenshots, the launcher and its disposable database).
+
+**`/text-diff` local implementation, 2026-10-16:** `npm test` runs 226 cases across
+thirteen files, all green — 20 of them new in `tests/text-diff.test.cjs`, which exercise
+the engine rather than whether a page opens: line splitting with LF/CRLF/CR and a missing
+final newline; empty, identical and one-sided inputs; added/removed/changed rows with both
+line-number columns; hunk grouping, gap folding and the counts across the whole file;
+inline word marks including per-character CJK and an emoji sequence kept whole; both
+comparison options proving they change only the verdict and never the text; the size
+guards reporting which limit was hit; the coarse and row-cap fallbacks; and the exact
+unified copy text. A 200-case seeded fuzz additionally asserts that both sides rebuild
+line-for-line from the rows and that the equal count equals a brute-force LCS length, so
+the alignment is minimal wherever the budget allows it. Full `npm run lint` and full
+`npm run build` (TypeScript plus standalone sanitization) exit 0; `npx eslint src` is
+clean; `/text-diff` appears in the route table as dynamic, which is expected (§GOTCHAS G).
+
+Browser acceptance used the fresh production build served by an AI-disabled disposable
+loopback launcher on `127.0.0.1:3051` with its own migrated SQLite file, no provider or
+mail credential and no production contact. All **12 combinations** (en/zh × light/dark ×
+360/768/1280px) rendered the tool with the example loaded, each asserting the applied
+`dark`/`light` class and `html[lang]`: zero horizontal overflow in every combination, the
+same 8 rows and 3 hunk anchors everywhere, panes stacked with per-side labels at 360px and
+two equal columns at 768/1280px. Four full-page images were captured at real emulated
+viewports and read as images (en/light/360, zh/dark/360, en/light/1280 unified with the
+footnote expanded, zh/light/768 with Chinese text): inline marks, `+`/`−` markers, the
+line-ending badges and the active-difference border all render as intended. Interactions
+were driven for real: example/swap/clear, both views, next/previous moving focus to the
+target row with "difference n of m" in a live region, both switches, per-pane copy and
+Copy diff captured through a clipboard recorder (exact unified text, correct direction
+after swap). Hostile and boundary input was checked in the running page: `<img
+src=x onerror=…>` and `<b>` produced **zero** element nodes inside the result list;
+100,001 characters and 20,001 lines each produced their own labelled refusal with no
+stall; 1,500 against 3,000 repeating lines produced the coarse note, the cap note and
+2,001 rows. axe-core reported **0 violations** on the populated page (unified view,
+footnote open) with `duplicate-id`, `aria-hidden-focus`, `tabindex` and `listitem`
+passing; its 3 `color-contrast` *incomplete* nodes are the known inability to composite
+the oklab/`color-mix` tints, so those pairs were measured by hand instead — worst case
+4.55:1 (inactive tab) and 4.58:1 (removed-line count) in light, 5.38:1 in dark, diff row
+text 10.3–15.7:1. Real Tab moves through textarea → copy → textarea → switch → switch
+with `:focus-visible` matching at each step. No browser console messages appeared in
+either browser.
+
+Limits: widths are Chrome device-metric emulation and same-origin iframes, not a
+physical phone; the switch pill measures 18px tall with a 42×56 hit area confirmed by a
+point test, which is the accepted §9 pattern rather than a device check. The 40px
+minimum needed two fixes found only in the browser (GOTCHAS §F): shadcn's
+`group-data-horizontal/tabs:h-8` variant beat a plain `h-10`, leaving 25px view tabs,
+and a synthetic click never activates a Radix tab, which had made one measurement read
+the wrong panel. Three defects were corrected this way; nothing was merged, pushed or
+deployed, and no production or account data was involved. Private evidence: ignored
+`data/investigation/text-diff-20261016/` (`browser-receipt.json`, the four screenshots,
+the launcher and its disposable database).
+
+One host condition is worth recording so a later session does not misread it: while this
+machine sat near its commit limit (0.3–1.5 GB physical free against a 47 GB commit limit),
+the default parallel `npm test` intermittently failed unrelated account suites
+(export/email-change/two-factor/passkey) and `npm run build` aborted inside the page-data
+workers with a native out-of-memory error. A sequential `node --test
+--test-concurrency=1 tests/*.test.cjs` run passed **226/226** during that pressure, and
+once memory freed the same tree passed the default `npm test` **226/226** and
+`npm run build` with exit 0. No application code changed between those runs; check host
+memory before treating either symptom as a regression.
+
+**Local introduction cleanup, 2026-10-16:** full `npm run lint` and full
+`npm run build` exit 0, including TypeScript and standalone sanitization.
+Both locale JSON files parse and have identical key sets; owner/audience copy
+search and `git diff --check` pass. The sandbox initially prevented SWC native
+cache validation; the build succeeded with the normal owner cache outside the
+sandbox, without changing application dependencies or system cache permissions.
+
+The AI-disabled disposable `tests/auth-preview.cjs` served the fresh production
+build. Browser checks covered `/` and `/about` across en/zh, light/dark and
+360/1280px (16 combinations): applied language/theme and metadata checked, new
+copy present, no personal-audience wording and no horizontal overflow. Inspected
+representative rendered screenshots in both locales/themes; no browser console
+errors. The installed agent-browser Windows executable was missing, so QA used
+the built-in browser fallback. This was browser emulation, not physical-device
+acceptance. No new tests or full regression rerun were needed for copy and a
+removed paragraph. No real mail, paid AI, production acceptance, push or deployment
+occurred for this change. The owned preview was stopped after QA. The subsequent
+owner-authorized local commit changes only these reviewed paths and this status
+record; the prior lint/build/browser results still apply to the same application code.
+
+**PR #9 production acceptance, 2026-10-16:** exact accepted feature head `8b53778a…`
+passed Linux acceptance/security/quality gates; squash merge `69e7a5d…` then passed
+CI/CD run [38835232890](https://github.com/sileneer/utils/actions/runs/38835232890):
+**206/206 tests**, full lint/build/typecheck/standalone sanitization, final-image
+migration/persistence/backup-restore acceptance, image publication and deployment.
+The actual running OCI revision is `69e7a5d94070d2e3ce5c0935c1d25bf353f815e1`,
+container health is healthy and loopback origin/public tunnel health both pass.
+Production integrity, migrations and retained-data comparisons are in §5.
+
+All **25 read-only HTTP checks** pass: public pages/health/book entry, anonymous
+account/session responses, 401 for protected account/chat/admin APIs, login redirects
+from account/admin pages, blocked raw auth route, invalid revision rejection and
+retained-revision HTML CSP/no-store headers. No production export was requested.
+
+Fresh anonymous headless Chrome passes **eight combinations**: en/zh × light/dark ×
+360/1280px. Login/passkey affordance and account redirect render correctly; public
+reader readiness and theme bridge pass with opaque origin and blocked parent DOM.
+No horizontal overflow or page errors. Login/reader screenshots were visually
+inspected. The bundled Playwright/Chrome fallback was used because agent-browser's
+native Windows binary remains unavailable. This is browser emulation, not a physical
+device or authenticated production-account acceptance. Sensitive workflows retain the
+disposable local evidence below. No mail, paid AI, production credentials/session
+extraction, account/security mutation, real deletion, file cleanup, upload or pruning
+was performed. Existing paid-call budgets are unchanged.
+
+Private release evidence: `data/investigation/account-release-20261016/` contains
+the exact PR/merge/run receipts, baseline/backup/parity records, HTTP and browser
+receipts, screenshots and logs. The handover is an unpublished local documentation
+commit; no second main push/deployment was triggered. Earlier entries below are
+historical and their local-only publication statements are superseded by this release.
 
 **Codebase audit fix acceptance (2026-10-16):** fresh full offline suite **206/206**,
 full lint and production build (TypeScript plus standalone sanitization) exit 0 with the

@@ -276,6 +276,28 @@ the source check. For local source validation use
 scope explicitly. Do not weaken CI rules or delete owner files to make QA green.
 A clean CI checkout does not contain those ignored helpers.
 
+### A plain `h-10` does not enlarge shadcn's horizontal TabsList
+
+**Symptom** `/text-diff` view tabs measured 25px tall — under the 40px minimum in
+DESIGN §9 — even though the list carried `className="h-10"`, and the computed
+height stayed 32px. **Cause** the registry sets the height through the variant
+`group-data-horizontal/tabs:h-8`; a bare `h-10` is a different class, so
+tailwind-merge keeps both and the variant wins on order. **Fix** override the same
+variant (`group-data-horizontal/tabs:h-12`) as well as the plain class. Measure
+rendered rects after any TabsList/TabsTrigger sizing change; the class list lying
+about it is not visible in a screenshot.
+
+### A synthetic click never activates a Radix tab
+
+**Symptom** a browser check clicked the "Unified" tab with `element.click()`, read
+the rows back, and every measurement still described the side-by-side panel — the
+same markup, so nothing looked wrong. **Cause** Radix Tabs activates on
+pointer/mouse down; a bare `click` event selects nothing, so `aria-selected` never
+moved. **Fix** in QA, dispatch `pointerdown` + `mousedown` before `click`, and assert
+`[role=tab][aria-selected=true]` actually changed rather than trusting the click.
+Plain buttons (this site's own controls) do respond to `.click()`, which is what made
+the difference easy to miss.
+
 ## G. i18n & icons
 
 ### `getTranslations` import path
@@ -866,3 +888,30 @@ Windows handle lacks truncation rights. **Fix** validate the complete ledger fir
 truncate only the unfinished final fragment using its separate path operation, then
 open for append, write the complete line and fsync. The supported runtime is one process;
 complete malformed records and read permission/I/O errors remain fatal.
+
+### Bounded input does not bound pretty-printed JSON output
+
+**Symptom** a small valid deep document allocates hundreds of megabytes when
+formatted. **Cause** indentation repeats for every element at every nesting level;
+input-length/depth guards do not constrain that expansion. **Fix** measure output
+length before allocating the pretty string, refuse with a localized bound, and
+leave minification available. Error locations and excerpts must also share one
+CR/LF/CRLF convention and allow a caret after the final character.
+
+### Exact decimal temperature arithmetic needs exact integers
+
+**Symptom** a decimal just below absolute zero converts as zero, or a finite tiny
+reading is rejected as overflow. **Cause** Number-based integer numerators lose
+digits while their power-of-ten denominators can overflow. **Fix** use BigInt for
+the affine arithmetic and divide before converting the ratio to double. Compose
+linear factors first to avoid losing a valid result through its base intermediate;
+check a scientific token's mantissa separately from its exponent when detecting zero.
+
+### Tab controls must name real panels
+
+**Symptom** axe flags `aria-controls` despite a visually working segmented control.
+**Cause** Radix TabsTrigger creates a panel reference, but conditional content was
+outside Tabs and no TabsContent existed. **Fix** use real panels for content tabs;
+use labelled pressed-state Buttons for a mode choice that changes one output.
+Wait for active control transitions before measuring contrast; keep manual-only
+decorative glyph checks separate from violations.

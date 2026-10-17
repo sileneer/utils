@@ -82,7 +82,7 @@ function request(input = {}, signal) {
   return new Request("http://localhost/api/agent/chat", {
     method: "POST",
     signal,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", origin: process.env.APP_URL },
     body: JSON.stringify({
       message: "question",
       sessionId: randomUUID(),
@@ -128,6 +128,20 @@ test("auth and UUID guards apply to chat and history; identity exposes only pers
   assert.equal(identity.availability.remaining, 100);
   assert.equal(identity.availability.service, "ready");
   assert.equal(identity.active, undefined);
+});
+test("chat rejects missing/cross-site origins and non-JSON before reserving paid usage", async () => {
+  const db = database.getDatabase();
+  const before = db.prepare("SELECT count(*) n FROM ai_usage").get().n;
+  for (const origin of [null, "null", "https://evil.test", "http://sibling.localhost"]) {
+    const incoming = request();
+    if (origin === null) incoming.headers.delete("origin");
+    else incoming.headers.set("origin", origin);
+    assert.equal((await POST(incoming)).status, 403);
+  }
+  const plain = request();
+  plain.headers.set("content-type", "text/plain");
+  assert.equal((await POST(plain)).status, 403);
+  assert.equal(db.prepare("SELECT count(*) n FROM ai_usage").get().n, before);
 });
 test("successful partials plus final answer persist one complete exchange", async () => {
   const id = randomUUID();

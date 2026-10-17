@@ -38,7 +38,7 @@ Why shadcn/ui + Tailwind v4 (2026 context): shadcn/ui has fully migrated to Tail
 
 1. **Utility-first, speed-first.** Tools should feel instant. No page animations on tool screens; optimize for perceived latency.
 2. **Content over chrome.** Minimal headers, no decorative blocks. One screen = one tool's job.
-3. **Brand family.** utils is part of the lzhdev.com family: reuse the portfolio's identity — Inter/Outfit typography, teal primary, purple accent. Same person's brand, adjacent product.
+3. **Owner identity.** utils is the lzhdev tools website: reuse the portfolio's identity — Inter/Outfit typography, teal primary, purple accent.
 4. **Dark mode is a first-class citizen.** Every component and every change must look correct in both themes.
 5. **Accessible by default.** WCAG AA contrast, keyboard operability, visible focus — enforced via Radix primitives plus the rules in §9.
 6. **Tokens over literals.** No magic colors/spacing/z-index in components. Everything goes through the semantic tokens in §3.
@@ -69,8 +69,9 @@ Paste-ready block for `globals.css` (shadcn v4 convention; adjust only through t
   --muted-foreground: oklch(0.50 0.02 250);
   --accent: oklch(0.94 0.03 295);             /* violet tint bg */
   --accent-foreground: oklch(0.40 0.15 295);
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: oklch(0.57 0.245 27.325);
   --destructive-foreground: oklch(0.985 0.005 240);
+  --success: oklch(0.51 0.12 152);              /* green, AA on card; local diff/validation additions */
   --border: oklch(0.91 0.01 240);
   --input: oklch(0.91 0.01 240);
   --ring: oklch(0.55 0.10 195);
@@ -92,6 +93,7 @@ Paste-ready block for `globals.css` (shadcn v4 convention; adjust only through t
   --accent-foreground: oklch(0.90 0.05 295);
   --destructive: oklch(0.65 0.20 25);
   --destructive-foreground: oklch(0.16 0.015 250);
+  --success: oklch(0.72 0.15 152);              /* dark-theme pairing for the light value above */
   --border: oklch(0.28 0.02 250);
   --input: oklch(0.28 0.02 250);
   --ring: oklch(0.60 0.10 195);
@@ -169,12 +171,20 @@ Footer: lzhdev.com · GitHub ("Open source (MIT)") — muted, single row. **No c
 
 ### 5.2 Tool index (home)
 
+- **Site introduction (owner decision, 2026-10-16):** home, About and metadata identify utils simply as the lzhdev tools website. Keep the owner link; avoid personal-audience or brand-lineage descriptions and future-milestone copy in these introductions.
 - Responsive card grid: `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4`.
 - Tool card: lucide icon on `bg-primary/10` rounded tile + tool name (medium) + one-line description (`text-sm text-muted-foreground`) + optional category badge. Entire card is one link (`Card` + hover `shadow-sm` + `-translate-y-0.5` transition).
 
 ### 5.3 Tool page template (`ToolShell`)
 
-Every tool route (`/tools/<slug>`) renders the same shell, in this order:
+A tool ships at `/${slug}`: the path comes from `src/lib/tools.ts` and the home
+card links to it directly (§10). There is no `/tools/` prefix — the earlier
+wording in this section was stale and was corrected on 2026-10-16 when
+`/text-diff` shipped, because two different route spellings had already started
+to spread into prompts and notes. The registry status (`planned` / `live`) is the
+only switch for the home entry; the page itself does not gate on it.
+
+Every tool route renders the same shell, in this order:
 
 1. **Header block**: `h1` (tool name) + one-line description + optional category badge.
 2. **Input area**: form/settings — inline if small, inside a `Card` if structured.
@@ -182,7 +192,13 @@ Every tool route (`/tools/<slug>`) renders the same shell, in this order:
 4. **Footnote** (optional): "How it works" collapsed `Collapsible` — data source, limitations, privacy note ("processed locally in your browser").
 
 - Tool state that users would share → encode in URL search params (shareable links are a feature).
+  **Exception:** a browser-only local tool (§5.18) never puts user text, or anything
+  derived from it, into a URL, query string, storage key or download name. Pasting a
+  private document into such a tool must not create a link that carries it.
 - Client-side-only tools (no server call) should say so in the footnote — privacy is a selling point.
+- "ToolShell" names this template, not a component: each tool page currently
+  composes the four blocks from `ui/` primitives directly. Extract a shared
+  component when the second local tool lands, and record it here first.
 
 ### 5.4 System pages
 
@@ -762,6 +778,182 @@ Mobile-first. Test widths: 360 / 768 / 1280. Settings panels that are sidebars o
   withdraw and request → confirm paths, and no state, email or token written to
   localStorage, a URL or a toast.
 
+### 5.18 Local browser-only tools — shared contract, owner approved 2026-10-16
+
+The public utility tools that need no account, no server and no AI. Their binding
+contract (also ARCHITECTURE §2): the input is read from state only, never sent
+anywhere, never written to `localStorage`/`sessionStorage`/IndexedDB, never
+serialized into a URL, and cleared by navigation. The page must say so in the
+footnote. Because a locale switch reloads the document, a tool holding unsaved
+text registers through `src/lib/unsaved.ts` so the language switcher confirms
+before discarding it (§5.10 rules apply unchanged).
+
+`/text-diff` compares two pasted texts in the browser. Engine: `src/lib/tools/diff.ts`.
+
+- **Layout.** Two labelled `Textarea` panes (§3.2 mono), side-by-side on desktop
+  and stacked below `md`, each with its own copy and a shared swap, example and
+  clear-all toolbar. Results stay on the page while inputs change; nothing opens
+  in a dialog.
+- **Comparison options.** `Switch` controls for ignore case and ignore trailing
+  whitespace. They only change the comparison keys; the rendered text is always
+  what the user typed, and the options never rewrite an input. Leading whitespace
+  and line-ending style are deliberately significant.
+- **Rows.** A contiguous difference is one hunk; inside a hunk, deletes and inserts
+  pair up line by line into `change` rows. `equal` runs longer than the context
+  (3 lines) collapse into one gap row that states the hidden line count — the same
+  bound the copy control uses, so what is shown and what is copied agree.
+- **Inline marks.** Inside a `change` row, the differing words are marked. Han,
+  Hiragana, Katakana and Hangul are single-character tokens (they are not
+  space-separated); an emoji sequence stays one token, so a surrogate pair can
+  never be split. A pair too large to align inline marks the whole line instead.
+- **Line endings.** `CRLF`, `CR` and a missing final newline are differences and
+  are labelled in the row (a text-only diff would otherwise show a change the
+  reader cannot see). The ending-only case gets its own wording and no inline marks.
+- **Views.** `Tabs` for side-by-side and unified; in side-by-side mode a narrow
+  column stacks each pair vertically rather than squeezing both columns. Previous/
+  next buttons step through rendered hunks with a visible focus ring on the target
+  row, and the count states "difference n of m".
+- **Touch targets.** shadcn's horizontal `TabsList` is pinned to 32px, which leaves
+  25px triggers, and the `Switch` pill is 18px tall — both under §9. The view tabs are
+  raised by overriding the same `group-data-horizontal/tabs:` variant (41px triggers),
+  and each switch gets `after:-inset-y-3` so its hit area is 42×56 while the pill keeps
+  its shape. Verified by measured rects plus a hit test 10px outside the pill.
+- **Status, not colour.** Added and removed rows always carry `+`/`−` markers and
+  line numbers; the tint (`bg-success/10`, `bg-destructive/10`) and, inline,
+  strikethrough versus underline, are secondary (§9).
+- **Safety.** Lines render as React text children. No HTML, `dangerouslySetInnerHTML`,
+  or markdown rendering of user content, in either direction.
+- **Bounds.** `limits` in the engine (100 000 characters or 20 000 lines per pane,
+  2 000 rendered rows) is the explicit answer to oversized input: the tool states
+  the limit and refuses to compare rather than offering a cancellable computation.
+  A range that exceeds the alignment budget degrades to one coarse block and says
+  so. Typing uses `useDeferredValue`, so the panes keep responding while a large
+  comparison is recomputed.
+
+### 5.19 QR Studio — `/qr-studio`, owner approved 2026-10-16
+
+Second browser-only public tool (§5.18 contract applies unchanged: no upload, no
+storage, nothing in the URL, no AI). Engine `src/lib/tools/qr.ts`; the dependency is
+registered in §12.
+
+- **Three content kinds** as `Tabs`: text, link and Wi-Fi. A link is only encoded —
+  the page never navigates to, requests or validates it. Wi-Fi carries network name,
+  password, security (WPA2/WPA3, WEP, open) and a hidden-network switch; the `WIFI:`
+  payload escapes `\ ; : , "` in the name and password, and an open network omits the
+  password field while a visible network omits `H:`.
+- **Settings.** Error correction (L/M/Q/H with the recovery share in the label), export
+  size (256/512/1024 px), quiet zone (4/6/8 modules) and two colours. The default is
+  black on white with a four-module quiet zone, which is what a camera reads best; the
+  quiet zone is floored at four in code, not just in the control.
+- **Colour fields.** Native `<input type="color">` at `size-10` with the hex value shown
+  beside it in mono, plus swap and "black on white" affordances. No hex text box: the
+  picker and the two buttons cover every reachable value without a second source of
+  truth. These hexes are image content, not UI styling, so they are deliberately outside
+  the token system — the preview keeps its own light background in the dark theme.
+- **Failure states are never stale.** The preview is derived from the current input, so
+  an over-long payload, an empty field or a missing network name replaces it with the
+  reason; nothing previously rendered survives. A low-contrast palette keeps the code
+  visible (it is valid) and states the measured ratio against the 3:1 floor.
+- **Exports.** PNG is drawn on a canvas at the exact requested edge with a whole-pixel
+  module size centred in the box; SVG is built from the same layout and contains only
+  `<rect>` geometry and two validated colours — no script, no style, no external
+  reference, and no user text at all. Both files are named `qr-code.png` / `qr-code.svg`
+  so a download never carries the content in its name.
+- **Secrecy.** The encoded payload is never rendered as text, so a Wi-Fi password cannot
+  leak into a screenshot, the DOM or a log; it also never reaches a URL or storage. The
+  password row reuses `auth/password-field` (masked, with the show/hide toggle and the
+  Caps Lock hint) rather than adding a second control.
+
+### 5.20 JSON Formatter — `/json-formatter`, owner approved 2026-10-16
+
+Third browser-only public tool (§5.18 contract applies unchanged). Engine
+`src/lib/tools/json.ts`; **no new dependency** — the parser is written here because
+`JSON.parse`/`JSON.stringify` cannot meet the two hard rules below (PLANNING §15.7).
+
+- **Layout.** Input `Textarea` and a read-only output `Textarea` stacked on mobile,
+  one above the other, and a status line for each side. Toolbar: example, clear, the
+  Formatted/Minified buttons in a labelled group (`aria-pressed`) and the indent
+  `Select` (2 spaces, 4 spaces, Tab), which is
+  disabled while Minified is chosen. Copy and Download sit under the output, where they
+  belong.
+- **Nothing is silently changed.** Numbers, strings and keys are printed from their own
+  source text, so `123456789012345678901234567890`, `1.50`, `1e2`, `-0` and `"say \"hi\""`
+  survive both formatting and minification, and object keys keep their document order.
+  A key that repeats is an error naming the key and both positions, never a last-write-wins.
+- **Validation is live and located.** The reason is a sentence, not an engine string, and
+  it carries line and column plus the offending source line with a caret under the column
+  (long lines are centred on it). Empty input, an invalid document and a valid one each get
+  their own message. The output is derived from the current input, so a document that stops
+  parsing removes the previous result instead of leaving it on screen.
+- **Bounds.** Above 2 000 000 characters or 200 nesting levels the tool refuses with the
+  limit named. Pretty output is measured before allocation and refused above 8 000 000
+  characters; minification remains available for a document whose indentation would
+  exceed that bound. The check runs on a deferred value.
+- **Review correction, 2026-10-17:** output mode is a choice, so use the registered
+  Button with `aria-pressed` rather than tabs that name missing panels. QR content
+  tabs must own their real `TabsContent` panels. The light destructive token is
+  darkened slightly to pass 4.5:1 on white alert surfaces (the earlier value measured
+  4.49:1); dark-theme and destructive-foreground tokens stay unchanged.
+- **Text only.** Input and output are `Textarea` values, so a document containing markup is
+  never interpreted; the download is named `formatted.json` so no key can leak through a
+  file name.
+
+### 5.21 Unit Converter — `/unit-converter`, owner approved 2026-10-17
+
+Fourth browser-only public tool (§5.18 contract applies unchanged). Engine
+`src/lib/tools/units.ts`; **no new dependency** — the table and the arithmetic live here so
+every definition stays checkable (PLANNING §15.8).
+
+- **Categories.** Length, area, volume, mass, temperature, speed and time, each with its
+  common metric and imperial/US-customary units. A unit whose size depends on tradition —
+  cup, tablespoon, teaspoon, month — is left out rather than guessed. Where US and
+  Imperial differ (gallon, quart, pint, fluid ounce, ton), both are listed and the system
+  is part of both the name and the symbol. Currency is out of scope: a rate needs a live
+  source and this page has no server.
+- **One dimension at a time.** The category is a `Select`; both unit `Select`s are built
+  from `unitsIn(category)`, so a mixed-dimension pair cannot be reached, and switching
+  category resets source and target to that category's own defaults. `convert` still
+  refuses a mismatch: the engine's contract does not depend on the UI being well behaved.
+- **One base unit per category** — metre, square metre, litre, kilogram, kelvin, metre per
+  second, second. Area, volume and speed factors are *derived* from the length and time
+  tables (factor², factor³, length ÷ time) instead of being typed in again, so the
+  square-cube relation is arithmetic a test can check rather than a remembered number.
+- **Temperature is affine.** Its scales differ by an offset as well as a gradient, so they
+  are stored as integer slope and intercept on 900 × kelvin and applied to the exact
+  decimal that was typed, using BigInt until the final double result. `32 °F` is then
+  `0 °C`, not `5.68e-14 °C` — the obvious
+  `(°F + 459.67) × 5/9` double path does fail that. `convert` returns no factor for a
+  temperature pair, and the relationship panel says so instead of inventing a multiplier.
+- **Display precision is separate from calculation.** `formatQuantity` rounds to
+  `displayDigits` (12 significant digits) for the screen only; `Conversion.result` keeps
+  the full double and the next step always uses that. This removes float tails
+  (`28.316846592000005`) without hiding real digits, and no branch can render `NaN` or
+  `Infinity`.
+- **The value box is a number, not an expression.** `inputMode="decimal"` and one strict
+  token: optional sign, digits, optional fraction, optional exponent. Thousands
+  separators, a unit suffix, `1/2`, `NaN` and `Infinity` are refused with the offending
+  text quoted back. Empty, invalid, overflow, underflow and below-absolute-zero each get
+  their own message; the physical-range one names that scale's own floor.
+- Numeric tokens are bounded to 4 096 characters. Compose linear scale factors
+  before applying the value; a finite result must not be lost through an overflowing
+  or underflowing intermediate. Omit the explanatory base chain when that intermediate
+  cannot be displayed, while retaining the valid requested result.
+- **Layout.** Category, value, source, target, swap and clear; the result is a read-only
+  field with the target symbol beside it and Copy underneath; the conversion relationship
+  — the through-the-base line, each unit's factor and exact definition, the temperature
+  notice — sits below. The result is derived state, so an invalid value removes it rather
+  than leaving a stale number. Symbolic one-liners use `font-mono`; the two sentences
+  ("no single multiplier", "same unit on both sides") do not. Choosing the same unit twice
+  is a valid state, not an error: the factor line is replaced by that statement instead of
+  rendering `1 gal (US) = 1 gal (US)`.
+- **Select popups are touch targets too.** Radix renders the listbox in a portal outside
+  `#main-content`, so a rect sweep of the page body misses it: every `SelectItem` here
+  carries `min-h-10`, because the volume list has 13 entries and the registry default is
+  28px. Measured with the popup open on an emulated touch viewport.
+- **Symbols are engine data, names are catalog data.** `in`, `gal (imp)` and `°F` are
+  locale-neutral and live in `units.ts`; translated names are `unitConverter.unit.<id>`,
+  so the unit id doubles as the message key (§10).
+
 ## 6. Motion
 
 - Micro-interactions (hover, focus, press): CSS transitions, `150ms ease-out`.
@@ -854,6 +1046,8 @@ Exact installed versions are in `package-lock.json`; later additions are registe
 | react-hook-form / zod / @hookform/resolvers | 7.89.0 / 4.6.5 / 5.9.1 — public account forms (§5.7), locked versions in package-lock |
 | better-auth / better-sqlite3 | 1.7.7 / 13.0.3 — self-hosted accounts and owned chat (§5.7) |
 | motion | not installed yet (marketing pages only) |
+| qrcode-generator | 2.0.4 — MIT, **zero dependencies**, ships its own types. `/qr-studio` uses only its encoder to get the module matrix; the SVG and PNG are drawn by `src/lib/tools/qr.ts` so colours, shapes and quiet zone stay under this site's control. Registered here before installation (2026-10-16, PLANNING §15.5) |
+| jsqr | 1.4.0 — Apache-2.0, **devDependency only**: it decodes the generated matrix, the exported SVG geometry and the exported PNG bytes during QA. Never imported by the application, never in the image |
 
 Tooling: ESLint Next core-web-vitals and TypeScript flat config in
 `eslint.config.mjs`. Prettier and its Tailwind plugin are not installed; preserve

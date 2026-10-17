@@ -41,25 +41,25 @@ export const tools: Tool[] = [
   {
     slug: "text-diff",
     category: "Text",
-    status: "planned",
+    status: "live",
     icon: FileDiff,
   },
   {
     slug: "qr-studio",
     category: "Generate",
-    status: "planned",
+    status: "live",
     icon: QrCode,
   },
   {
     slug: "json-formatter",
     category: "Text",
-    status: "planned",
+    status: "live",
     icon: Binary,
   },
   {
     slug: "unit-converter",
     category: "Convert",
-    status: "planned",
+    status: "live",
     icon: Ruler,
   },
 ];
