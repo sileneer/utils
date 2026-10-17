@@ -6,7 +6,7 @@ export function safeReturnTo(value: unknown): string {
   try {
     const url = new URL(value, "https://utils.invalid");
     if (url.origin !== "https://utils.invalid") return "/";
-    if (!["/", "/htlb", "/about", "/account", "/admin"].includes(url.pathname)) return "/";
+    if (!["/", "/htlb", "/about", "/account", "/admin", "/text-diff", "/qr-studio", "/json-formatter", "/unit-converter"].includes(url.pathname)) return "/";
     return url.pathname + url.search + url.hash;
   } catch { return "/"; }
 }

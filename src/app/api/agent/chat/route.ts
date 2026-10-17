@@ -42,6 +42,10 @@ export async function POST(request: Request) {
   const owner = await currentUser();
   if (!owner)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const origin = process.env.APP_URL || new URL(request.url).origin;
+  if (request.headers.get("origin") !== origin ||
+    !request.headers.get("content-type")?.startsWith("application/json"))
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   let body;
   try {
     body = await request.json();

@@ -35,6 +35,8 @@ function artifactCheck() {
   }
   visit("/app");
   assert.ok(!fs.existsSync("/app/tests"), "QA fixtures in image");
+  for (const dependency of ["jsqr", "braces", "shadcn", "eslint-config-next"])
+    assert.ok(!fs.existsSync("/app/node_modules/" + dependency), "Development dependency in image: " + dependency);
   // Startup migrations import these before the Next route bundles exist. A route
   // build can succeed while this untraced CommonJS dependency chain is missing.
   assert.equal(typeof require("/app/src/lib/auth/deletion.cjs").reconcileDeletions, "function");
@@ -68,6 +70,8 @@ async function routeCheck() {
     return response;
   }
   for (const route of ["/login", "/register", "/verify-email", "/reset-password"])
+    await request(route, 200);
+  for (const route of ["/text-diff", "/qr-studio", "/json-formatter", "/unit-converter"])
     await request(route, 200);
   const config = await request("/api/auth-config", 200);
   assert.deepEqual(await config.json(), { siteKey: "", available: false });

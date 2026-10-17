@@ -67,6 +67,8 @@ test.beforeEach(() => {
 test("return destinations preserve site query/hash and reject redirect attacks and auth loops", () => {
   assert.equal(safeReturnTo("/htlb?release=demo#entry-1-2"), "/htlb?release=demo#entry-1-2");
   assert.equal(safeReturnTo("/account"), "/account");
+  for (const route of ["/text-diff", "/qr-studio", "/json-formatter", "/unit-converter"])
+    assert.equal(new URL(accountLink("login", route), process.env.APP_URL).searchParams.get("returnTo"), route);
   for (const value of ["https://evil.test", "//evil.test", "/\\evil.test", "/%2f%2fevil.test", "/%252f%252fevil.test", "/login", "/register", "/api/auth", "/htlb\n", {}, null]) assert.equal(safeReturnTo(value), "/");
   assert.equal(new URL(accountLink("register", "/htlb?release=demo"), process.env.APP_URL).searchParams.get("returnTo"), "/htlb?release=demo");
   const reauthLink = new URL(accountLink("login", "/account#security", true), process.env.APP_URL);

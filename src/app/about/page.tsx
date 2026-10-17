@@ -29,9 +29,6 @@ export default function AboutPage() {
           ),
         })}
       </p>
-      <p className="text-sm leading-relaxed text-muted-foreground md:text-base">
-        {t("p2")}
-      </p>
       <ul className="space-y-2 text-sm">
         <li>
           <a
