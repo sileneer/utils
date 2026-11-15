@@ -73,7 +73,9 @@ boundaries. Fixes close numeric edge cases, JSON position/output bounds, QR draf
 tracking, new-tool login returns, accessibility/contrast and the existing chat POST
 Origin gap. No schema, provider configuration or production account was changed.
 The original reviewed commit history, including fix commits `2f8c29f` and
-`d29aa30`, is retained locally on `codex/public-tools-history-20261017`. The PR
+`d29aa30`, was held only on the local branch `codex/public-tools-history-20261017`,
+which the merged-branch cleanup below deleted; those commits were never pushed and
+now have no ref outside the local garbage-collection grace period. The PR
 history was consolidated to remove a synthetic password-shaped historical test
 fixture from security-gate input; the final tree was verified identical before an
 exact force-with-lease update. No real credential was involved or gate suppressed.
@@ -84,6 +86,20 @@ do not push another main commit merely to publish the receipt. Ignored `.zcode/`
 previous investigations and retained data remain preserved. Private evidence is
 under `data/investigation/tools-release-review-20261017/`.
 
+**Merged-branch cleanup, 2026-10-17 (uncommitted doc edit):** every PR #1-#10 head
+branch was checked for unpushed work (`0/0` ahead/behind against its own remote)
+before deletion. All were squash-merged, so none is a `main` ancestor and
+`git branch --merged main` correctly listed none of them. The ten heads plus the
+local-only `codex/public-tools-history-20261017` were deleted locally, the nine
+still on `origin` were deleted there, and the stale
+`origin/codex/release-handover-20261016` tracking ref was pruned. `codex/release-handover-20261016`
+had already been removed upstream when PR #10 merged. Only `main` and the local
+receipt branch remain. Each deleted head is still reachable on GitHub as
+`refs/pull/<n>/head`, and each deleted head's tree was re-verified equal to the
+`main` merge commit it produced; only the never-pushed
+pre-squash history above was discarded. No tag, bundle or archive was created for
+it, on the owner's explicit decision.
+
 The following release/implementation positions are dated receipts.
 
 PR [#9](https://github.com/sileneer/utils/pull/9) was squash-merged on 2026-10-16
@@ -93,11 +109,14 @@ The exact feature-head acceptance run
 GitGuardian and qlty checks were successful immediately before merge. Main had
 no configured branch protection; no check was bypassed.
 
-Local `main` is synchronized to the merge commit. Current local branch
-`codex/release-handover-20261016` contains the unpublished release handover commit
-`03c5b0f` plus the local introduction cleanup committed with this handover update;
-do not push another main commit merely to publish this receipt. The checkout was
-clean before release work; owner-owned/ignored files remain preserved.
+Local `main` is synchronized to the merge commit. At this receipt the unpublished
+release handover commit `03c5b0f` and the introduction cleanup `8c009da` were held
+locally, and `codex/release-handover-20261016` carried the handover update without
+a push; do not push another main commit merely to publish this receipt. That
+receipt is now superseded: PR #10 squash-merged this tree as a single commit and
+both local branches were deleted in the 2026-10-17 merged-branch cleanup above, so
+neither name exists in the checkout. The checkout was clean before release work;
+owner-owned/ignored files remain preserved.
 CI/CD run [38835232890](https://github.com/sileneer/utils/actions/runs/38835232890)
 passed every test/image/deploy gate. The running OCI revision matches the merge
 commit and is healthy in that release receipt; actual deployment acceptance is
@@ -841,8 +860,9 @@ test fixture in the original QR commit. It is synthetic test data, not a live
 credential. Replaced it and the SVG secrecy fixture with runtime-generated values,
 retaining the exact escaping/absence assertions. No suppression or gate bypass is
 used. The final consolidated head `1c1402c` passed fresh acceptance and every
-security/quality gate before merge; its final tree equals the preserved reviewed
-history branch. The generated-fixture change also passed the QR suite 13/13.
+security/quality gate before merge; its final tree equals the reviewed pre-squash
+history branch, which the 2026-10-17 merged-branch cleanup later deleted (see §2).
+The generated-fixture change also passed the QR suite 13/13.
 
 **`/unit-converter` local implementation, 2026-10-17:** `npm test` runs 270 cases across
 sixteen files, all green — 16 of them new in `tests/unit-convert.test.cjs`, which test the
