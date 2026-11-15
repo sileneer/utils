@@ -751,8 +751,10 @@ to 12 moderate/low, all in dev-only tooling (shadcn, typescript-eslint). A brows
 test against `tests/auth-preview.cjs` (disposable database, fake secrets, no mail and
 no AI) checked both MorphIcon controls (password eye ↔ eye-off, theme sun ↔ moon),
 the radix theme menu, light/dark, zh at a 360px emulated viewport and desktop, with no
-console errors. No production request was made, and the image build and deploy
-workflows with the new action majors have not run yet.
+console errors. No production request was made. The first PR acceptance run
+(43662334898) failed only on the image smoke test exact SQLite pin
+(`3.54.1` actual vs `3.53.4` expected); every earlier image assertion passed. The
+pin was moved to the reviewed 3.54.1 in `tests/image-smoke.cjs`, not loosened.
 
 **Public-tool review, 2026-10-17:** fresh full `npm test` **276/276**, full lint,
 complete production build/typecheck/standalone sanitization and `git diff --check`
