@@ -15,6 +15,9 @@ services:
     volumes:
       - ./data:/app/data # SQLite accounts/chat state and verified book cache
     restart: unless-stopped
+    # The VM is an e2-micro shared with the Discord bot: cap memory so one
+    # leaky process can't OOM the host (bot has its own 256m cap).
+    mem_limit: 384m
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 30s
