@@ -1,0 +1,20 @@
+# Dependency updates: GitHub Actions weekly (grouped), npm weekly with
+# minor+patch grouped — major npm bumps arrive as individual PRs for review.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
