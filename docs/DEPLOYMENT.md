@@ -61,6 +61,11 @@ mid-flight.
 | **build-push** | buildx multi-stage build → load final image → isolated image smoke check → publish the same image to `ghcr.io/sileneer/utils:<sha>` (+ `:latest` on the default branch), GHA layer cache | needs test and image acceptance |
 | **deploy** | keyless GCP auth → ephemeral SSH key → IAP SSH → `/opt/utils/deploy.sh` | needs build-push |
 
+Dependabot (`.github/dependabot.yml`, on `main` since 2026-11-15) opens weekly
+PRs: one grouped PR for GitHub Actions, one grouped PR for npm minor/patch, and
+separate PRs for npm majors. They are ordinary PRs: run the normal review/exact-head
+gates, and remember that merging one is a push to `main` and therefore a deploy.
+
 Both image workflows load `.github/buildkitd.toml`: BuildKit checks the public
 Google Docker Hub cache before the upstream registry, reducing shared-runner
 pull limits without registry credentials or a different Dockerfile base image.
@@ -138,6 +143,28 @@ Notes that matter when editing it:
 - Container healthcheck: `wget http://127.0.0.1:3000/api/health` every 30 s, 3 retries, 15 s start period.
 - Cloudflare/Tunnel: `sudo journalctl -u cloudflared`.
 
+Two continuous monitors were added on 2026-11-14/15. Both are host/project
+configuration, not part of this repository or the pipeline:
+
+- **Host monitor** `/opt/_ops/uptime-check.sh`, root crontab every 5 minutes. It
+  fails when the public `https://utils.lzhdev.com/api/health` is not HTTP 200 with
+  `"status":"ok"` (the failure report adds the loopback `:3100` status), when the
+  bot container is missing, OOM-killed or has restarted, when the bot logs 10 or
+  more `ERROR` lines in 5 minutes, or when `/` is 85% full or more. It pings its
+  own healthchecks.io check (URL in `/opt/_ops/alerts.env`, root, mode 600):
+  success resets the timer, failures post details to `/fail`, and a dead VM or
+  cron alerts after the check's period plus grace. This is separate from the
+  `utils-deploy` deploy check above.
+- **GCP Cloud Monitoring uptime check** `utils-website`: probes `/api/health`
+  every 5 minutes from US, Europe and Asia-Pacific and requires `"status":"ok"` in
+  the body. An alert policy on `uptime_check/check_passed` emails the owner's
+  account after 5 minutes of failure. Because it runs outside the VM, it still alerts
+  when the VM, cron or healthchecks.io path is down. It is within the free tier.
+
+The host-wide runbook covering both services on this VM (ports, deploy pattern,
+monitoring, backups and their gotchas) is `/opt/_ops/README.md` on the VM; it is
+host-only and written in Chinese. Facts specific to utils stay canonical here.
+
 ### Drill switch (rollback verification)
 
 `/api/health` returns 503 while `DRILL_FAIL_HEALTH=1` is in the container env.
@@ -164,6 +191,13 @@ sudo docker compose -f /opt/utils/docker-compose.yml logs -f         # app logs
 sudo docker compose -f /opt/utils/docker-compose.yml restart         # restart app
 sudo docker exec -it utils-utils-1 wget -qO- http://127.0.0.1:3000/api/health
 ```
+
+The owner's machine also has an SSH alias, `gcp-vm` (an IAP `ProxyCommand` in
+`~/.ssh/config`), so `ssh gcp-vm '<cmd>'` and `scp <file> gcp-vm:/tmp/` work
+non-interactively with `-o BatchMode=yes`. On Windows, redirect stdin from
+`/dev/null`; the tunnel prints a harmless `stdin ReadFile failed` traceback on exit.
+The remote login shell is zsh, so quote anything zsh would expand (such as
+`==` or globs).
 
 From the interactive shell you are your own gcloud user; `utils-deploy` is the
 deploy-time SSH user. Files under `/opt/utils` are owned by `utils-deploy`, so
@@ -263,6 +297,11 @@ Headroom measured 2026-10-07: ~370 MB RAM free of 964 MB total (utils container
 ~21 GB disk free, 1.9 GB swap free.
 
 - Suitable for **lightweight containers only**. No memory-heavy services and **absolutely no builds on the VM** — 1 GB, OOM risk; builds stay in GitHub Actions.
+- Every container gets a memory cap, so one leaking process cannot OOM the host:
+  utils `mem_limit: 384m` (`deploy/docker-compose.prod.yml`, live since 2026-11-15)
+  and the cbc-helper-bot container `256m`. The compose file is copied manually
+  (§7), so change the repo and host copies together and check
+  `docker inspect --format '{{.HostConfig.Memory}}' utils-utils-1` (402653184).
 - Pattern for a new service: its own compose project, bound to `127.0.0.1:<port>`, then add a Cloudflare Tunnel ingress rule (the `utils-deploy` CF API token in `.env.cloudflare` has Tunnel:Edit + Zone DNS:Edit) — or leave it internal-only.
 - Cost: the free tier covers the instance and 30 GB disk. The **external IP (~$3/month) is the only fixed cost and is now unused** (Tunnel + IAP replaced it). Removal was offered to the owner on 2026-10-07 and is **awaiting their decision** — do not remove it unilaterally.
 
@@ -275,6 +314,8 @@ Headroom measured 2026-10-07: ~370 MB RAM free of 964 MB total (utils container
 | `.env.cloudflare` | local | ❌ | CF API token + account/zone IDs for tunnel/DNS ops |
 | `.env.monitoring` | local | ❌ | healthchecks.io `HEALTHCHECK_URL` |
 | `/opt/utils/.env` | server | n/a | production secrets/config per ARCHITECTURE §8, owned by `utils-deploy`, mode 600 |
+| `/opt/_ops/alerts.env` | server | n/a | host monitor's healthchecks.io ping URL (§4), root, mode 600 |
+| `/opt/_ops/secret-backup.env` | server | n/a | passphrase for the encrypted `.env` backup (§12), root, mode 600; the owner keeps the only off-VM copy |
 
 Hard rules (also in AGENTS.md): no secret ever enters the image, the client
 bundle, a log line, or git history — **this repo is public, so a committed secret
@@ -384,8 +425,10 @@ SDK gets its explicit runtime/provider allowlist.
   preserve unrelated jobs when installing. This is 04:15 in London during BST
   and 03:15 during GMT. Precreate the log with mode 600. Backup files are mode
   600, uid 1001, under `/app/data/backups` (directory mode 700). The deploy workflow
-  does not synchronize this host script. Off-machine copying and automatic
-  retention remain unconfigured; backups must not be silently pruned.
+  does not synchronize this host script. After the local backup, the script
+  streams the newest snapshot to Cloud Storage (§12). Local snapshots in
+  `/app/data/backups` are never pruned by the script and must not be silently
+  pruned; only the bucket copies expire.
 - Manual backup:
   `docker exec utils-utils-1 node scripts/database.cjs backup /app/data/backups/manual.sqlite`.
   A volume backup alone does not protect against VM loss; copy protected backups
@@ -450,9 +493,42 @@ The backup records a private atomic status manifest, verifies SQLite integrity/F
 before marking success, preserves prior success after failure, and never prunes.
 A missing status in an older installation is unavailable, not a successful backup.
 
-### Off-machine proposal (not enabled)
+### Off-machine backups (enabled 2026-11-14)
 
-No destination is selected yet. Recommended reviewable option: an owner-owned
+The owner enabled off-machine copies on 2026-11-14/15. These facts were read
+from the VM and bucket on 2026-11-15:
+
+- **Bucket** `gs://gen-lang-client-0642815057-vm-backups`, `US-EAST1`, uniform
+  bucket-level access, no public binding, object versioning off, 7-day soft delete.
+- **utils SQLite**: `deploy/backup.sh` (host copy byte-identical to the repo)
+  streams the newest `/app/data/backups/utils-*.sqlite` out through `docker exec`,
+  because the files are mode 600 for the container user, into `utils/`. The
+  cbc-helper-bot backup writes to `cbc-helper-bot/`.
+- **Retention (owner decision):** a lifecycle rule deletes objects under `utils/`
+  and `cbc-helper-bot/` after 30 days. This supersedes the earlier "keep everything,
+  no lifecycle" proposal below. `secrets/` has no lifecycle rule.
+- **Encrypted `.env` backup (owner decision):** `/opt/_ops/secret-backup.sh`
+  (root crontab, `0 5 1 * *`) tars `/opt/utils/.env` and `/opt/cbc-helper-bot/.env`,
+  encrypts them with gpg AES256 using the passphrase in `/opt/_ops/secret-backup.env`
+  (passed on file descriptor 3, never on the command line), and uploads
+  `secrets/secrets-<YYYYMMDD>.tar.gz.gpg`. This replaces the earlier "never export
+  .env" line below for this one encrypted archive. Restore:
+  `gpg -d secrets-<date>.tar.gz.gpg | tar xz`. The passphrase was rotated on
+  2026-11-15 after the first one appeared in an agent transcript. Today's object was
+  re-encrypted, the new archive was decrypted to both `.env` paths, and the old
+  passphrase was confirmed to fail on it.
+- **Upload identity, which differs from the proposal:** the VM's default compute
+  service account (`970395615458-compute@…`) holds bucket-level
+  `roles/storage.objectAdmin`, and the VM has the `devstorage.full_control`
+  access scope. A compromised VM can therefore delete or overwrite every offsite
+  copy; only the 7-day soft delete limits that. Public-access prevention is
+  `inherited`, not `enforced`. Narrowing to `objectCreator` would also block the
+  same-day overwrite the secrets backup relies on (it would need unique object
+  names first). Both are open owner decisions; see HANDOVER §4.
+
+The original proposal follows as the rationale and target design.
+
+Recommended reviewable option: an owner-owned
 private Cloud Storage bucket in `us-east1`, regional Standard storage, uniform
 bucket access and public-access prevention. Use the VM's workload identity with
 bucket-scoped `roles/storage.objectCreator`; the owner's restore identity gets

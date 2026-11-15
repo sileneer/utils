@@ -1179,8 +1179,8 @@ never filenames, paths or raw errors. Complete success older than 36 hours is
 stale; an attempt running for over 30 minutes is interrupted/failed; malformed
 or missing records are unavailable. scripts/backup.cjs writes atomic mode-600
 status and coherent SQLite backups, checks restored integrity/FKs, retains prior
-success on failure and never prunes. Host rollout/restore and off-machine plan
-live in DEPLOYMENT §11–12.
+success on failure and never prunes. Host rollout/restore and the off-machine
+copies live in DEPLOYMENT §11–12.
 
 ReadingShell adjusts fixed mobile viewport bounds only for a focused text input
 with an actual visual-height reduction, ignoring desktop resize and pinch zoom.

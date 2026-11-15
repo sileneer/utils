@@ -1,8 +1,8 @@
 # Handover
 
-**Updated 2026-10-17 after the reviewed public-tool release and live acceptance.**
+**Updated 2026-11-15 after the ops-hardening release (`63dc76f`) and handover tidy-up.**
 Current release evidence is in §2/§5/§7; earlier implementation and acceptance
-entries are dated historical receipts. Runtime contracts:
+entries, including the 2026-10-17 public-tool release, are dated historical receipts. Runtime contracts:
 [ARCHITECTURE](ARCHITECTURE.md); operations: [DEPLOYMENT](DEPLOYMENT.md);
 UI: [DESIGN](DESIGN.md); decisions: [PLANNING](PLANNING.md) §11–13; improvement plan
 and batch results: [PLANNING](PLANNING.md) §14; browser-only public tools:
@@ -10,7 +10,20 @@ and batch results: [PLANNING](PLANNING.md) §14; browser-only public tools:
 
 ## 1. Authorization
 
-**Current authorization, 2026-10-17:** the owner requested complete validation of
+**Current authorization, 2026-11-15:** the owner directed a free-tier ops-hardening
+pass on 2026-11-14/15: offsite Cloud Storage backups with 30-day retention for the
+data prefixes, an encrypted `.env` backup, host and GCP uptime monitoring, a container
+memory cap, and Dependabot. The owner then explicitly approved pushing the three
+resulting ops commits to `main`, including their automatic deployment, and rotating
+the `.env`-backup passphrase on the VM. They also approved tidying this handover and
+the receipt branches. This supersedes the "off-machine backup uploads and pruning
+remain unapproved" limit in the dated entries below, for the lifecycle rule and
+uploads described in DEPLOYMENT §12 only. Local snapshots are still never pruned.
+The documentation branch for this tidy-up is **not** authorized to merge or deploy
+on its own (AGENTS: documentation maintenance alone does not authorize a rollout).
+No paid AI call, real mail, account mutation or production data change was made.
+
+**Dated authorization, 2026-10-17:** the owner requested complete validation of
 all four implemented tools, review of their commits and the workspace changes,
 then PR creation and merge once the result is accepted. This supersedes the
 local-only publication limits in the dated implementation receipts below. Merge
@@ -57,7 +70,27 @@ No such sensitive action was exercised for this release. Existing paid QA budget
 
 ## 2. Checkout and release position
 
-**Current release:** PR [#10](https://github.com/sileneer/utils/pull/10) was
+**Current release, 2026-11-15:** `main` is `63dc76f6ed92131ea202c994892ff3f00210dbeb`.
+It is PR #10's merge `82921bb` plus three direct ops commits, pushed with owner approval:
+`cb94f71` (`deploy/backup.sh` streams the newest snapshot to Cloud Storage),
+`462ed86` (`.github/dependabot.yml`) and `63dc76f` (`mem_limit: 384m` in
+`deploy/docker-compose.prod.yml`). An agent first committed them on the receipt branch
+`codex/public-tools-release-handover-20261017` by mistake; they were cherry-picked
+onto `main` unchanged. None changes application code. The host `backup.sh` and
+compose file had already been installed by hand and are byte-identical to the repo
+(DEPLOYMENT §7, §12). CI/CD
+[43660248861](https://github.com/sileneer/utils/actions/runs/43660248861) passed
+test, build-push and deploy. Acceptance is in §7.
+
+**Checkout:** this handover is on `codex/ops-handover-20261115`, branched from
+`63dc76f`. It carries the 2026-10-17 receipt commit (re-applied as `35b4024`), the
+previously uncommitted merged-branch cleanup receipt below (committed as written),
+and this update. It is unpublished, and merging it would deploy (§1). The old receipt branch
+`codex/public-tools-release-handover-20261017` (local and `origin`) now holds only
+copies of commits that are on `main` or on this branch; delete it once this branch
+is pushed. Ignored `.zcode/`, investigations and retained data are preserved.
+
+**Dated release, 2026-10-17:** PR [#10](https://github.com/sileneer/utils/pull/10) was
 squash-merged on 2026-10-17 as `82921bb684a16bf2c27ff0aa5c451dd05a45f872`, from
 accepted head `1c1402c4166375b2b3d49b0b3defcbdb1fb9892a`. Exact-head acceptance
 [38997358725](https://github.com/sileneer/utils/actions/runs/38997358725),
@@ -80,13 +113,13 @@ history was consolidated to remove a synthetic password-shaped historical test
 fixture from security-gate input; the final tree was verified identical before an
 exact force-with-lease update. No real credential was involved or gate suppressed.
 
-Local `main`/`origin/main` are synchronized to `82921bb`. The current local-only
-branch `codex/public-tools-release-handover-20261017` records this acceptance;
-do not push another main commit merely to publish the receipt. Ignored `.zcode/`,
-previous investigations and retained data remain preserved. Private evidence is
-under `data/investigation/tools-release-review-20261017/`.
+At that receipt, local `main`/`origin/main` were synchronized to `82921bb`, and the
+local-only branch `codex/public-tools-release-handover-20261017` recorded this
+acceptance. That branch was later pushed and is superseded by the 2026-11-15
+position above. Private evidence is under
+`data/investigation/tools-release-review-20261017/`.
 
-**Merged-branch cleanup, 2026-10-17 (uncommitted doc edit):** every PR #1-#10 head
+**Merged-branch cleanup, 2026-10-17 (committed 2026-11-15 as written):** every PR #1-#10 head
 branch was checked for unpushed work (`0/0` ahead/behind against its own remote)
 before deletion. All were squash-merged, so none is a `main` ancestor and
 `git branch --merged main` correctly listed none of them. The ten heads plus the
@@ -401,7 +434,35 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 ## 4. Next actions
 
-**Public-tool release complete:** PR #10 is merged and deployed, with actual
+**Current, 2026-11-15.** No release action remains for `63dc76f`. Open items:
+
+- **Publish this handover:** push `codex/ops-handover-20261115`, then delete
+  `codex/public-tools-release-handover-20261017` locally and on `origin` (§2). Merge
+  it only with a later release, or with an explicit decision to deploy a docs-only change.
+- **Owner decisions on backup hardening (DEPLOYMENT §12):** narrow the VM identity
+  from bucket `objectAdmin` and `devstorage.full_control` to create-only. Today a
+  compromised VM could delete every offsite copy, and only the 7-day soft delete
+  limits that. Narrowing needs unique secrets-backup object names first. Also decide
+  whether to set public-access prevention to `enforced`.
+- **Observe the first scheduled offsite runs:** the utils upload at 03:15 UTC
+  daily (the only `utils/` object so far is the 2026-11-14 23:01 manual run) and the
+  first monthly secrets run on 2026-12-01 05:00 UTC. A restore of a downloaded
+  `utils/` SQLite object into an isolated directory (DEPLOYMENT §12 checklist) has
+  not been done from this repository's side; the host runbook's 2026-11-14/15
+  drill note was not independently re-verified.
+- **Local build environment:** `npm run build` fails on this machine before
+  compiling, because of a cache-directory ACL (GOTCHAS §F). It needs an owner ACL
+  decision; until then the CI `test` job is the build gate.
+- **Leftover copy of the retired passphrase:** an agent transcript exposed the
+  first `.env`-backup passphrase. It was rotated, and it no longer opens any live
+  object (DEPLOYMENT §12). One local copy remains in the ZCode app's
+  `~/.zcode/v2/tasks-index.sqlite`; redact it while ZCode is closed. Its source
+  rollout log was deleted.
+- **Earlier open items** below are unchanged: the external-IP removal decision
+  (DEPLOYMENT §9), the five-turn real-AI QA budget, physical-device and real-mail
+  acceptance.
+
+**Dated, 2026-10-17 — public-tool release complete:** PR #10 is merged and deployed, with actual
 running-revision, health, route and retained-data acceptance in §5/§7. No release
 action remains for these four tools. The existing development-only `braces`
 advisory remains tracked in §7; do not apply a breaking toolchain downgrade to
@@ -565,10 +626,18 @@ Independent follow-ups remain:
 - Physical phone keyboard/IME/source-return, cross-device production reset,
   long-context/source-faithfulness and mail-header acceptance remain distinct.
 - The last natural scheduled backup was verified successful on 2026-10-15;
-  keep observing scheduled status after the upgrade. Off-machine destination,
-  ownership, upload and retention/pruning need separate decisions (DEPLOYMENT §12).
+  keep observing scheduled status after the upgrade. (Superseded 2026-11-15: the
+  off-machine destination, upload and retention were decided and enabled; see the
+  current items above and DEPLOYMENT §12.)
 
 ## 5. Last accepted production data and backup
+
+**Ops release, 2026-11-15:** no schema, data or account change. No pre-release
+SQLite backup was taken, because the release changed no application code and only
+recreated the container with the same data mounts. The bucket holds one `utils/`
+snapshot, `utils-20261114T230135Z-651a65ac.sqlite` (282624 bytes, the same size as
+the PR #10 pre-release backup), one `cbc-helper-bot/` snapshot and one `secrets/`
+archive. Counts and digests were not re-taken for this release.
 
 **PR #10 acceptance, 2026-10-17:** coherent SQLite API backup
 `/app/data/backups/pre-pr10-20261017-1c1402c.sqlite` is retained at mode 600,
@@ -793,6 +862,19 @@ application. Screenshots, the CDP drivers and the fixture databases stay local a
 touched, and no real SDK transcript was removed.**
 
 ## 7. Verification and limits
+
+**Ops release acceptance, 2026-11-15:** CI/CD
+[43660248861](https://github.com/sileneer/utils/actions/runs/43660248861) for
+`63dc76f` passed test (lint, tests, build), build-push and deploy. The running container's
+OCI revision label is `63dc76f6ed92131ea202c994892ff3f00210dbeb`, its memory limit is
+402653184 bytes (384 MiB) and its health is `healthy`. Public `/api/health` returned
+`{"status":"ok"}` with 50 s uptime, `/` returned 200, and anonymous `/api/account`
+returned the documented `{"user":null}`. Dependabot started both update jobs on
+`main` immediately. Locally, `npm run lint` passed. **`npm run build` could not run
+locally** (GOTCHAS §F, SWC cache ACL), so the CI build is the only build evidence.
+No browser matrix, paid AI call or account flow was exercised; none was affected.
+
+For this documentation branch, `npm run lint` passed and nothing was deployed.
 
 **PR #10 publication acceptance, 2026-10-17:** exact-head PR acceptance,
 GitGuardian and qlty passed; main CI/CD passed full lint/tests/build, final Linux

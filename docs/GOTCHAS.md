@@ -207,7 +207,28 @@ SSH still works.
 **Symptom** file transfer hangs on a host-key prompt, or fails outright.
 **Cause** IAP tunnels plus interactive host-key checking don't mix on Windows.
 **Fix** `gcloud compute ssh --command="echo <base64> | base64 -d > file"`
-(DEPLOYMENT §7).
+(DEPLOYMENT §7). On the owner's machine, the `gcp-vm` SSH alias also works:
+`scp -o BatchMode=yes <file> gcp-vm:/tmp/` with stdin from `/dev/null`
+(verified 2026-11-15, DEPLOYMENT §5).
+
+### `gcloud.cmd` splits arguments on commas
+
+**Symptom** a `gcloud` flag whose value contains a comma (a list of regions,
+`key=a,b`) fails or is parsed as several arguments, but only on Windows.
+**Cause** `gcloud.cmd` is a batch wrapper, and cmd re-splits the arguments it
+passes on.
+**Fix** run the command on the VM, or call the REST API with `curl` and an access
+token from `gcloud auth print-access-token`. This was hit on 2026-11-14/15 when
+setting an access scope and creating the uptime check.
+
+### Cloud Monitoring uptime alerts: metric and aligner
+
+**Symptom** an alert policy on an uptime check is rejected, or never fires.
+**Cause** the metric is `monitoring.googleapis.com/uptime_check/check_passed`
+(there is no `check_failed`), and it is BOOL-valued, so `ALIGN_MEAN` is invalid.
+A brand-new check's metric also takes about 10 minutes to appear.
+**Fix** align with `ALIGN_COUNT_TRUE` (or `ALIGN_FRACTION_TRUE`) and alert when the
+passing count drops; create the policy once the metric exists (DEPLOYMENT §4).
 
 ## E. Server-side files & shell layering
 
@@ -252,6 +273,21 @@ while TypeScript errors failed the same job.
 **Cause** Next prints that before the type-check phase.
 **Fix** read the whole log tail / the Actions job status. Run `npm run build`
 locally and require exit 0.
+
+### SWC refuses every native cache directory on the Windows dev machine
+
+**Symptom** `npm run build` fails before compiling with `ERR_SWC_NATIVE_CACHE`:
+`validate cache root …\AppData\Local\swc: … DACL grants replacement rights …
+to SID S-1-15-3-…`. Setting `SWC_NATIVE_BINDING_CACHE` does not help: a folder
+under `AppData\Local` fails on the same ancestor, and one under `D:\coding`
+fails on another SID.
+**Cause** the SWC native loader refuses a cache directory whose ACL, or any
+ancestor's ACL, lets another principal replace files. `C:\Users\lzh75\AppData\Local`
+grants that right to an AppContainer SID. Seen 2026-11-15; `npm run lint` is
+unaffected.
+**Fix** not resolved yet. It needs an owner-approved ACL change on a cache
+directory, not a code change. Until then the CI `test` job is the build gate,
+and HANDOVER §7 must say so whenever a local build could not run.
 
 ### `react-hooks/set-state-in-effect`
 
