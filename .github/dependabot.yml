@@ -18,3 +18,19 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # Better Auth is pinned together with package.json `overrides`
+        # (ARCHITECTURE §5); bumping it inside the group cannot resolve and
+        # blocks every other update. It arrives as its own PR instead.
+        exclude-patterns:
+          - "better-auth"
+          - "@better-auth/*"
+    ignore:
+      # Runtime is Node 22 (Dockerfile, workflows); types must not run ahead.
+      - dependency-name: "@types/node"
+        versions: [">=23"]
+      # typescript-eslint (via eslint-config-next) rejects TypeScript 7.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # eslint-config-next's eslint-plugin-react crashes under ESLint 10.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]

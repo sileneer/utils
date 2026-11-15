@@ -1025,26 +1025,26 @@ every definition stays checkable (PLANNING §15.8).
 
 ---
 
-## 12. Dependency baseline (reviewed 2026-10-11)
+## 12. Dependency baseline (reviewed 2026-10-11, versions updated 2026-11-15)
 
 Exact installed versions are in `package-lock.json`; later additions are registered above.
 
 | Package | Version / note |
 |---------|----------------|
-| next | 16.3.8 (App Router, Turbopack, `output: "standalone"`) |
-| react | 19.2.8 |
+| next | 16.4.6 (App Router, Turbopack, `output: "standalone"`) |
+| react | 19.3.1 |
 | tailwindcss | v4 (via `@tailwindcss/postcss`; tokens in `src/app/globals.css` — keep in sync with §3.1) |
-| shadcn CLI | 4.21.1 — init with base `radix`, preset `nova`; primitives come from the unified `radix-ui` package, `cn` from the `cn` package. The `shadcn` npm package lives in **devDependencies** (build-time only: CLI + the `shadcn/tailwind.css` theme import); its transitive braces/fast-glob advisory (Dependabot #1) never reaches the production image |
-| lucide-react | 1.52 (no brand icons — see §1) |
-| morphicons | 1.7.1 — spring morph animations for state-transition icons (§7) |
+| shadcn CLI | 4.23.0 — init with base `radix`, preset `nova`; primitives come from the unified `radix-ui` package, `cn` from the `cn` package. The `shadcn` npm package lives in **devDependencies** (build-time only: CLI + the `shadcn/tailwind.css` theme import); its transitive braces/fast-glob advisory (Dependabot #1) never reaches the production image |
+| lucide-react | 1.72 (no brand icons — see §1) |
+| morphicons | 2.0.2 — spring morph animations for state-transition icons (§7). 2.0 only changed filled-icon behaviour; every MorphIcon here is a stroke Lucide icon |
 | @anthropic-ai/claude-agent-sdk | 0.3.x — server-side Claude Code (chat agent); `serverExternalPackages` in next.config |
-| lucide (vanilla, node data) | 1.52 — data source for MorphIcon |
+| lucide (vanilla, node data) | 1.72 — data source for MorphIcon |
 | next-themes | 0.4.6 |
 | react-markdown / remark-gfm | 10.1.0 / 4.0.1 — approved answer rendering (§5.6) |
 | sonner | 2.0.8 |
 | tw-animate-css | 1.4 |
-| react-hook-form / zod / @hookform/resolvers | 7.89.0 / 4.6.5 / 5.9.1 — public account forms (§5.7), locked versions in package-lock |
-| better-auth / better-sqlite3 | 1.7.7 / 13.0.3 — self-hosted accounts and owned chat (§5.7) |
+| react-hook-form / zod / @hookform/resolvers | 7.92.0 / 4.6.7 / 5.9.1 — public account forms (§5.7), locked versions in package-lock |
+| better-auth / better-sqlite3 | 1.7.7 / 13.1.1 — self-hosted accounts and owned chat (§5.7). better-auth stays pinned with its `overrides` (ARCHITECTURE §5) and is excluded from the Dependabot group |
 | motion | not installed yet (marketing pages only) |
 | qrcode-generator | 2.0.4 — MIT, **zero dependencies**, ships its own types. `/qr-studio` uses only its encoder to get the module matrix; the SVG and PNG are drawn by `src/lib/tools/qr.ts` so colours, shapes and quiet zone stay under this site's control. Registered here before installation (2026-10-16, PLANNING §15.5) |
 | jsqr | 1.4.0 — Apache-2.0, **devDependency only**: it decodes the generated matrix, the exported SVG geometry and the exported PNG bytes during QA. Never imported by the application, never in the image |

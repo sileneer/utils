@@ -20,11 +20,12 @@ utils is a **UI shell around server-side AI agents** (the owner's stated core
 purpose). Everything that matters runs in one Next.js process on one small VM;
 the browser is a thin client.
 
-- **Next.js 16.3.8** App Router + React 19.2.8 + TypeScript, `output: 'standalone'`.
+- **Next.js 16.4.6** App Router + React 19.3.1 + TypeScript, `output: 'standalone'`.
 - **One container**, bound to `127.0.0.1:3100` on the VM, reached only through a Cloudflare Tunnel.
 - **SQLite** for accounts, owned conversations and budgets; book files remain on
-  the existing persistent volume. Better Auth 1.7.7 / better-sqlite3 13.0.3
-  (SQLite 3.53.4 verified in the Linux image and production).
+  the existing persistent volume. Better Auth 1.7.7 / better-sqlite3 13.1.1
+  (bundles SQLite 3.54.1 since the 2026-11-15 dependency update; 3.53.4 under
+  13.0.3 was the last version verified in the Linux image and production).
 - **No middleware.** Each private route resolves a verified, active database
   session through `currentUser()`; book and tool pages remain public.
 - Server routes that read cookies/headers render **dynamic (ƒ)** — expected, not a regression (see §7).
@@ -1091,7 +1092,7 @@ context. All interface conventions live in DESIGN §5.6.
 
 ## 7. i18n
 
-`next-intl` 4.14 in **cookie mode** — no URL locale prefix, no middleware, no proxy.
+`next-intl` 4.15 in **cookie mode** — no URL locale prefix, no middleware, no proxy.
 
 - Resolution order (`src/i18n/locale.ts`): explicit account preference →
   `NEXT_LOCALE` cookie → `Accept-Language` negotiation (q-value sorted, `zh*`/`en*`)

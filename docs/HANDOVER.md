@@ -57,6 +57,22 @@ No such sensitive action was exercised for this release. Existing paid QA budget
 
 ## 2. Checkout and release position
 
+**Dependency update, 2026-11-15 (branch `codex/deps-20261115`, PR pending merge
+approval):** the owner asked to review and resolve every open Dependabot PR (#11-#24).
+One branch combines the GitHub Actions majors (#19), morphicons 2.0.2 (#24; 2.0 only
+changes filled icons, and every MorphIcon here is a stroke icon), the grouped npm
+minor/patch bumps (#20) **except Better Auth**, the lockfile-only transitive bumps
+(#11-#14, #17, #18; #15 and #16 are covered by #20) and `@types/node` ^22 to match the
+Node 22 runtime instead of #21's 26. Better Auth stays at 1.7.7 with its `overrides`
+(ARCHITECTURE §5). #20 failed `npm ci` because it bumped the pinned stack, so it is
+now excluded from the Dependabot group and will arrive as its own PR. TypeScript 7
+(#22) and ESLint 10 (#23) break `eslint-config-next` in CI; Dependabot now ignores
+those majors and `@types/node` above 22. `allowScripts` moved to
+`better-sqlite3@13.1.1`, which bundles SQLite 3.54.1 (GOTCHAS). Merging deploys
+production, so it waits for the owner's explicit go-ahead. Local branch
+`codex/public-tools-release-handover-20261017` (receipt commit `f614c78` plus an
+uncommitted cleanup note) is untouched and will need a rebase onto the merged main.
+
 **Current review position:** the checkout began clean at `524a402` on
 `codex/release-handover-20261016`, with ten commits beyond `origin/main` (`69e7a5d`).
 Those commits cover the four tools, their handovers and the owner-introduction
@@ -727,6 +743,16 @@ application. Screenshots, the CDP drivers and the fixture databases stay local a
 touched, and no real SDK transcript was removed.**
 
 ## 7. Verification and limits
+
+**Dependency update, 2026-11-15 (local, before PR CI):** `npm run lint`, full
+`npm test` **276/276** and the full `npm run build` (typecheck + standalone
+sanitization) exit 0 on Windows Node 24. `npm audit` dropped from 18 findings (1 high)
+to 12 moderate/low, all in dev-only tooling (shadcn, typescript-eslint). A browser smoke
+test against `tests/auth-preview.cjs` (disposable database, fake secrets, no mail and
+no AI) checked both MorphIcon controls (password eye ↔ eye-off, theme sun ↔ moon),
+the radix theme menu, light/dark, zh at a 360px emulated viewport and desktop, with no
+console errors. No production request was made, and the image build and deploy
+workflows with the new action majors have not run yet.
 
 **Public-tool review, 2026-10-17:** fresh full `npm test` **276/276**, full lint,
 complete production build/typecheck/standalone sanitization and `git diff --check`
