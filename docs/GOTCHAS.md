@@ -500,8 +500,11 @@ false, so ordinary/unverified password login cannot bypass CAPTCHA mail budgets.
 
 **Symptom** package installed but native binding unavailable.
 **Cause** this npm runtime blocks unapproved package install scripts.
-**Fix** reviewed `better-sqlite3@13.0.3` install script is explicitly approved in
-package.json. Windows native query reported SQLite 3.53.4. This does not prove
+**Fix** the reviewed `better-sqlite3` install script is explicitly approved in
+package.json `allowScripts`, keyed by exact version: a version bump must move the key
+too, or npm silently skips the native install. Windows native query reported SQLite
+3.53.4 under 13.0.3 and 3.54.1 under 13.1.1. `tests/image-smoke.cjs` pins the exact
+SQLite version in the image, so the same bump must update that value. This does not prove
 Node 22 Debian image startup; the separate full-image gate is required.
 Its actual result is recorded in HANDOVER §7.
 
