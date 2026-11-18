@@ -211,6 +211,18 @@ SSH still works.
 `scp -o BatchMode=yes <file> gcp-vm:/tmp/` with stdin from `/dev/null`
 (verified 2026-11-15, DEPLOYMENT §5).
 
+### `gcloud storage cp` needs read access to upload
+
+**Symptom** with only `roles/storage.objectCreator`, every `gcloud storage cp`
+upload fails with `HTTPError 403 … does not have storage.objects.get access`, even
+for a brand-new object name or a `prefix/` destination.
+**Cause** `gcloud storage cp` checks the destination (`storage.objects.get`) before
+it uploads, and `objectCreator` grants `create` only.
+**Fix** grant `roles/storage.objectViewer` as well. That still gives no delete or
+overwrite, so a create-only backup identity keeps its protection (DEPLOYMENT §12).
+The alternative is a raw JSON-API upload with `ifGenerationMatch=0`. Hit on
+2026-11-18 while narrowing the VM identity.
+
 ### `gcloud.cmd` splits arguments on commas
 
 **Symptom** a `gcloud` flag whose value contains a comma (a list of regions,

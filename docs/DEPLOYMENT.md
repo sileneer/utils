@@ -104,9 +104,12 @@ through Workload Identity Federation:
 - Roles: `roles/workloadIdentityUser` (for the federated principal),
   `roles/iap.tunnelResourceAccessor`, custom `utilsInstanceDeploy`
   (`compute.instances.get` / `.setMetadata`, `compute.zones.get`, `compute.projects.get`),
-  and `iam.serviceAccountUser` **on the VM's compute service account**
-  (970395615458-compute@…) — without that last one `add-metadata` fails, and it
-  cost two failed runs to learn (GOTCHAS §D).
+  and `iam.serviceAccountUser` **on the VM's attached service account**, which is
+  `vm-runtime@…` since 2026-11-18 (it was the default `970395615458-compute@…`
+  before). Without that last one, `add-metadata` fails; it cost two failed runs to
+  learn (GOTCHAS §D). If the VM's service account ever changes again, grant this
+  first. The 2026-11-18 grant on `vm-runtime` is in place but has not yet been
+  exercised by a real deploy.
 
 Then, per run: `ssh-keygen -t ed25519` → write **only that key** to
 *instance-level* metadata (project metadata untouched, so nobody else's keys are
@@ -495,11 +498,12 @@ A missing status in an older installation is unavailable, not a successful backu
 
 ### Off-machine backups (enabled 2026-11-14)
 
-The owner enabled off-machine copies on 2026-11-14/15. These facts were read
-from the VM and bucket on 2026-11-15:
+The owner enabled off-machine copies on 2026-11-14/15 and hardened them on
+2026-11-18. These facts were read from the VM and bucket on 2026-11-18:
 
 - **Bucket** `gs://gen-lang-client-0642815057-vm-backups`, `US-EAST1`, uniform
-  bucket-level access, no public binding, object versioning off, 7-day soft delete.
+  bucket-level access, public-access prevention `enforced`, no public binding,
+  object versioning off, 7-day soft delete.
 - **utils SQLite**: `deploy/backup.sh` (host copy byte-identical to the repo)
   streams the newest `/app/data/backups/utils-*.sqlite` out through `docker exec`,
   because the files are mode 600 for the container user, into `utils/`. The
@@ -511,20 +515,30 @@ from the VM and bucket on 2026-11-15:
   (root crontab, `0 5 1 * *`) tars `/opt/utils/.env` and `/opt/cbc-helper-bot/.env`,
   encrypts them with gpg AES256 using the passphrase in `/opt/_ops/secret-backup.env`
   (passed on file descriptor 3, never on the command line), and uploads
-  `secrets/secrets-<YYYYMMDD>.tar.gz.gpg`. This replaces the earlier "never export
-  .env" line below for this one encrypted archive. Restore:
-  `gpg -d secrets-<date>.tar.gz.gpg | tar xz`. The passphrase was rotated on
-  2026-11-15 after the first one appeared in an agent transcript. Today's object was
-  re-encrypted, the new archive was decrypted to both `.env` paths, and the old
+  `secrets/secrets-<YYYYMMDDTHHMMSSZ>.tar.gz.gpg`; every run gets a new name, because
+  the VM cannot overwrite objects. This replaces the earlier "never export .env" line
+  below for this one encrypted archive. Restore:
+  `gpg -d secrets-<stamp>.tar.gz.gpg | tar xz`. The passphrase was rotated on
+  2026-11-15 after the first one appeared in an agent transcript. That day's object
+  was re-encrypted, the new archive was decrypted to both `.env` paths, and the old
   passphrase was confirmed to fail on it.
-- **Upload identity, which differs from the proposal:** the VM's default compute
-  service account (`970395615458-compute@…`) holds bucket-level
-  `roles/storage.objectAdmin`, and the VM has the `devstorage.full_control`
-  access scope. A compromised VM can therefore delete or overwrite every offsite
-  copy; only the 7-day soft delete limits that. Public-access prevention is
-  `inherited`, not `enforced`. Narrowing to `objectCreator` would also block the
-  same-day overwrite the secrets backup relies on (it would need unique object
-  names first). Both are open owner decisions; see HANDOVER §4.
+- **Upload identity (2026-11-18):** the VM runs as the dedicated service account
+  `vm-runtime@gen-lang-client-0642815057.iam.gserviceaccount.com` with the
+  `cloud-platform` scope, so IAM alone sets its permissions. Its only grants are
+  bucket `roles/storage.objectCreator` and `roles/storage.objectViewer`, and
+  project `roles/logging.logWriter` and `roles/monitoring.metricWriter` for the
+  Ops Agent. It can create, read and list backups, but **cannot delete or overwrite
+  them**. Every upload therefore needs a unique object name, and all three scripts
+  already use timestamped names. `objectViewer` is required, not optional:
+  `gcloud storage cp` reads the destination (`storage.objects.get`) before
+  uploading, so `objectCreator` alone fails with a 403 (GOTCHAS §D). The default
+  compute service account still holds project `roles/editor`, but no VM uses it any
+  more. Rollback: stop the VM, run `instances set-service-account` back to
+  it, and start the VM (about 2.5 minutes of downtime).
+
+  Verified on 2026-11-18 from the VM: all three backups uploaded; with a throwaway
+  object, create was allowed and overwrite and delete were refused. Because the VM
+  can read, restore checks can run on the VM again.
 
 The original proposal follows as the rationale and target design.
 

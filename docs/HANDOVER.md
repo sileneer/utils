@@ -1,6 +1,6 @@
 # Handover
 
-**Updated 2026-11-15 after the ops-hardening release (`63dc76f`) and handover tidy-up.**
+**Updated 2026-11-18 after the backup-identity hardening; release `63dc76f` (2026-11-15).**
 Current release evidence is in §2/§5/§7; earlier implementation and acceptance
 entries, including the 2026-10-17 public-tool release, are dated historical receipts. Runtime contracts:
 [ARCHITECTURE](ARCHITECTURE.md); operations: [DEPLOYMENT](DEPLOYMENT.md);
@@ -22,6 +22,11 @@ uploads described in DEPLOYMENT §12 only. Local snapshots are still never prune
 The documentation branch for this tidy-up is **not** authorized to merge or deploy
 on its own (AGENTS: documentation maintenance alone does not authorize a rollout).
 No paid AI call, real mail, account mutation or production data change was made.
+
+On 2026-11-18 the owner further approved the backup-identity hardening (§7). That
+covered creating the `vm-runtime` service account and its grants, the VM
+stop/start to attach it, adding bucket `objectViewer` when uploads needed it, and
+enforcing public-access prevention.
 
 **Dated authorization, 2026-10-17:** the owner requested complete validation of
 all four implemented tools, review of their commits and the workspace changes,
@@ -434,30 +439,31 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 ## 4. Next actions
 
-**Current, 2026-11-15.** No release action remains for `63dc76f`. Open items:
+**Current, 2026-11-18.** No release action remains for `63dc76f`. Open items:
 
-- **Publish this handover:** push `codex/ops-handover-20261115`, then delete
-  `codex/public-tools-release-handover-20261017` locally and on `origin` (§2). Merge
-  it only with a later release, or with an explicit decision to deploy a docs-only change.
-- **Owner decisions on backup hardening (DEPLOYMENT §12):** narrow the VM identity
-  from bucket `objectAdmin` and `devstorage.full_control` to create-only. Today a
-  compromised VM could delete every offsite copy, and only the 7-day soft delete
-  limits that. Narrowing needs unique secrets-backup object names first. Also decide
-  whether to set public-access prevention to `enforced`.
-- **Observe the first scheduled offsite runs:** the utils upload at 03:15 UTC
-  daily (the only `utils/` object so far is the 2026-11-14 23:01 manual run) and the
-  first monthly secrets run on 2026-12-01 05:00 UTC. A restore of a downloaded
-  `utils/` SQLite object into an isolated directory (DEPLOYMENT §12 checklist) has
-  not been done from this repository's side; the host runbook's 2026-11-14/15
-  drill note was not independently re-verified.
+- **Docs branch:** `codex/ops-handover-20261115` is pushed; the old receipt branch was
+  deleted locally and on `origin` (§2). `main` has since gained the Dependabot
+  consolidation PR #25 (`8a00075`), so rebase or merge before opening a PR. Merge
+  the branch only with a later release, or with an explicit decision to deploy a
+  docs-only change.
+- **First real deploy on the new VM identity:** `utils-deploy` holds
+  `iam.serviceAccountUser` on `vm-runtime` (DEPLOYMENT §2), but no pipeline run has
+  used it yet. Watch the `deploy` job of the next `main` push; if `add-metadata`
+  fails, that grant is the first thing to check.
+- **Offsite runs:** daily `utils/` (03:15 UTC) and `cbc-helper-bot/` (04:15 UTC)
+  uploads have run since 2026-11-15. The first scheduled run under `vm-runtime` is
+  2026-11-19, and the first monthly secrets run is 2026-12-01 05:00 UTC. A restore of
+  a downloaded `utils/` SQLite object into an isolated directory (DEPLOYMENT §12
+  checklist) has still not been done from this repository's side.
 - **Local build environment:** `npm run build` fails on this machine before
   compiling, because of a cache-directory ACL (GOTCHAS §F). It needs an owner ACL
   decision; until then the CI `test` job is the build gate.
-- **Leftover copy of the retired passphrase:** an agent transcript exposed the
-  first `.env`-backup passphrase. It was rotated, and it no longer opens any live
-  object (DEPLOYMENT §12). One local copy remains in the ZCode app's
-  `~/.zcode/v2/tasks-index.sqlite`; redact it while ZCode is closed. Its source
-  rollout log was deleted.
+- **Retired passphrase:** an agent transcript exposed the first `.env`-backup
+  passphrase. It was rotated on 2026-11-15 and no longer opens any live object
+  (DEPLOYMENT §12). The ZCode rollout log holding it was deleted, and its copy in
+  ZCode's `tasks-index.sqlite` was redacted with ZCode closed (integrity `ok`).
+  A sweep of 49,059 local files found it only in the owner's Claude Code session
+  transcript, which the owner removes by deleting that session.
 - **Earlier open items** below are unchanged: the external-IP removal decision
   (DEPLOYMENT §9), the five-turn real-AI QA budget, physical-device and real-mail
   acceptance.
@@ -862,6 +868,20 @@ application. Screenshots, the CDP drivers and the fixture databases stay local a
 touched, and no real SDK transcript was removed.**
 
 ## 7. Verification and limits
+
+**Backup identity hardening, 2026-11-18 (owner-approved, no code release):** the VM
+was stopped, its service account was switched from the default compute account
+(project Editor) to `vm-runtime` with the `cloud-platform` scope, and it was
+started again. The cycle took 150 s, and public `/api/health` was `ok` about 80 s
+after start; both containers and the Ops Agent came back. `vm-runtime` holds bucket
+objectCreator and objectViewer and project logWriter and metricWriter only.
+`utils-deploy` was granted `serviceAccountUser` on it. The first attempt used
+objectCreator alone, and all three uploads failed with 403 until objectViewer was
+added (GOTCHAS §D). After that, all three backups uploaded. With a throwaway object
+(since removed), create was allowed and overwrite and delete were refused.
+Public-access prevention was set to `enforced`, and the secrets backup was changed
+to timestamped object names on the host. A real deploy through the new identity has
+**not** been exercised (§4).
 
 **Ops release acceptance, 2026-11-15:** CI/CD
 [43660248861](https://github.com/sileneer/utils/actions/runs/43660248861) for
