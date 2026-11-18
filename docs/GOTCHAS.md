@@ -385,6 +385,21 @@ from the vanilla `lucide` package) is *only* for genuine two-state transitions
 (theme toggle). DESIGN.md §7 is binding; DESIGN.md's old "lucide-react icons
 only" wording predates this and was corrected with the change.
 
+### Agent browser snapshots drop two-character CJK names
+
+**Symptom** in zh, the agent browser's `read_page`/`find` shows the theme menu's
+浅色/深色 items as bare `menuitem`s with no name, and `find "浅色"` matches nothing,
+while 跟随系统 and every English label are named. That looks like a missing
+accessible name.
+**Cause** the QA tool, not the app. On 2026-11-18 throwaway `role="menuitem"` divs
+containing nothing but text gave the same result: 浅色, 深色 and 中文 came back unnamed,
+while 跟随系统, 浅色主题 and Light were named. The real items are a text node plus an
+`aria-hidden` icon, with no `inert`, `aria-hidden` or `aria-labelledby` involved, so
+browsers name them from their content.
+**Fix** none in the app. Before filing an accessible-name bug for short CJK text, check
+the DOM (text nodes, `aria-hidden`/`inert` ancestors) or a real screen reader; do not
+"fix" correct markup with redundant `aria-label`s.
+
 ### Locale resolution makes pages dynamic
 
 **Symptom** build output shows site pages as ƒ (dynamic) instead of static.

@@ -75,11 +75,14 @@ No such sensitive action was exercised for this release. Existing paid QA budget
 
 ## 2. Checkout and release position
 
-**Current release:** as of this commit, production runs PR #29's docs merge `9af5e8d`
-(2026-11-18). This commit is part of PR #30 (Better Auth 1.7.22 and
-`@hookform/resolvers` 7.0.6, superseding Dependabot #26-#28); its merge commit and
-live acceptance are recorded on the PR, so another `main` push is not needed just to
-publish them. Application code before PR #30 is PR #25's `8a00075` (2026-11-15; CI/CD
+**Current release:** application code is PR #30's squash merge
+`2c86fa078c0bf065ac7603899850215f7f380d11` (2026-11-18): Better Auth 1.7.22 and
+`@hookform/resolvers` 7.0.6, superseding Dependabot #26-#28. CI/CD
+[44381760302](https://github.com/sileneer/utils/actions/runs/44381760302) passed,
+and production acceptance (running revision `2c86fa0`, `healthy`, public and
+protected routes) is a comment on the PR. Later documentation-only merges do not
+change the application. Before PR #30, application code was PR #25's `8a00075`
+(2026-11-15; CI/CD
 [43663107354](https://github.com/sileneer/utils/actions/runs/43663107354)), whose
 receipt is below.
 
@@ -463,12 +466,14 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 ## 4. Next actions
 
 **Current, 2026-11-18.** PR #30 (Better Auth 1.7.22 + `@hookform/resolvers` 7.0.6)
-supersedes Dependabot #26-#28; close those once it merges. The docs branch merged as
-PR #29, and its deploy proved the `vm-runtime` deploy grant (§7). Open items:
+merged as `2c86fa0` and is live; its production acceptance is a comment on the PR.
+Dependabot #26-#28 were closed as superseded. The docs branch merged as PR #29, and
+its deploy proved the `vm-runtime` deploy grant (§7).
 
-- **Theme menu accessibility:** the light and dark items of the header theme menu
-  render their labels but expose no accessible name (seen 2026-11-18, not caused by
-  PR #30). It is a small DESIGN §5 fix for a later change.
+The "theme menu has no accessible name" item recorded with PR #30 was **withdrawn**:
+the markup is correct (text label plus an `aria-hidden` icon), and the missing names
+came from the QA tool's accessibility snapshot, which drops two-character CJK names
+for any element (GOTCHAS §G). No code change was needed. Open items:
 - **Offsite runs:** daily `utils/` (03:15 UTC) and `cbc-helper-bot/` (04:15 UTC)
   uploads have run since 2026-11-15. The first scheduled run under `vm-runtime` is
   2026-11-19, and the first monthly secrets run is 2026-12-01 05:00 UTC. A restore of
@@ -910,9 +915,9 @@ outbox, Turnstile test keys, AI off) checked the following, with no console erro
 
 Passkey ceremonies were not repeated in the browser, which has no virtual
 authenticator; they are covered by `tests/passkey.test.cjs`. PR CI (acceptance,
-GitGuardian, qlty) was green on head `2e39bab`. One existing observation: the theme
-menu's light and dark `menuitem`s have no accessible name in the accessibility tree,
-although their labels render (§4). Production acceptance follows the merge and is
+GitGuardian, qlty) was green on head `2e39bab`. An observation that the theme menu's
+light and dark `menuitem`s had no accessible name was later shown to be a QA-tool
+artefact, not an app defect (§4, GOTCHAS §G). Production acceptance follows the merge and is
 recorded on the PR.
 
 PR #29's deploy (run 44376371709, `9af5e8d`) was the first through `vm-runtime`:
