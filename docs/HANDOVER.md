@@ -1,8 +1,8 @@
 # Handover
 
-**Updated 2026-10-17 for reviewed public-tool release preparation.**
+**Updated 2026-11-18 after the backup-identity hardening; release `63dc76f` (2026-11-15).**
 Current release evidence is in §2/§5/§7; earlier implementation and acceptance
-entries are dated historical receipts. Runtime contracts:
+entries, including the 2026-10-17 public-tool release, are dated historical receipts. Runtime contracts:
 [ARCHITECTURE](ARCHITECTURE.md); operations: [DEPLOYMENT](DEPLOYMENT.md);
 UI: [DESIGN](DESIGN.md); decisions: [PLANNING](PLANNING.md) §11–13; improvement plan
 and batch results: [PLANNING](PLANNING.md) §14; browser-only public tools:
@@ -10,7 +10,25 @@ and batch results: [PLANNING](PLANNING.md) §14; browser-only public tools:
 
 ## 1. Authorization
 
-**Current authorization, 2026-10-17:** the owner requested complete validation of
+**Current authorization, 2026-11-15:** the owner directed a free-tier ops-hardening
+pass on 2026-11-14/15: offsite Cloud Storage backups with 30-day retention for the
+data prefixes, an encrypted `.env` backup, host and GCP uptime monitoring, a container
+memory cap, and Dependabot. The owner then explicitly approved pushing the three
+resulting ops commits to `main`, including their automatic deployment, and rotating
+the `.env`-backup passphrase on the VM. They also approved tidying this handover and
+the receipt branches. This supersedes the "off-machine backup uploads and pruning
+remain unapproved" limit in the dated entries below, for the lifecycle rule and
+uploads described in DEPLOYMENT §12 only. Local snapshots are still never pruned.
+The documentation branch for this tidy-up is **not** authorized to merge or deploy
+on its own (AGENTS: documentation maintenance alone does not authorize a rollout).
+No paid AI call, real mail, account mutation or production data change was made.
+
+On 2026-11-18 the owner further approved the backup-identity hardening (§7). That
+covered creating the `vm-runtime` service account and its grants, the VM
+stop/start to attach it, adding bucket `objectViewer` when uploads needed it, and
+enforcing public-access prevention.
+
+**Dated authorization, 2026-10-17:** the owner requested complete validation of
 all four implemented tools, review of their commits and the workspace changes,
 then PR creation and merge once the result is accepted. This supersedes the
 local-only publication limits in the dated implementation receipts below. Merge
@@ -57,34 +75,89 @@ No such sensitive action was exercised for this release. Existing paid QA budget
 
 ## 2. Checkout and release position
 
-**Dependency update, 2026-11-15 (branch `codex/deps-20261115`, PR pending merge
-approval):** the owner asked to review and resolve every open Dependabot PR (#11-#24).
-One branch combines the GitHub Actions majors (#19), morphicons 2.0.2 (#24; 2.0 only
-changes filled icons, and every MorphIcon here is a stroke icon), the grouped npm
-minor/patch bumps (#20) **except Better Auth**, the lockfile-only transitive bumps
-(#11-#14, #17, #18; #15 and #16 are covered by #20) and `@types/node` ^22 to match the
-Node 22 runtime instead of #21's 26. Better Auth stays at 1.7.7 with its `overrides`
-(ARCHITECTURE §5). #20 failed `npm ci` because it bumped the pinned stack, so it is
-now excluded from the Dependabot group and will arrive as its own PR. TypeScript 7
-(#22) and ESLint 10 (#23) break `eslint-config-next` in CI; Dependabot now ignores
-those majors and `@types/node` above 22. `allowScripts` moved to
-`better-sqlite3@13.1.1`, which bundles SQLite 3.54.1 (GOTCHAS). Merging deploys
-production, so it waits for the owner's explicit go-ahead. Local branch
-`codex/public-tools-release-handover-20261017` (receipt commit `f614c78` plus an
-uncommitted cleanup note) is untouched and will need a rebase onto the merged main.
+**Current release:** `main` and production are PR #25's squash merge
+`8a000752600a1f6cd4937e919d72e694d184b223` (2026-11-15). CI/CD
+[43663107354](https://github.com/sileneer/utils/actions/runs/43663107354) passed,
+and the running OCI revision label read `8a00075…` on 2026-11-18. The dependency
+release itself is the dated receipt below.
 
-**Current review position:** the checkout began clean at `524a402` on
-`codex/release-handover-20261016`, with ten commits beyond `origin/main` (`69e7a5d`).
-Those commits cover the four tools, their handovers and the owner-introduction
-cleanup. The accompanying review-fix commit closes numeric edge cases, JSON
-position/output bounds, QR draft tracking, new-tool login return paths,
-accessibility/contrast and the existing chat POST Origin gap. No schema, provider
-configuration, production account or retained content is changed. All changed
-paths and the existing auth/ownership, SDK/book isolation, persistence and
-deployment boundaries were reviewed; fresh checks are in §7. PR/exact-head/image
-acceptance and deployment are pending, not proved by the local results.
-Ignored `.zcode/`, previous investigations and data remain preserved; private
-evidence is under `data/investigation/tools-release-review-20261017/`.
+**Ops release, 2026-11-15:** before #25, `main` was `63dc76f6ed92131ea202c994892ff3f00210dbeb`:
+PR #10's merge `82921bb` plus three direct ops commits, pushed with owner approval:
+`cb94f71` (`deploy/backup.sh` streams the newest snapshot to Cloud Storage),
+`462ed86` (`.github/dependabot.yml`) and `63dc76f` (`mem_limit: 384m` in
+`deploy/docker-compose.prod.yml`). An agent first committed them on the receipt branch
+`codex/public-tools-release-handover-20261017` by mistake; they were cherry-picked
+onto `main` unchanged. None changes application code. The host `backup.sh` and
+compose file had already been installed by hand and are byte-identical to the repo
+(DEPLOYMENT §7, §12). CI/CD
+[43660248861](https://github.com/sileneer/utils/actions/runs/43660248861) passed
+test, build-push and deploy. Acceptance is in §7.
+
+**Checkout:** this handover is on `codex/ops-handover-20261115`, branched from
+`63dc76f`, with `main` (`8a00075`) merged in on 2026-11-18. It carries the 2026-10-17
+receipt commit (re-applied as `35b4024`), the previously uncommitted merged-branch
+cleanup receipt below (committed as written), and the 2026-11-15/18 ops updates.
+It is documentation only, and merging it deploys (§1). The old receipt branch
+`codex/public-tools-release-handover-20261017` was deleted locally and on `origin`
+on 2026-11-15, after its contents were confirmed to be on `main` or this branch.
+Ignored `.zcode/`, investigations and retained data are preserved.
+
+**Dependency release, 2026-11-15 (PR #25, merged as `8a00075`):** the owner asked
+to review and resolve every open Dependabot PR (#11-#24). One branch combines the
+GitHub Actions majors (#19), morphicons 2.0.2 (#24; 2.0 only changes filled icons,
+and every MorphIcon here is a stroke icon), the grouped npm minor/patch bumps (#20)
+**except Better Auth**, the lockfile-only transitive bumps (#11-#14, #17, #18; #15
+and #16 are covered by #20) and `@types/node` ^22 to match the Node 22 runtime
+instead of #21's 26. Better Auth stays at 1.7.7 with its `overrides`
+(ARCHITECTURE §5). #20 failed `npm ci` because it bumped the pinned stack, so it is
+now excluded from the Dependabot group and arrives as its own PRs (#26/#27, which
+must move together). TypeScript 7 (#22) and ESLint 10 (#23) break
+`eslint-config-next` in CI; Dependabot now ignores those majors and `@types/node`
+above 22. `allowScripts` moved to `better-sqlite3@13.1.1`, which bundles SQLite
+3.54.1 (GOTCHAS).
+
+**Dated release, 2026-10-17:** PR [#10](https://github.com/sileneer/utils/pull/10) was
+squash-merged on 2026-10-17 as `82921bb684a16bf2c27ff0aa5c451dd05a45f872`, from
+accepted head `1c1402c4166375b2b3d49b0b3defcbdb1fb9892a`. Exact-head acceptance
+[38997358725](https://github.com/sileneer/utils/actions/runs/38997358725),
+GitGuardian and qlty were green immediately before merge; main had no configured
+branch protection and no check was bypassed. The merged tree equals the accepted
+head. CI/CD [39023644597](https://github.com/sileneer/utils/actions/runs/39023644597)
+passed all test, full-image, publish and deploy jobs. The running OCI revision
+matches `82921bb` and is healthy; live route/data acceptance is recorded in §5/§7.
+
+Review covered the ten original commits through `524a402` and all changed paths,
+plus existing auth/ownership, SDK/book isolation, persistence and deployment
+boundaries. Fixes close numeric edge cases, JSON position/output bounds, QR draft
+tracking, new-tool login returns, accessibility/contrast and the existing chat POST
+Origin gap. No schema, provider configuration or production account was changed.
+The original reviewed commit history, including fix commits `2f8c29f` and
+`d29aa30`, was held only on the local branch `codex/public-tools-history-20261017`,
+which the merged-branch cleanup below deleted; those commits were never pushed and
+now have no ref outside the local garbage-collection grace period. The PR
+history was consolidated to remove a synthetic password-shaped historical test
+fixture from security-gate input; the final tree was verified identical before an
+exact force-with-lease update. No real credential was involved or gate suppressed.
+
+At that receipt, local `main`/`origin/main` were synchronized to `82921bb`, and the
+local-only branch `codex/public-tools-release-handover-20261017` recorded this
+acceptance. That branch was later pushed and is superseded by the 2026-11-15
+position above. Private evidence is under
+`data/investigation/tools-release-review-20261017/`.
+
+**Merged-branch cleanup, 2026-10-17 (committed 2026-11-15 as written):** every PR #1-#10 head
+branch was checked for unpushed work (`0/0` ahead/behind against its own remote)
+before deletion. All were squash-merged, so none is a `main` ancestor and
+`git branch --merged main` correctly listed none of them. The ten heads plus the
+local-only `codex/public-tools-history-20261017` were deleted locally, the nine
+still on `origin` were deleted there, and the stale
+`origin/codex/release-handover-20261016` tracking ref was pruned. `codex/release-handover-20261016`
+had already been removed upstream when PR #10 merged. Only `main` and the local
+receipt branch remain. Each deleted head is still reachable on GitHub as
+`refs/pull/<n>/head`, and each deleted head's tree was re-verified equal to the
+`main` merge commit it produced; only the never-pushed
+pre-squash history above was discarded. No tag, bundle or archive was created for
+it, on the owner's explicit decision.
 
 The following release/implementation positions are dated receipts.
 
@@ -95,11 +168,14 @@ The exact feature-head acceptance run
 GitGuardian and qlty checks were successful immediately before merge. Main had
 no configured branch protection; no check was bypassed.
 
-Local `main` is synchronized to the merge commit. Current local branch
-`codex/release-handover-20261016` contains the unpublished release handover commit
-`03c5b0f` plus the local introduction cleanup committed with this handover update;
-do not push another main commit merely to publish this receipt. The checkout was
-clean before release work; owner-owned/ignored files remain preserved.
+Local `main` is synchronized to the merge commit. At this receipt the unpublished
+release handover commit `03c5b0f` and the introduction cleanup `8c009da` were held
+locally, and `codex/release-handover-20261016` carried the handover update without
+a push; do not push another main commit merely to publish this receipt. That
+receipt is now superseded: PR #10 squash-merged this tree as a single commit and
+both local branches were deleted in the 2026-10-17 merged-branch cleanup above, so
+neither name exists in the checkout. The checkout was clean before release work;
+owner-owned/ignored files remain preserved.
 CI/CD run [38835232890](https://github.com/sileneer/utils/actions/runs/38835232890)
 passed every test/image/deploy gate. The running OCI revision matches the merge
 commit and is healthy in that release receipt; actual deployment acceptance is
@@ -117,9 +193,9 @@ was clean at `03c5b0f` before this work; ignored `.zcode/`, retained data and pr
 investigations are preserved. Private working notes are under ignored
 `data/investigation/site-copy-20261016/`.
 
-The entries below describe their original completion dates. Only the older
-account/security entries are superseded by the PR #9 release; the four public-tool
-entries remain unpublished until the separately authorized release above.
+The entries below describe their original completion dates. PR #9 supersedes the
+older account/security positions; PR #10 supersedes the four tools' original
+local-only publication positions.
 
 **`/unit-converter`, 2026-10-17 (local commit `ee5fb38`, not pushed):** new engine
 `src/lib/tools/units.ts`, client UI `src/components/unit-converter/tool.tsx`, route
@@ -384,13 +460,47 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 ## 4. Next actions
 
-**Current public-tool release:** local review and fixes have passed the checks in
-§7. Create the PR, verify its exact head and all acceptance/security/quality gates,
-then merge under the owner's authorization. Verify the actual running revision,
-health, public tools, private-route rejection and retained-data parity afterward.
+**Current, 2026-11-18.** No release action remains for `63dc76f`. Open items:
+
+- **Docs branch:** `codex/ops-handover-20261115` is pushed; the old receipt branch was
+  deleted locally and on `origin` (§2). `main` has since gained the Dependabot
+  consolidation PR #25 (`8a00075`), so rebase or merge before opening a PR. Merge
+  the branch only with a later release, or with an explicit decision to deploy a
+  docs-only change.
+- **First real deploy on the new VM identity:** `utils-deploy` holds
+  `iam.serviceAccountUser` on `vm-runtime` (DEPLOYMENT §2), but no pipeline run has
+  used it yet. Watch the `deploy` job of the next `main` push; if `add-metadata`
+  fails, that grant is the first thing to check.
+- **Offsite runs:** daily `utils/` (03:15 UTC) and `cbc-helper-bot/` (04:15 UTC)
+  uploads have run since 2026-11-15. The first scheduled run under `vm-runtime` is
+  2026-11-19, and the first monthly secrets run is 2026-12-01 05:00 UTC. A restore of
+  a downloaded `utils/` SQLite object into an isolated directory (DEPLOYMENT §12
+  checklist) has still not been done from this repository's side.
+- **Local build environment:** the SWC cache failure is fixed with the user
+  variable `SWC_NATIVE_BINDING_CACHE` (GOTCHAS §F); no ACL was changed. On
+  2026-11-18 the build then compiled and passed TypeScript, but "Collecting page
+  data" with 15 workers died out of memory: the machine had 1.4 GB of 61.2 GB commit
+  free, spread across browsers, chat apps and about 40 non-build node processes. A
+  complete local build needs free memory; until one passes, the CI `test` job is the
+  build gate.
+- **Retired passphrase:** an agent transcript exposed the first `.env`-backup
+  passphrase. It was rotated on 2026-11-15 and no longer opens any live object
+  (DEPLOYMENT §12). The ZCode rollout log holding it was deleted, and its copy in
+  ZCode's `tasks-index.sqlite` was redacted with ZCode closed (integrity `ok`).
+  A sweep of 49,059 local files found it only in the owner's Claude Code session
+  transcript, which the owner removes by deleting that session.
+- **Earlier open items** below are unchanged: the external-IP removal decision
+  (DEPLOYMENT §9), the five-turn real-AI QA budget, physical-device and real-mail
+  acceptance.
+
+**Dated, 2026-10-17 — public-tool release complete:** PR #10 is merged and deployed, with actual
+running-revision, health, route and retained-data acceptance in §5/§7. No release
+action remains for these four tools. The existing development-only `braces`
+advisory remains tracked in §7; do not apply a breaking toolchain downgrade to
+silence it. Physical-device and independent provider/mail QA remain separate.
 The older local-only wording below is a historical implementation receipt.
 
-**After `/text-diff`, `/qr-studio`, `/json-formatter` and `/unit-converter`:** all four are
+**Historical local completion of `/text-diff`, `/qr-studio`, `/json-formatter` and `/unit-converter`:** all four are
 implemented, verified and `live` in
 `src/lib/tools.ts`, so their home cards link to `/<slug>`. `agent-chat` is
 the only entry still `planned`. The next local tool starts from
@@ -400,7 +510,7 @@ any generated image. `/unit-converter` is committed locally as `ee5fb38`, `/json
 `65215e5` (handover `673d9d0`), `/qr-studio` as
 `7f716ef` (handover `37dc448`), `/text-diff` as
 `955c139` (handover `371612c`), and the introduction cleanup as `8c009da`.
-Nothing here has been pushed or deployed.
+At that time nothing had been pushed or deployed; PR #10 now publishes this work.
 
 **PR #9 merged, 2026-10-16.** Publication authorization is settled in §1;
 deployment and read-only acceptance evidence belong in §7. No additional feature
@@ -547,10 +657,42 @@ Independent follow-ups remain:
 - Physical phone keyboard/IME/source-return, cross-device production reset,
   long-context/source-faithfulness and mail-header acceptance remain distinct.
 - The last natural scheduled backup was verified successful on 2026-10-15;
-  keep observing scheduled status after the upgrade. Off-machine destination,
-  ownership, upload and retention/pruning need separate decisions (DEPLOYMENT §12).
+  keep observing scheduled status after the upgrade. (Superseded 2026-11-15: the
+  off-machine destination, upload and retention were decided and enabled; see the
+  current items above and DEPLOYMENT §12.)
 
-## 5. Last accepted production data and backup (2026-10-16)
+## 5. Last accepted production data and backup
+
+**Ops release, 2026-11-15:** no schema, data or account change. No pre-release
+SQLite backup was taken, because the release changed no application code and only
+recreated the container with the same data mounts. The bucket holds one `utils/`
+snapshot, `utils-20261114T230135Z-651a65ac.sqlite` (282624 bytes, the same size as
+the PR #10 pre-release backup), one `cbc-helper-bot/` snapshot and one `secrets/`
+archive. Counts and digests were not re-taken for this release.
+
+**PR #10 acceptance, 2026-10-17:** coherent SQLite API backup
+`/app/data/backups/pre-pr10-20261017-1c1402c.sqlite` is retained at mode 600,
+uid 1001, 282624 bytes. Its integrity is `ok`, foreign-key issues zero and counts
+match the pre-release baseline; no pending/streaming message or SDK process was
+active. No production restore or backup pruning occurred.
+
+Post-release counts and internal digests match: one user/account, nine sessions,
+zero verification rows, seven conversations, 22 messages, 12 usage rows and three
+conversation metadata rows. All five preference/factor/passkey/deletion/event
+tables remain empty. All six source-version trees, 18 SDK files, nine migrations,
+runtime AI enablement/quotas/key presence and the mode-600 three-record ownership
+ledger match the baseline. Integrity is `ok`, foreign-key issues zero. Data/SDK
+mounts and private env ownership (`utils-deploy`, mode 600) are preserved.
+
+Running image ID is
+`sha256:6e3ba6e7574d6b1cf35d23d26e30fafb9c5f442193cae5f549361f7d29426476`.
+The previous release is available in the registry as
+`ghcr.io/sileneer/utils@sha256:9834b1cf8e2c16062981316f5f2bb2a26102c3ff1821aa4abb97db357ddfa3d9`
+(tag `sha-69e7a5d`, config digest `sha256:9e2376d4213a372f27a83dcf9e38edc5ecb0f7d36edecc34f8af47bc53be0cae`).
+The registry manifest was checked read-only; this prior image is not retained
+locally on the host and was not pulled or started for acceptance.
+
+The following PR #9 values are a dated historical receipt.
 
 Before PR #9 deployment, created the coherent SQLite API backup
 `/app/data/backups/pre-pr9-20261016-8b53778a.sqlite` (mode 600, 192512 bytes),
@@ -594,6 +736,14 @@ were preserved. No DB replacement, off-machine upload or pruning occurred.
 These are dated acceptance results, not current row-count/health guarantees.
 
 ## 6. QA cleanup and private evidence
+
+The 2026-10-17 release-review preview and diagnostic PIDs were already absent on
+resumption; ports 3051/3052 were verified to have no listener. The temporary
+production browser tab was closed and its viewport override reset; the owner's
+GitHub tab was preserved. Private screenshots, generated fixtures and SQLite
+evidence remain ignored under `data/investigation/tools-release-review-20261017/`.
+No secrets, production session/cookie export, owner file cleanup, mail or paid AI
+call was used. The final acceptance handover is committed locally only.
 
 The `/unit-converter` pass reused the same disposable loopback launcher on port 3051 and the
 same asset server on 3052 (axe-core only); it introduced no new fixture, database, credential
@@ -744,6 +894,33 @@ touched, and no real SDK transcript was removed.**
 
 ## 7. Verification and limits
 
+**Backup identity hardening, 2026-11-18 (owner-approved, no code release):** the VM
+was stopped, its service account was switched from the default compute account
+(project Editor) to `vm-runtime` with the `cloud-platform` scope, and it was
+started again. The cycle took 150 s, and public `/api/health` was `ok` about 80 s
+after start; both containers and the Ops Agent came back. `vm-runtime` holds bucket
+objectCreator and objectViewer and project logWriter and metricWriter only.
+`utils-deploy` was granted `serviceAccountUser` on it. The first attempt used
+objectCreator alone, and all three uploads failed with 403 until objectViewer was
+added (GOTCHAS §D). After that, all three backups uploaded. With a throwaway object
+(since removed), create was allowed and overwrite and delete were refused.
+Public-access prevention was set to `enforced`, and the secrets backup was changed
+to timestamped object names on the host. A real deploy through the new identity has
+**not** been exercised (§4).
+
+**Ops release acceptance, 2026-11-15:** CI/CD
+[43660248861](https://github.com/sileneer/utils/actions/runs/43660248861) for
+`63dc76f` passed test (lint, tests, build), build-push and deploy. The running container's
+OCI revision label is `63dc76f6ed92131ea202c994892ff3f00210dbeb`, its memory limit is
+402653184 bytes (384 MiB) and its health is `healthy`. Public `/api/health` returned
+`{"status":"ok"}` with 50 s uptime, `/` returned 200, and anonymous `/api/account`
+returned the documented `{"user":null}`. Dependabot started both update jobs on
+`main` immediately. Locally, `npm run lint` passed. **`npm run build` could not run
+locally** (GOTCHAS §F, SWC cache ACL), so the CI build is the only build evidence.
+No browser matrix, paid AI call or account flow was exercised; none was affected.
+
+For this documentation branch, `npm run lint` passed and nothing was deployed.
+
 **Dependency update, 2026-11-15 (local, before PR CI):** `npm run lint`, full
 `npm test` **276/276** and the full `npm run build` (typecheck + standalone
 sanitization) exit 0 on Windows Node 24. `npm audit` dropped from 18 findings (1 high)
@@ -755,6 +932,28 @@ console errors. No production request was made. The first PR acceptance run
 (43662334898) failed only on the image smoke test exact SQLite pin
 (`3.54.1` actual vs `3.53.4` expected); every earlier image assertion passed. The
 pin was moved to the reviewed 3.54.1 in `tests/image-smoke.cjs`, not loosened.
+
+**PR #10 publication acceptance, 2026-10-17:** exact-head PR acceptance,
+GitGuardian and qlty passed; main CI/CD passed full lint/tests/build, final Linux
+image acceptance and deployment. Production OCI revision equals merge `82921bb`;
+origin and tunnel health pass. Twenty-five GET-only production HTTP checks pass:
+both locale variants of home/About/reader/four tools, safe anonymous identity
+with no-store, protected account/chat/admin rejection and safe login redirects.
+The retired auth route rejects GET with 405. Automatic approval rejected the
+initial script's production POST under the read-only acceptance boundary; it was
+not executed and was removed. Retired POST 410 is covered locally and in image CI.
+The HTTP harness initially expected account identity GET to return 401; source
+inspection confirmed its documented 200 `{user:null}` contract and that exact
+safe value/no-store and protected subroutes were then asserted successfully.
+
+Live anonymous browser interactions confirm Chinese/emoji diff output, QR preview
+and enabled exports, exact large JSON integer/negative-zero formatting, scientific
+zero and 37°C → 98.6°F. The production QR screenshot was inspected. Additional
+homepage locale/theme/viewport repetition hit an automation debugger timeout
+before any completed matrix case; it is not counted as passed. The full 48-case
+local matrix below remains the responsive acceptance. No app error was observed
+in completed production interactions; no claim of a completed live browser matrix
+or physical-device testing is made. Data/source/SDK parity is confirmed in §5.
 
 **Public-tool review, 2026-10-17:** fresh full `npm test` **276/276**, full lint,
 complete production build/typecheck/standalone sanitization and `git diff --check`
@@ -790,16 +989,19 @@ development dependency nodes for the unpatched `braces` advisory
 [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm); no blind
 toolchain downgrade was made. Final-image tests now explicitly reject `braces`,
 shadcn, eslint-config-next and jsqr in the runner and check all four public routes.
-Those Linux/image results still require the PR run. Production read-only preflight
-has integrity `ok`, zero FK issues, no active AI run and preserved baseline hashes;
-this is not post-release acceptance. No paid AI, real mail or account/security
+Those Linux/image results passed in the exact-head PR and merged-head CI runs
+above. Production read-only preflight and post-release checks have integrity `ok`,
+zero FK issues, no active AI run and preserved baseline hashes. No paid AI, real mail or account/security
 mutation was performed. Existing paid-call budgets and prior QA limits are unchanged.
 
 **PR #10 initial gate:** GitGuardian flagged a hardcoded password-shaped Wi-Fi
 test fixture in the original QR commit. It is synthetic test data, not a live
 credential. Replaced it and the SVG secrecy fixture with runtime-generated values,
 retaining the exact escaping/absence assertions. No suppression or gate bypass is
-used; the corrected PR head must receive fresh acceptance before merge.
+used. The final consolidated head `1c1402c` passed fresh acceptance and every
+security/quality gate before merge; its final tree equals the reviewed pre-squash
+history branch, which the 2026-10-17 merged-branch cleanup later deleted (see §2).
+The generated-fixture change also passed the QR suite 13/13.
 
 **`/unit-converter` local implementation, 2026-10-17:** `npm test` runs 270 cases across
 sixteen files, all green — 16 of them new in `tests/unit-convert.test.cjs`, which test the
