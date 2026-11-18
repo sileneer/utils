@@ -1,6 +1,6 @@
 # Handover
 
-**Updated 2026-11-18 after the backup-identity hardening; release `63dc76f` (2026-11-15).**
+**Updated 2026-11-18 for PR #30 (auth dependency release), after the backup-identity hardening.**
 Current release evidence is in §2/§5/§7; earlier implementation and acceptance
 entries, including the 2026-10-17 public-tool release, are dated historical receipts. Runtime contracts:
 [ARCHITECTURE](ARCHITECTURE.md); operations: [DEPLOYMENT](DEPLOYMENT.md);
@@ -75,11 +75,13 @@ No such sensitive action was exercised for this release. Existing paid QA budget
 
 ## 2. Checkout and release position
 
-**Current release:** `main` and production are PR #25's squash merge
-`8a000752600a1f6cd4937e919d72e694d184b223` (2026-11-15). CI/CD
-[43663107354](https://github.com/sileneer/utils/actions/runs/43663107354) passed,
-and the running OCI revision label read `8a00075…` on 2026-11-18. The dependency
-release itself is the dated receipt below.
+**Current release:** as of this commit, production runs PR #29's docs merge `9af5e8d`
+(2026-11-18). This commit is part of PR #30 (Better Auth 1.7.22 and
+`@hookform/resolvers` 7.0.6, superseding Dependabot #26-#28); its merge commit and
+live acceptance are recorded on the PR, so another `main` push is not needed just to
+publish them. Application code before PR #30 is PR #25's `8a00075` (2026-11-15; CI/CD
+[43663107354](https://github.com/sileneer/utils/actions/runs/43663107354)), whose
+receipt is below.
 
 **Ops release, 2026-11-15:** before #25, `main` was `63dc76f6ed92131ea202c994892ff3f00210dbeb`:
 PR #10's merge `82921bb` plus three direct ops commits, pushed with owner approval:
@@ -460,29 +462,23 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
 
 ## 4. Next actions
 
-**Current, 2026-11-18.** No release action remains for `63dc76f`. Open items:
+**Current, 2026-11-18.** PR #30 (Better Auth 1.7.22 + `@hookform/resolvers` 7.0.6)
+supersedes Dependabot #26-#28; close those once it merges. The docs branch merged as
+PR #29, and its deploy proved the `vm-runtime` deploy grant (§7). Open items:
 
-- **Docs branch:** `codex/ops-handover-20261115` is pushed; the old receipt branch was
-  deleted locally and on `origin` (§2). `main` has since gained the Dependabot
-  consolidation PR #25 (`8a00075`), so rebase or merge before opening a PR. Merge
-  the branch only with a later release, or with an explicit decision to deploy a
-  docs-only change.
-- **First real deploy on the new VM identity:** `utils-deploy` holds
-  `iam.serviceAccountUser` on `vm-runtime` (DEPLOYMENT §2), but no pipeline run has
-  used it yet. Watch the `deploy` job of the next `main` push; if `add-metadata`
-  fails, that grant is the first thing to check.
+- **Theme menu accessibility:** the light and dark items of the header theme menu
+  render their labels but expose no accessible name (seen 2026-11-18, not caused by
+  PR #30). It is a small DESIGN §5 fix for a later change.
 - **Offsite runs:** daily `utils/` (03:15 UTC) and `cbc-helper-bot/` (04:15 UTC)
   uploads have run since 2026-11-15. The first scheduled run under `vm-runtime` is
   2026-11-19, and the first monthly secrets run is 2026-12-01 05:00 UTC. A restore of
   a downloaded `utils/` SQLite object into an isolated directory (DEPLOYMENT §12
   checklist) has still not been done from this repository's side.
-- **Local build environment:** the SWC cache failure is fixed with the user
-  variable `SWC_NATIVE_BINDING_CACHE` (GOTCHAS §F); no ACL was changed. On
-  2026-11-18 the build then compiled and passed TypeScript, but "Collecting page
-  data" with 15 workers died out of memory: the machine had 1.4 GB of 61.2 GB commit
-  free, spread across browsers, chat apps and about 40 non-build node processes. A
-  complete local build needs free memory; until one passes, the CI `test` job is the
-  build gate.
+- **Local build environment:** fixed. The SWC cache uses the user variable
+  `SWC_NATIVE_BINDING_CACHE` (GOTCHAS §F; no ACL changed), and a full `npm run build`
+  passed on 2026-11-18. It needs several GB of free commit memory: with about 1 GB free,
+  build workers and even the compiler fail to allocate, and tests fail with
+  `malloc failure` 503s. Check free memory before blaming the code.
 - **Retired passphrase:** an agent transcript exposed the first `.env`-backup
   passphrase. It was rotated on 2026-11-15 and no longer opens any live object
   (DEPLOYMENT §12). The ZCode rollout log holding it was deleted, and its copy in
@@ -894,6 +890,36 @@ touched, and no real SDK transcript was removed.**
 
 ## 7. Verification and limits
 
+**Auth dependency release, 2026-11-18 (PR #30, local QA before merge):**
+`npm ls` is valid, and `better-sqlite3` 13.1.1 was rebuilt from source (GOTCHAS §F)
+and loads with SQLite 3.54.1. `npm run lint` passes. The full `npm test` passed
+**276/276** across runs. While the machine had about 1 GB of commit memory free, some
+files failed only with `libcrypto malloc failure` → 503, and those files re-ran clean
+in isolation. The one real failure was the passkey user-verification contract change
+(ARCHITECTURE §5), which was fixed and pinned in tests. The full `npm run build`
+(compile, TypeScript, page data, standalone sanitization) exited 0 once memory was
+freed. A browser pass against `tests/auth-preview.cjs` (disposable database, fixture
+outbox, Turnstile test keys, AI off) checked the following, with no console errors:
+- `@hookform/resolvers` 7: registration validation (the password rule fires inline),
+  registration → fixture code → email verified, a wrong-password login (the generic
+  refusal) and a correct one, profile name required/saved, and password change with
+  the cross-field "do not match" error, then a successful change that signs out
+  other sessions.
+- zh at 360 px in dark and light themes, with the required and password-rule errors
+  inline and no overflow.
+
+Passkey ceremonies were not repeated in the browser, which has no virtual
+authenticator; they are covered by `tests/passkey.test.cjs`. PR CI (acceptance,
+GitGuardian, qlty) was green on head `2e39bab`. One existing observation: the theme
+menu's light and dark `menuitem`s have no accessible name in the accessibility tree,
+although their labels render (§4). Production acceptance follows the merge and is
+recorded on the PR.
+
+PR #29's deploy (run 44376371709, `9af5e8d`) was the first through `vm-runtime`:
+add-metadata, deploy and SSH-key removal all succeeded. The running revision
+`9af5e8d`, `healthy` status, 384 MiB limit, public health, `/`, `/about` and
+`/text-diff` (200) and anonymous `{"user":null}` were checked live.
+
 **Backup identity hardening, 2026-11-18 (owner-approved, no code release):** the VM
 was stopped, its service account was switched from the default compute account
 (project Editor) to `vm-runtime` with the `cloud-platform` scope, and it was
@@ -905,8 +931,8 @@ objectCreator alone, and all three uploads failed with 403 until objectViewer wa
 added (GOTCHAS §D). After that, all three backups uploaded. With a throwaway object
 (since removed), create was allowed and overwrite and delete were refused.
 Public-access prevention was set to `enforced`, and the secrets backup was changed
-to timestamped object names on the host. A real deploy through the new identity has
-**not** been exercised (§4).
+to timestamped object names on the host. At that point no real deploy had used the
+new identity; PR #29's deploy later that day did so successfully (receipt above).
 
 **Ops release acceptance, 2026-11-15:** CI/CD
 [43660248861](https://github.com/sileneer/utils/actions/runs/43660248861) for

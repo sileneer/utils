@@ -683,10 +683,10 @@ email change, disabling two-factor or regenerating recovery codes still demands 
 current password, and the operations that demand a live factor still demand a TOTP or
 recovery code — a passkey is never accepted there in place of one.
 
-The library does not enforce any of that on its own, and two gaps had to be closed in the
-wrapper rather than assumed away (measured in PLANNING §14.7): both verify endpoints
-hardcode `requireUserVerification: false`, so an assertion **without** the user-verified
-flag would otherwise sign the user in; and the two-factor after-hook matches only
+The library did not enforce any of that on its own, and two gaps had to be closed in the
+wrapper rather than assumed away (measured in PLANNING §14.7): in 1.7.7 both verify
+endpoints hardcoded `requireUserVerification: false`, so an assertion **without** the
+user-verified flag would otherwise sign the user in; and the two-factor after-hook matches only
 `/sign-in/email|username|phone-number`, so a passkey sign-in would otherwise walk past a
 enabled second factor without satisfying anything. The fix is the plugin's own
 `afterVerification` hooks, which run before any row is written or session issued: each one
@@ -694,6 +694,14 @@ refuses unless `registrationInfo.userVerified` / `authenticationInfo.userVerifie
 `true`, and registration additionally asks the authenticator for
 `userVerification: "required"` so credentials are bound to verification from the start.
 A refused ceremony leaves nothing behind — no passkey row, no session.
+
+**Since `@better-auth/passkey` 1.7.22 (2026-11-18)** the plugin itself passes
+`requireUserVerification: true` whenever `userVerification` is `"required"`, so an
+unverified ceremony is refused inside the library before the hook runs. The answers are
+then the library's generic ones: registration `400 registration_failed`, sign-in
+`401 assertion_failed`. The hook's `403 not_user_verified` (and its
+`passkeyNotVerified` copy) is kept as defence in depth for a future plugin change but
+is not normally reachable. Both refusals are covered in `tests/passkey.test.cjs`.
 
 **Challenges are server-issued, one-time and purpose-tagged.** `generate-*` stores an
 expected challenge in the `verification` table for 300 seconds and names it through a
