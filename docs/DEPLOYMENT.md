@@ -108,8 +108,9 @@ through Workload Identity Federation:
   `vm-runtime@…` since 2026-11-18 (it was the default `970395615458-compute@…`
   before). Without that last one, `add-metadata` fails; it cost two failed runs to
   learn (GOTCHAS §D). If the VM's service account ever changes again, grant this
-  first. The 2026-11-18 grant on `vm-runtime` is in place but has not yet been
-  exercised by a real deploy.
+  first. The 2026-11-18 grant on `vm-runtime` was exercised by PR #29's deploy
+  (run [44376371709](https://github.com/sileneer/utils/actions/runs/44376371709):
+  add-metadata, deploy and key removal all succeeded).
 
 Then, per run: `ssh-keygen -t ed25519` → write **only that key** to
 *instance-level* metadata (project metadata untouched, so nobody else's keys are

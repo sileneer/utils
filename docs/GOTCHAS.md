@@ -286,6 +286,18 @@ while TypeScript errors failed the same job.
 **Fix** read the whole log tail / the Actions job status. Run `npm run build`
 locally and require exit 0.
 
+### `npm install` fails building `better-sqlite3` on Windows: "find Python"
+
+**Symptom** `npm install` (any change that makes npm reinstall `better-sqlite3`, for
+example a lockfile change around it) fails with `gyp ERR! find Python` and rolls back.
+**Cause** `better-sqlite3` 13.1.1 has no prebuilt binary; its install script is
+`node-gyp rebuild`. node-gyp needs Python, and on this machine `python`/`python3` are
+Microsoft Store stubs (AGENTS: uv is the only Python toolchain).
+**Fix** point node-gyp at a uv-managed interpreter for that install only, e.g.
+`npm_config_python="$(uv python find 3.12)" npm install`; Visual Studio 18 provides the
+compiler. Verify afterwards with `node -e` opening a `:memory:` database. Seen
+2026-11-18.
+
 ### SWC refuses every native cache directory on the Windows dev machine
 
 **Symptom** `npm run build` fails before compiling with `ERR_SWC_NATIVE_CACHE`:
