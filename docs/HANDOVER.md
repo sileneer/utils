@@ -75,8 +75,14 @@ No such sensitive action was exercised for this release. Existing paid QA budget
 
 ## 2. Checkout and release position
 
-**Current release, 2026-11-15:** `main` is `63dc76f6ed92131ea202c994892ff3f00210dbeb`.
-It is PR #10's merge `82921bb` plus three direct ops commits, pushed with owner approval:
+**Current release:** `main` and production are PR #25's squash merge
+`8a000752600a1f6cd4937e919d72e694d184b223` (2026-11-15). CI/CD
+[43663107354](https://github.com/sileneer/utils/actions/runs/43663107354) passed,
+and the running OCI revision label read `8a00075…` on 2026-11-18. The dependency
+release itself is the dated receipt below.
+
+**Ops release, 2026-11-15:** before #25, `main` was `63dc76f6ed92131ea202c994892ff3f00210dbeb`:
+PR #10's merge `82921bb` plus three direct ops commits, pushed with owner approval:
 `cb94f71` (`deploy/backup.sh` streams the newest snapshot to Cloud Storage),
 `462ed86` (`.github/dependabot.yml`) and `63dc76f` (`mem_limit: 384m` in
 `deploy/docker-compose.prod.yml`). An agent first committed them on the receipt branch
@@ -88,12 +94,27 @@ compose file had already been installed by hand and are byte-identical to the re
 test, build-push and deploy. Acceptance is in §7.
 
 **Checkout:** this handover is on `codex/ops-handover-20261115`, branched from
-`63dc76f`. It carries the 2026-10-17 receipt commit (re-applied as `35b4024`), the
-previously uncommitted merged-branch cleanup receipt below (committed as written),
-and this update. It is unpublished, and merging it would deploy (§1). The old receipt branch
-`codex/public-tools-release-handover-20261017` (local and `origin`) now holds only
-copies of commits that are on `main` or on this branch; delete it once this branch
-is pushed. Ignored `.zcode/`, investigations and retained data are preserved.
+`63dc76f`, with `main` (`8a00075`) merged in on 2026-11-18. It carries the 2026-10-17
+receipt commit (re-applied as `35b4024`), the previously uncommitted merged-branch
+cleanup receipt below (committed as written), and the 2026-11-15/18 ops updates.
+It is documentation only, and merging it deploys (§1). The old receipt branch
+`codex/public-tools-release-handover-20261017` was deleted locally and on `origin`
+on 2026-11-15, after its contents were confirmed to be on `main` or this branch.
+Ignored `.zcode/`, investigations and retained data are preserved.
+
+**Dependency release, 2026-11-15 (PR #25, merged as `8a00075`):** the owner asked
+to review and resolve every open Dependabot PR (#11-#24). One branch combines the
+GitHub Actions majors (#19), morphicons 2.0.2 (#24; 2.0 only changes filled icons,
+and every MorphIcon here is a stroke icon), the grouped npm minor/patch bumps (#20)
+**except Better Auth**, the lockfile-only transitive bumps (#11-#14, #17, #18; #15
+and #16 are covered by #20) and `@types/node` ^22 to match the Node 22 runtime
+instead of #21's 26. Better Auth stays at 1.7.7 with its `overrides`
+(ARCHITECTURE §5). #20 failed `npm ci` because it bumped the pinned stack, so it is
+now excluded from the Dependabot group and arrives as its own PRs (#26/#27, which
+must move together). TypeScript 7 (#22) and ESLint 10 (#23) break
+`eslint-config-next` in CI; Dependabot now ignores those majors and `@types/node`
+above 22. `allowScripts` moved to `better-sqlite3@13.1.1`, which bundles SQLite
+3.54.1 (GOTCHAS).
 
 **Dated release, 2026-10-17:** PR [#10](https://github.com/sileneer/utils/pull/10) was
 squash-merged on 2026-10-17 as `82921bb684a16bf2c27ff0aa5c451dd05a45f872`, from
@@ -455,9 +476,13 @@ browser/session evidence, screenshots, `.env` or owner-owned agent files.
   2026-11-19, and the first monthly secrets run is 2026-12-01 05:00 UTC. A restore of
   a downloaded `utils/` SQLite object into an isolated directory (DEPLOYMENT §12
   checklist) has still not been done from this repository's side.
-- **Local build environment:** `npm run build` fails on this machine before
-  compiling, because of a cache-directory ACL (GOTCHAS §F). It needs an owner ACL
-  decision; until then the CI `test` job is the build gate.
+- **Local build environment:** the SWC cache failure is fixed with the user
+  variable `SWC_NATIVE_BINDING_CACHE` (GOTCHAS §F); no ACL was changed. On
+  2026-11-18 the build then compiled and passed TypeScript, but "Collecting page
+  data" with 15 workers died out of memory: the machine had 1.4 GB of 61.2 GB commit
+  free, spread across browsers, chat apps and about 40 non-build node processes. A
+  complete local build needs free memory; until one passes, the CI `test` job is the
+  build gate.
 - **Retired passphrase:** an agent transcript exposed the first `.env`-backup
   passphrase. It was rotated on 2026-11-15 and no longer opens any live object
   (DEPLOYMENT §12). The ZCode rollout log holding it was deleted, and its copy in
@@ -895,6 +920,18 @@ locally** (GOTCHAS §F, SWC cache ACL), so the CI build is the only build eviden
 No browser matrix, paid AI call or account flow was exercised; none was affected.
 
 For this documentation branch, `npm run lint` passed and nothing was deployed.
+
+**Dependency update, 2026-11-15 (local, before PR CI):** `npm run lint`, full
+`npm test` **276/276** and the full `npm run build` (typecheck + standalone
+sanitization) exit 0 on Windows Node 24. `npm audit` dropped from 18 findings (1 high)
+to 12 moderate/low, all in dev-only tooling (shadcn, typescript-eslint). A browser smoke
+test against `tests/auth-preview.cjs` (disposable database, fake secrets, no mail and
+no AI) checked both MorphIcon controls (password eye ↔ eye-off, theme sun ↔ moon),
+the radix theme menu, light/dark, zh at a 360px emulated viewport and desktop, with no
+console errors. No production request was made. The first PR acceptance run
+(43662334898) failed only on the image smoke test exact SQLite pin
+(`3.54.1` actual vs `3.53.4` expected); every earlier image assertion passed. The
+pin was moved to the reviewed 3.54.1 in `tests/image-smoke.cjs`, not loosened.
 
 **PR #10 publication acceptance, 2026-10-17:** exact-head PR acceptance,
 GitGuardian and qlty passed; main CI/CD passed full lint/tests/build, final Linux

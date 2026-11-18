@@ -290,16 +290,21 @@ locally and require exit 0.
 
 **Symptom** `npm run build` fails before compiling with `ERR_SWC_NATIVE_CACHE`:
 `validate cache root …\AppData\Local\swc: … DACL grants replacement rights …
-to SID S-1-15-3-…`. Setting `SWC_NATIVE_BINDING_CACHE` does not help: a folder
-under `AppData\Local` fails on the same ancestor, and one under `D:\coding`
-fails on another SID.
+to SID S-1-15-3-…`. A cache folder anywhere under `AppData` fails the same way,
+and one under `D:\coding` fails on another SID.
 **Cause** the SWC native loader refuses a cache directory whose ACL, or any
-ancestor's ACL, lets another principal replace files. `C:\Users\lzh75\AppData\Local`
-grants that right to an AppContainer SID. Seen 2026-11-15; `npm run lint` is
-unaffected.
-**Fix** not resolved yet. It needs an owner-approved ACL change on a cache
-directory, not a code change. Until then the CI `test` job is the build gate,
-and HANDOVER §7 must say so whenever a local build could not run.
+ancestor's ACL, lets another principal replace files. `C:\Users\lzh75\AppData`
+carries an **explicit** full-control ACE for an AppContainer SID, set by some
+installed app, and everything below it inherits that ACE. Read the ACL with
+`icacls.exe` from an unsandboxed shell: an agent's sandboxed PowerShell can show a
+different view. `npm run lint` is unaffected. Seen 2026-11-15.
+**Fix** (2026-11-18) point the cache outside `AppData`, at a folder whose ancestors
+grant only the user, SYSTEM and Administrators: the user environment variable
+`SWC_NATIVE_BINDING_CACHE=C:\Users\lzh75\.cache\swc-native` is set. No ACL was
+changed; do not strip the AppContainer ACE, since the app that owns it may break.
+With it set, the build compiles and passes TypeScript. An agent's sandboxed shell
+still cannot build, because the sandbox stamps its own AppContainer ACE onto
+folders it creates. Run builds unsandboxed.
 
 ### `react-hooks/set-state-in-effect`
 
@@ -548,8 +553,11 @@ false, so ordinary/unverified password login cannot bypass CAPTCHA mail budgets.
 
 **Symptom** package installed but native binding unavailable.
 **Cause** this npm runtime blocks unapproved package install scripts.
-**Fix** reviewed `better-sqlite3@13.0.3` install script is explicitly approved in
-package.json. Windows native query reported SQLite 3.53.4. This does not prove
+**Fix** the reviewed `better-sqlite3` install script is explicitly approved in
+package.json `allowScripts`, keyed by exact version: a version bump must move the key
+too, or npm silently skips the native install. Windows native query reported SQLite
+3.53.4 under 13.0.3 and 3.54.1 under 13.1.1. `tests/image-smoke.cjs` pins the exact
+SQLite version in the image, so the same bump must update that value. This does not prove
 Node 22 Debian image startup; the separate full-image gate is required.
 Its actual result is recorded in HANDOVER §7.
 

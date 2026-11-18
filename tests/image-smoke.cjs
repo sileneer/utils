@@ -43,7 +43,9 @@ function artifactCheck() {
   assert.equal(typeof require("/app/src/lib/agent/transcripts.cjs").backfillTranscriptOwners, "function");
   assert.equal(typeof require("/app/src/lib/durable-jsonl.cjs").readLedger, "function");
   const Database = require("better-sqlite3"), db = new Database(":memory:");
-  assert.equal(db.prepare("SELECT sqlite_version() version").get().version, "3.53.4");
+  // Exact pin: a better-sqlite3 bump that changes the bundled SQLite must update
+  // this value deliberately (GOTCHAS "Native SQLite install and version").
+  assert.equal(db.prepare("SELECT sqlite_version() version").get().version, "3.54.1");
   db.close();
   const cli = "/app/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude";
   fs.accessSync(cli, fs.constants.X_OK);
