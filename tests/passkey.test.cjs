@@ -208,8 +208,11 @@ test("an unverified ceremony is refused and leaves nothing behind", async () => 
   const person = await create("pk-nouv@example.test");
   const device = createAuthenticator({ rpId: RP_ID, origin: origin(), userVerified: false });
   const { finished } = await register(person, device);
-  assert.equal(finished.status, 403);
-  assert.deepEqual(await finished.json(), { error: "not_user_verified" });
+  // Since @better-auth/passkey 1.7.22 the library itself enforces the configured
+  // `userVerification: "required"` and refuses before our afterVerification hook runs,
+  // so the answer is its generic verification failure rather than our 403.
+  assert.equal(finished.status, 400);
+  assert.deepEqual(await finished.json(), { error: "registration_failed" });
   assert.equal(db().prepare("SELECT count(*) n FROM passkey WHERE userId=?").get(person.id).n, 0);
   assert.equal(db().prepare("SELECT count(*) n FROM security_events WHERE user_id=?").get(person.id).n, 0);
 });
@@ -271,6 +274,8 @@ test("wrong rp id, wrong origin and an unknown credential are all refused", asyn
     const body = await response.text();
     assert.doesNotMatch(body, /session_token=/, label);
     if (label === "unknown credential") assert.deepEqual(JSON.parse(body), { error: "not_found" });
+    // A refusal, never a server error: since 1.7.22 the library rejects a missing UV flag itself.
+    else assert.deepEqual([response.status, JSON.parse(body)], [401, { error: "assertion_failed" }], label);
   }
   assert.equal(db().prepare("SELECT count(*) n FROM session WHERE userId=?").get(person.id).n, 1, "only the original login session exists");
 });

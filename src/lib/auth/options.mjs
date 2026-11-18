@@ -4,13 +4,14 @@ import { passkey } from "@better-auth/passkey";
 import { APIError } from "@better-auth/core/error";
 
 /**
- * The passkey plugin hardcodes `requireUserVerification: false` on both verify endpoints,
- * so an assertion from an authenticator that skipped verification would still sign the
- * user in. This hook runs before any row is written or session is issued, so refusing
- * here leaves nothing behind — measured against the installed version.
- *
- * It is the only thing standing between "someone copied the private key off a synced
- * passkey" and a session, because a copied key still signs.
+ * Defence in depth for user verification. Up to @better-auth/passkey 1.7.7 both verify
+ * endpoints hardcoded `requireUserVerification: false`, so an assertion from an
+ * authenticator that skipped verification would still sign the user in, and this hook
+ * was the only guard. Since 1.7.22 the plugin passes `requireUserVerification: true`
+ * whenever `authenticatorSelection.userVerification` is "required" (as configured below),
+ * so the library refuses first and this hook normally never sees an unverified ceremony.
+ * It stays so a future plugin change cannot silently drop the guarantee: it runs before
+ * any row is written or session is issued, so refusing here leaves nothing behind.
  */
 function requireUserVerified({ verification }) {
   const info = verification?.registrationInfo ?? verification?.authenticationInfo;
